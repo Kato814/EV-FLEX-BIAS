@@ -1,0 +1,11 @@
+clear
+Set DefaultBaseFrequency=50
+New circuit.LVTest
+Edit Vsource.Source BasekV=11 pu=1.05 ISC3=3000 ISC1=5
+Redirect LineCode.txt
+Redirect Lines.txt
+Redirect Transformers.txt
+Redirect LoadsStaticAudit.txt
+Set voltagebases=[11 .416]
+Calcvoltagebases
+solve

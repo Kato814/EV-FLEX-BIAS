@@ -1,0 +1,46 @@
+{
+  "protocol": "EV-FLEX-BIAS-V1.2",
+  "gate": "D5_numerical_engine",
+  "status": "PASS",
+  "engine": "duration-aware constant-block 15/30/60-min trajectory LP with balanced and three-phase nonlinear network verification",
+  "formal_nhts_populations_used": true,
+  "representative_scenarios": [
+    "ieee13_1900_17",
+    "ieee13_0200_17",
+    "lv906_1900_18",
+    "lv906_0200_03"
+  ],
+  "feeders": [
+    "ieee13",
+    "lv906"
+  ],
+  "call_times": [
+    "02:00",
+    "19:00"
+  ],
+  "directions": [
+    "dec",
+    "inc"
+  ],
+  "durations_min": [
+    15,
+    30,
+    60
+  ],
+  "comparisons_expected": 24,
+  "comparisons_completed": 24,
+  "completion_rate": 1.0,
+  "physical_checks_pass": true,
+  "network_checks_pass": true,
+  "duration_monotonicity_pass": true,
+  "monotonicity_failures": [],
+  "repeatability_pass": true,
+  "repeatability_max_abs_error": 0.0,
+  "max_departure_error_kwh": 5.968558980384842e-13,
+  "max_reserve_violation_kwh": 0.0,
+  "max_capacity_violation_kwh": 9.947598300641403e-14,
+  "simultaneous_charge_discharge_slots": 0,
+  "zero_capacity_edge_cases": 6,
+  "regression_scope_note": "D5 is an engine regression, not the inferential paper experiment. Scientific statistics remain frozen until the 1536-run manifest is executed.",
+  "D5_pass": true
+}

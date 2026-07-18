@@ -327,7 +327,7 @@ Create `config/required_inherited_assets_v2_0.csv` with columns:
 asset_id,source_kind,source_path,archive_entry,destination_path,expected_sha256,authority
 ```
 
-Populate rows for the NHTS archive, four known frozen CSV hashes, core manifest, native-load profile, IEEE13 DSS tree, LV906 DSS tree, D5 engine, D5 network core, and D5 regression CSV. For files without a previously published hash, compute the archive-entry hash during import and freeze that value in the generated manifest before G0 is signed.
+Populate 27 fixed rows for the NHTS archive, frozen input CSVs, core manifest, native-load profile, IEEE13 DSS tree, LV906 DSS tree, archived environment lock, D5 engine, D5 network core, D5 protocol, and D5 regression assets. Every row contains a precomputed expected SHA-256 before the importer runs.
 
 - [ ] **Step 5: Implement archive import with no silent overwrite**
 
@@ -356,8 +356,9 @@ For ZIP entries, stream bytes from `zipfile.ZipFile.open()` into a temporary fil
 Run:
 
 ```powershell
+$projectParent=(Resolve-Path '..\..\..').Path
 .\.venv\Scripts\python.exe tools/import_inherited_assets.py `
-  --project-parent .. `
+  --project-parent $projectParent `
   --requirements config/required_inherited_assets_v2_0.csv `
   --manifest manifests/inherited_asset_manifest_v2_0.csv `
   --report reports/provenance_gate_v2_0.json
