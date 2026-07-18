@@ -105,7 +105,7 @@ The D5 v1.2 engine supplies the verified multi-period EV trajectory formulation,
 
 For each scenario-direction, all three durations are solved together. A core work unit therefore contains three evaluation rows; 512 work units produce 1,536 evaluations, with 384 development work units producing 1,152 evaluations and 128 holdout work units producing 384 evaluations. For a requested duration, the engine may select a physically feasible schedule from that duration or a longer nested duration when it has greater capacity. Ties select the shortest source duration. This enforces the mathematical non-increasing capacity relation across 15, 30, and 60 minutes without using holdout outcomes.
 
-OpenDSS work uses process isolation. The default worker count is four, chosen conservatively for the 20-core, 32-GB local machine. Concurrency increases only after deterministic two-worker and four-worker smoke tests match sequential results.
+OpenDSS work uses process isolation. BLAS, OpenMP, MKL, NumExpr, and scikit-learn threads are fixed at one. Numerical execution uses one process for regression and at most two processes for formal manifests on the 20-core, 32-GB local machine. V2.0 never exceeds two concurrent numerical processes.
 
 ## 6. Core data flow and sealing
 

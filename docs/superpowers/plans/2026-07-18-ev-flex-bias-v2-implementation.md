@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.12.13, NumPy 2.3.5, pandas 2.2.3, SciPy 1.17.0, scikit-learn 1.7.2, OpenDSSDirect.py 0.9.4, matplotlib 3.10.7, seaborn 0.13.2, PowerShell, Git, Word/IEEE A4 template, Poppler PDF QA.
 
+**Resource policy:** Set `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, `NUMEXPR_NUM_THREADS`, and `VECLIB_MAXIMUM_THREADS` to `1`. Use one process for regression and no more than two processes for formal execution. Do not raise these limits without a new explicit user instruction.
+
 ---
 
 ## File map
@@ -35,18 +37,20 @@ The implementation creates these responsibility boundaries:
 - Create: `README.md`
 - Create: `pyproject.toml`
 - Create: `requirements.lock.txt`
+- Create: `config/resource_limits_v2_0.json`
 - Create: `src/evflex/__init__.py`
 - Create: `tests/test_environment.py`
 
-- [ ] **Step 1: Create a feature branch**
+- [ ] **Step 1: Verify the isolated feature branch**
 
 Run:
 
 ```powershell
-git switch -c build/v2-pipeline
+git branch --show-current
+git rev-parse --show-toplevel
 ```
 
-Expected: Git reports a new branch named `build/v2-pipeline`.
+Expected: Git reports branch `build/v2-pipeline` and the linked `.worktrees/build-v2-pipeline` root.
 
 - [ ] **Step 2: Write the failing environment test**
 
@@ -76,6 +80,17 @@ class EnvironmentTest(unittest.TestCase):
     def test_locked_packages(self):
         actual = {name: importlib.metadata.version(name) for name in EXPECTED}
         self.assertEqual(actual, EXPECTED)
+
+    def test_numeric_thread_caps(self):
+        import os
+        for name in (
+            "OMP_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+            "VECLIB_MAXIMUM_THREADS",
+        ):
+            self.assertEqual(os.environ.get(name), "1")
 
 
 if __name__ == "__main__":
@@ -128,6 +143,7 @@ where = ["src"]
 Create `.gitignore`:
 
 ```text
+.worktrees/
 .venv/
 __pycache__/
 *.pyc
@@ -144,7 +160,28 @@ Create `src/evflex/__init__.py`:
 ```python
 """Auditable EV flexibility-bias experiments, protocol V2.0."""
 
+import os
+
+for _name in (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+):
+    os.environ[_name] = "1"
+
 __version__ = "2.0.0"
+```
+
+Create `config/resource_limits_v2_0.json`:
+
+```json
+{
+  "numeric_threads": 1,
+  "regression_workers": 1,
+  "formal_workers_max": 2
+}
 ```
 
 Create `README.md`:
@@ -179,14 +216,14 @@ Run:
 .\.venv\Scripts\python.exe -m unittest tests.test_environment -v
 ```
 
-Expected: 2 tests PASS.
+Expected: 3 tests PASS.
 
 - [ ] **Step 7: Record the bootstrap commit**
 
 Run:
 
 ```powershell
-git add .gitignore README.md pyproject.toml requirements.lock.txt src tests
+git add .gitignore README.md pyproject.toml requirements.lock.txt config/resource_limits_v2_0.json src tests
 git commit -m "build: lock V2.0 Python environment"
 ```
 
@@ -762,9 +799,9 @@ Expected: G1 PASS with 24/24 status matches, all numerical tolerances satisfied,
 
 - [ ] **Step 4: Test process-count determinism**
 
-Run the same golden set with two and four workers. Compare canonicalized evaluation rows after excluding runtime and attempt metadata.
+Run the same golden set with two workers. Compare canonicalized evaluation rows after excluding runtime and attempt metadata.
 
-Expected: worker counts 1, 2, and 4 produce identical scientific fields within G1 tolerances.
+Expected: worker counts 1 and 2 produce identical scientific fields within G1 tolerances.
 
 - [ ] **Step 5: Run tests and commit the gate**
 
@@ -847,7 +884,7 @@ Allow attempts 1-3 only for unhandled infrastructure exceptions. Physical termin
 
 - [ ] **Step 4: Implement the manifest CLI**
 
-The CLI accepts `--role development`, `--role development_ablation`, or `--role holdout`. It rejects holdout unless the verified unlock record exists. It supports `--workers 1..4`, `--resume`, and `--max-work-units` for smoke tests. It never accepts a seed override.
+The CLI accepts `--role development`, `--role development_ablation`, or `--role holdout`. It rejects holdout unless the verified unlock record exists. It supports `--workers 1..2`, `--resume`, and `--max-work-units` for smoke tests. It rejects worker counts above the frozen resource limit and never accepts a seed override.
 
 - [ ] **Step 5: Test crash-and-resume behavior**
 
@@ -904,7 +941,7 @@ Run:
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_manifest_v2_0.py `
   --manifest manifests/core_work_units_v2_0.csv `
-  --role development --workers 4 --resume
+  --role development --workers 2 --resume
 ```
 
 Monitor terminal counts and fresh modification times. Never infer completion from CPU activity alone.
@@ -1024,7 +1061,7 @@ Run:
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_manifest_v2_0.py `
   --manifest manifests/compact_ablation_v2_0.csv `
-  --role development_ablation --workers 4 --resume
+  --role development_ablation --workers 2 --resume
 ```
 
 Expected: 336 terminal work-unit records and no replacement IDs.
@@ -1139,7 +1176,7 @@ Run:
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_manifest_v2_0.py `
   --manifest manifests/core_work_units_v2_0.csv `
-  --role holdout --workers 4 --resume `
+  --role holdout --workers 2 --resume `
   --unlock state/holdout_unlock_v2_0.json
 ```
 
