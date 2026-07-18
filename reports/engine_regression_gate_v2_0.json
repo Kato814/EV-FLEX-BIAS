@@ -1,0 +1,297 @@
+{
+  "protocol_version": "EV-FLEX-BIAS-V2.0",
+  "gate": "G1_ENGINE_REGRESSION",
+  "gate_status": "PASS",
+  "resource_policy": {
+    "numeric_threads": 1,
+    "workers": 1,
+    "execution": "sequential",
+    "two_worker_check": "NOT_RUN_STRICTER_REGRESSION_WORKER_LIMIT"
+  },
+  "golden": {
+    "path": "data/inherited/duration_engine_regression_results.csv",
+    "sha256": "599339f034f800b7b5924dea8e12febe8b72f02a3c0775e2786ef11e981dc217",
+    "expected_rows": 24
+  },
+  "repeats": 2,
+  "rows_per_repeat": [
+    24,
+    24
+  ],
+  "status_matches": 24,
+  "mismatch_counts": {
+    "missing": 0,
+    "capacity": 0,
+    "alpha_map": 0,
+    "boolean": 0,
+    "status": 0
+  },
+  "physical": {
+    "pass": true,
+    "max_departure_error_kwh": 5.968558980384842e-13,
+    "max_reserve_violation_kwh": 0.0,
+    "max_capacity_violation_kwh": 9.947598300641403e-14,
+    "simultaneous_slots_total": 0,
+    "all_network_checks_feasible": true
+  },
+  "repeatability": {
+    "pass": true,
+    "max_capacity_abs_difference_kw": 0.0,
+    "max_alpha_map_abs_difference": 0.0,
+    "status_mismatches": 0
+  },
+  "canonical_result_sha256": [
+    "d30138cce06c93485f7b24485077d694a6168cf1a42acaffda054b440e7c533f",
+    "d30138cce06c93485f7b24485077d694a6168cf1a42acaffda054b440e7c533f"
+  ],
+  "tolerances": {
+    "capacity_absolute_kw": 1e-05,
+    "capacity_relative": 1e-08,
+    "alpha_map_absolute": 1e-08,
+    "departure_error_max_kwh": 1e-08,
+    "reserve_violation_max_kwh": 1e-09,
+    "simultaneous_slots": 0
+  },
+  "comparisons": [
+    {
+      "scenario_id": "ieee13_0200_17",
+      "direction": "dec",
+      "duration_min": 15,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "ieee13_0200_17",
+      "direction": "dec",
+      "duration_min": 30,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "ieee13_0200_17",
+      "direction": "dec",
+      "duration_min": 60,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "ieee13_0200_17",
+      "direction": "inc",
+      "duration_min": 15,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "ieee13_0200_17",
+      "direction": "inc",
+      "duration_min": 30,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "ieee13_0200_17",
+      "direction": "inc",
+      "duration_min": 60,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "ieee13_1900_17",
+      "direction": "dec",
+      "duration_min": 15,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "ieee13_1900_17",
+      "direction": "dec",
+      "duration_min": 30,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "ieee13_1900_17",
+      "direction": "dec",
+      "duration_min": 60,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "ieee13_1900_17",
+      "direction": "inc",
+      "duration_min": 15,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "ieee13_1900_17",
+      "direction": "inc",
+      "duration_min": 30,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "ieee13_1900_17",
+      "direction": "inc",
+      "duration_min": 60,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_0200_03",
+      "direction": "dec",
+      "duration_min": 15,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_0200_03",
+      "direction": "dec",
+      "duration_min": 30,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_0200_03",
+      "direction": "dec",
+      "duration_min": 60,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_0200_03",
+      "direction": "inc",
+      "duration_min": 15,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_0200_03",
+      "direction": "inc",
+      "duration_min": 30,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_0200_03",
+      "direction": "inc",
+      "duration_min": 60,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_1900_18",
+      "direction": "dec",
+      "duration_min": 15,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_1900_18",
+      "direction": "dec",
+      "duration_min": 30,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_1900_18",
+      "direction": "dec",
+      "duration_min": 60,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_1900_18",
+      "direction": "inc",
+      "duration_min": 15,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_1900_18",
+      "direction": "inc",
+      "duration_min": 30,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    },
+    {
+      "scenario_id": "lv906_1900_18",
+      "direction": "inc",
+      "duration_min": 60,
+      "capacity_pass": true,
+      "alpha_map_pass": true,
+      "boolean_pass": true,
+      "status_pass": true,
+      "pass": true
+    }
+  ]
+}
