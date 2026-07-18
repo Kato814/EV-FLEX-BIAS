@@ -100,9 +100,10 @@ The D5 v1.2 engine supplies the verified multi-period EV trajectory formulation,
 2. Scenario-level balanced and three-phase context reuse.
 3. The v1.7 nested-duration feasible-schedule closure implemented against the v1.2 base.
 4. A stable result schema with physical checks, provenance hashes, runtime, attempt count, and terminal status.
-5. Atomic one-file-per-run output and same-ID resumability.
+5. Scenario-direction work units that solve all three durations together and contain three evaluation IDs.
+6. Atomic one-file-per-work-unit output and same-work-unit resumability.
 
-For each scenario-direction, all three durations are solved together. For a requested duration, the engine may select a physically feasible schedule from that duration or a longer nested duration when it has greater capacity. Ties select the shortest source duration. This enforces the mathematical non-increasing capacity relation across 15, 30, and 60 minutes without using holdout outcomes.
+For each scenario-direction, all three durations are solved together. A core work unit therefore contains three evaluation rows; 512 work units produce 1,536 evaluations, with 384 development work units producing 1,152 evaluations and 128 holdout work units producing 384 evaluations. For a requested duration, the engine may select a physically feasible schedule from that duration or a longer nested duration when it has greater capacity. Ties select the shortest source duration. This enforces the mathematical non-increasing capacity relation across 15, 30, and 60 minutes without using holdout outcomes.
 
 OpenDSS work uses process isolation. The default worker count is four, chosen conservatively for the 20-core, 32-GB local machine. Concurrency increases only after deterministic two-worker and four-worker smoke tests match sequential results.
 
@@ -122,7 +123,7 @@ OpenDSS work uses process isolation. The default worker count is four, chosen co
 12. Apply frozen models and thresholds without refitting or rethresholding.
 13. Generate final tables, figures, manuscript text, and the A4 submission PDF.
 
-The holdout runner refuses holdout rows unless `state/holdout_unlock_v2_0.json` exists and validates the complete pre-holdout freeze report. Completed holdout IDs are never recomputed. Infrastructure interruption may resume the same incomplete ID; it may not create a replacement ID or seed.
+The holdout runner refuses holdout work units unless `state/holdout_unlock_v2_0.json` exists and validates the complete pre-holdout freeze report. Completed holdout work units are never recomputed. Infrastructure interruption may resume the same incomplete work unit; it may not create a replacement ID or seed.
 
 ## 7. Applicability modeling
 
@@ -160,8 +161,8 @@ The analysis reports within-block level contrasts for `alpha_map`, balanced-mode
 ## 9. Error handling and audit rules
 
 - Hash mismatch, schema mismatch, duplicated run ID, duplicated seed, or role inconsistency stops the pipeline.
-- Each run writes to a temporary file, flushes it, and atomically replaces the final JSON only after schema validation.
-- A per-ID exclusive lock prevents two processes from computing the same run.
+- Each work unit writes to a temporary file, flushes it, and atomically replaces the final JSON only after validating all contained evaluation rows.
+- A per-work-unit exclusive lock prevents two processes from computing the same scenario-direction bundle.
 - Completed results are immutable; corrections create a new protocol patch version and a documented supersession record.
 - Expected physical domain outcomes such as three-phase baseline infeasibility receive explicit statuses and are not treated as software crashes.
 - Unhandled exceptions produce a failure record with traceback, environment hash, and attempt number.
@@ -223,7 +224,7 @@ The holdout contains exactly 384 terminal records. Final tables and figures are 
 | Aug 19 | Submission buffer and final checklist |
 | Aug 20 | EasyChair submission |
 
-The calendar contingency is predeclared. If G3 has not passed by the end of Aug 5, V2.0 continues the complete core and holdout path but omits controlled-ablation claims from the submission. This calendar-only fallback is recorded as `EV-FLEX-BIAS-V2.0-C`; it does not alter models, thresholds, core IDs, or holdout rules. Old ablation results are not substituted.
+The calendar contingency is predeclared. If G3 has not passed by the end of Aug 5, V2.0 continues the complete core and holdout path but omits controlled-ablation claims from the submission. This calendar-only fallback is recorded as `EV-FLEX-BIAS-V2.0-C`; it does not alter models, thresholds, core IDs, or holdout rules. Old ablation results are not substituted. The fallback records G4 as `OMITTED_BY_PREDECLARED_CALENDAR_GATE`, removes every ablation claim and figure from the paper plan, and requires all other gates to pass.
 
 ## 12. Paper-delivery rules
 
@@ -237,4 +238,4 @@ The calendar contingency is predeclared. If G3 has not passed by the end of Aug 
 
 ## 13. Completion criteria
 
-The project is complete for submission when G0-G6 pass, the final PDF contains only V2.0 evidence, the holdout audit proves one-pass evaluation, the paper fits the official template, and the EasyChair submission checklist is satisfied by 2026-08-20.
+The primary project is complete for submission when G0-G6 pass, the final PDF contains only V2.0 evidence, the holdout audit proves one-pass evaluation, the paper fits the official template, and the EasyChair submission checklist is satisfied by 2026-08-20. The `V2.0-C` fallback is complete only when G0-G3 and G5-G6 pass, G4 records the predeclared calendar omission, and the manuscript contains no ablation-derived claim.
