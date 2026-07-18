@@ -1,0 +1,41 @@
+{
+  "protocol_id": "EV-FLEX-BIAS-V2.0",
+  "lineage": "new_major_version_from_archived_authoritative_inputs",
+  "submission_deadline": "2026-08-20",
+  "time_grid": {
+    "start": "12:00",
+    "interval_minutes": 15,
+    "intervals": 96
+  },
+  "call_times": ["19:00", "00:00", "02:00", "06:00"],
+  "durations_min": [15, 30, 60],
+  "directions": ["inc", "dec"],
+  "feeders": ["ieee13", "lv906"],
+  "core": {
+    "scenarios": 256,
+    "evaluations": 1536,
+    "development": 1152,
+    "holdout": 384
+  },
+  "risk": {
+    "target": "alpha_map_lt_0p95",
+    "selected_n_min": 20,
+    "false_safe_rate_max": 0.05
+  },
+  "ablation": {
+    "evaluations": 336,
+    "duration_min": 15,
+    "call_times": ["19:00", "02:00"],
+    "replicates": 3
+  },
+  "resources": {
+    "numeric_threads": 1,
+    "regression_workers": 1,
+    "formal_workers_max": 2
+  },
+  "holdout": {
+    "status": "SEALED",
+    "refit": false,
+    "rethreshold": false
+  }
+}
