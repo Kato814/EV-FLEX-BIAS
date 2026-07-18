@@ -61,6 +61,8 @@ import importlib.metadata
 import sys
 import unittest
 
+import evflex
+
 
 EXPECTED = {
     "numpy": "2.3.5",

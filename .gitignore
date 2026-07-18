@@ -1,1 +1,10 @@
 .worktrees/
+.venv/
+__pycache__/
+*.pyc
+*.tmp
+*.lock
+state/runtime/
+results/work_units/
+reports/rendered/
+paper/rendered/
