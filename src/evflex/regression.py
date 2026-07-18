@@ -93,7 +93,13 @@ def run_regression_gate(
                 f"{work_unit['work_unit_id']} (workers=1, numeric_threads=1)",
                 flush=True,
             )
-            rows.extend(compare_all_durations(repo, work_unit))
+            rows.extend(
+                compare_all_durations(
+                    repo,
+                    work_unit,
+                    network_voltage_max_pu=1.05,
+                )
+            )
             gc.collect()
         repeated_rows.append(sorted(rows, key=_row_key))
 

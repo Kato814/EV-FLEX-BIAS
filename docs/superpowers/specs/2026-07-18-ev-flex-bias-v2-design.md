@@ -107,6 +107,8 @@ For each scenario-direction, all three durations are solved together. A core wor
 
 OpenDSS work uses process isolation. BLAS, OpenMP, MKL, NumExpr, and scikit-learn threads are fixed at one. Numerical execution uses one process for regression and at most two processes for formal manifests on the 20-core, 32-GB local machine. V2.0 never exceeds two concurrent numerical processes.
 
+Formal V2.0 evaluations use `0.95-1.06 pu` voltage limits, `2%` maximum VUF, and unit line/feeder loading limits. The G1 reproduction adapter alone retains the archived D5 v1.2 `1.05 pu` upper voltage limit so its numerical outputs remain directly comparable to the frozen golden rows; this compatibility mode is never used for V2.0 development, ablation, or holdout evidence.
+
 ## 6. Core data flow and sealing
 
 1. Import inherited assets and verify hashes.

@@ -1,0 +1,37 @@
+{
+  "actual_evaluations": 12,
+  "expected_evaluations": 12,
+  "gate": "DEVELOPMENT_SMOKE",
+  "gate_status": "PASS",
+  "output_path": null,
+  "output_sha256": null,
+  "paired_eligible_cell_counts": {
+    "ieee13|dec|15": 2,
+    "ieee13|dec|30": 2,
+    "ieee13|dec|60": 2,
+    "ieee13|inc|15": 2,
+    "ieee13|inc|30": 2,
+    "ieee13|inc|60": 2
+  },
+  "paired_eligible_cell_min_required": 0,
+  "scientific_terminal_count": 0,
+  "scientific_terminal_ids": [],
+  "status_counts": {
+    "SUCCESS": 12
+  },
+  "unhandled_failure_count": 0,
+  "unique_evaluation_ids": 12,
+  "violations": {
+    "count_mismatch": false,
+    "duplicate_evaluation_ids": [],
+    "incomplete_duration_bundles": [],
+    "input_errors": [],
+    "negative_soc_margin_ids": [],
+    "physical_invariant_ids": [],
+    "simultaneous_charge_discharge_ids": [],
+    "underfilled_cells": {},
+    "unhandled_failure_ids": [],
+    "unknown_statuses": []
+  },
+  "work_units": 4
+}

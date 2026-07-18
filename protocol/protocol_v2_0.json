@@ -11,6 +11,13 @@
   "durations_min": [15, 30, 60],
   "directions": ["inc", "dec"],
   "feeders": ["ieee13", "lv906"],
+  "network_constraints": {
+    "voltage_min_pu": 0.95,
+    "voltage_max_pu": 1.06,
+    "vuf_max_pct": 2.0,
+    "line_loading_max_pu": 1.0,
+    "feeder_loading_max_pu": 1.0
+  },
   "core": {
     "scenarios": 256,
     "evaluations": 1536,

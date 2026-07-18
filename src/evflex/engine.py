@@ -59,6 +59,8 @@ def load_archived_engine(path: Path) -> ModuleType:
 def compare_all_durations(
     repo_root: Path,
     work_unit: Mapping[str, Any],
+    *,
+    network_voltage_max_pu: float = 1.06,
 ) -> list[dict[str, Any]]:
     """Solve one scenario-direction bundle and apply model-specific duration closure."""
     repo = repo_root.resolve(strict=True)
@@ -74,6 +76,7 @@ def compare_all_durations(
     )
     legacy_core = load_legacy_core(repo / "legacy" / "d5_v1_2" / "network_core_v1_2.py")
     configure_core(legacy_core, repo)
+    _configure_network_voltage_limit(legacy_core, network_voltage_max_pu)
     bundle = load_fleet_bundle(repo, scenario_id, archived_engine, legacy_core)
     if str(bundle.scenario["feeder"]) != feeder:
         raise ValueError(f"Feeder mismatch for {scenario_id}")
@@ -160,6 +163,7 @@ def compare_all_durations(
                 "feeder": feeder,
                 "call_time": call_time,
                 "direction": direction,
+                "network_voltage_max_pu": float(network_voltage_max_pu),
                 "duration_min": requested_duration,
                 "requested_duration_min": requested_duration,
                 "source_duration_min": int(balanced["source_duration_min"]),
@@ -185,6 +189,7 @@ def compare_all_durations(
                 "max_departure_error_kwh": maximum_departure_error,
                 "max_reserve_violation_kwh": maximum_reserve_violation,
                 "max_capacity_violation_kwh": maximum_capacity_violation,
+                "min_soc_margin_kwh": -maximum_reserve_violation,
                 "simultaneous_slots": simultaneous_slots,
                 "balanced_network_feasible": bool(
                     balanced["model_network_check"]["feasible"]
@@ -281,3 +286,25 @@ def _provenance_hashes(repo: Path) -> dict[str, str]:
     if missing:
         raise ValueError(f"Missing provenance hashes: {missing}")
     return {name: str(by_id[asset_id]) for name, asset_id in required.items()}
+
+
+def _configure_network_voltage_limit(core: ModuleType, voltage_max_pu: float) -> None:
+    if not 1.0 <= float(voltage_max_pu) <= 1.10:
+        raise ValueError(f"Invalid voltage upper limit: {voltage_max_pu}")
+    archived_network = core.Network
+
+    class ProtocolNetwork(archived_network):
+        def __init__(
+            self,
+            feeder,
+            fleet_df,
+            model,
+            load_scale,
+            vmin=0.95,
+            vmax=float(voltage_max_pu),
+            vuf=2.0,
+        ):
+            super().__init__(feeder, fleet_df, model, load_scale, vmin, vmax, vuf)
+
+    ProtocolNetwork.__name__ = f"ProtocolNetworkVmax{voltage_max_pu:g}"
+    core.Network = ProtocolNetwork
