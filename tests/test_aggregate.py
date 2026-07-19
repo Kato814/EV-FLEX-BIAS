@@ -1,6 +1,9 @@
 import unittest
+from pathlib import Path
+import tempfile
 
-from evflex.aggregate import assess_evaluations
+from evflex.aggregate import assess_evaluations, write_csv_atomic
+from evflex.provenance import sha256_file
 
 
 def valid_rows():
@@ -27,6 +30,13 @@ def valid_rows():
 
 
 class AggregateTest(unittest.TestCase):
+    def test_atomic_csv_write_returns_persisted_file_hash(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "evaluations.csv"
+            digest = write_csv_atomic(target, [{"evaluation_id": "eval_15", "value": 1.0}])
+            self.assertTrue(target.is_file())
+            self.assertEqual(digest, sha256_file(target))
+
     def test_valid_bundle_passes(self):
         report = assess_evaluations(valid_rows(), expected_evaluations=3)
         self.assertEqual(report["gate_status"], "PASS")

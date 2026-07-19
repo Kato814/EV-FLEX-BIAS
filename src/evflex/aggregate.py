@@ -201,11 +201,11 @@ def write_csv_atomic(path: Path, rows: list[dict[str, Any]]) -> str:
     fd, temporary_name = tempfile.mkstemp(
         prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
     )
-    os.close(fd)
     temporary = Path(temporary_name)
     try:
-        pd.DataFrame(rows).to_csv(temporary, index=False, encoding="utf-8", lineterminator="\n")
-        with temporary.open("rb") as stream:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
+            pd.DataFrame(rows).to_csv(stream, index=False, lineterminator="\n")
+            stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, target)
     finally:

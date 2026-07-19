@@ -1,9 +1,15 @@
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
 
+from evflex import runner
 from evflex.runner import atomic_write_json, exclusive_lock, run_work_unit
+
+
+def current_process_id():
+    return os.getpid()
 
 
 def sample_work_unit():
@@ -36,6 +42,12 @@ def success_rows(work_unit):
 
 
 class RunnerTest(unittest.TestCase):
+    def test_pool_recycles_process_after_each_work_unit(self):
+        with runner.isolated_process_pool(1) as pool:
+            first_pid = pool.submit(current_process_id).result(timeout=30)
+            second_pid = pool.submit(current_process_id).result(timeout=30)
+        self.assertNotEqual(first_pid, second_pid)
+
     def test_lock_and_atomic_write(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

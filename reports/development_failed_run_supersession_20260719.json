@@ -1,0 +1,30 @@
+{
+  "protocol_version": "EV-FLEX-BIAS-V2.0",
+  "record_type": "PRE_G2_INFRASTRUCTURE_RUN_SUPERSESSION",
+  "status": "QUARANTINED_NOT_FORMAL_EVIDENCE",
+  "recorded_date": "2026-07-19",
+  "formal_result_reuse_prohibited": true,
+  "reason": "The original long-lived ProcessPoolExecutor workers accumulated OpenDSS and pandas memory across work units. The first unhandled failure appeared at development manifest position 246; failures then increased monotonically and all work units in manifest blocks 7 and 8 failed from memory exhaustion.",
+  "evidence": {
+    "work_units": 384,
+    "evaluations": 1152,
+    "success_evaluations": 762,
+    "scientific_terminal_evaluations": 3,
+    "unhandled_failure_evaluations": 387,
+    "unhandled_failure_work_units": 129,
+    "first_failure_manifest_position": 246,
+    "dominant_exception": "pandas.errors.ParserError: Error tokenizing data. C error: out of memory",
+    "dominant_exception_work_units": 120,
+    "other_memory_error_work_units": 9
+  },
+  "correction": {
+    "numeric_threads": 1,
+    "formal_workers_max": 2,
+    "process_lifetime": "one work unit per child process",
+    "mechanism": "ProcessPoolExecutor(max_tasks_per_child=1)",
+    "rerun_scope": "all 384 development work units from an empty formal result directory"
+  },
+  "quarantine_directory": "results/work_units/quarantine_pre_g2_runner_memory_bug_20260719",
+  "hash_manifest": "reports/development_failed_run_hashes_20260719.csv",
+  "hash_manifest_sha256": "85148b8866048f61ba88f67327184b4223b994f75208b18cf07399b1ef00163d"
+}

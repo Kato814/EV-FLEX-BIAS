@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import as_completed
 import json
 from pathlib import Path
 from typing import Any
@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 
 from evflex.engine import compare_all_durations
-from evflex.runner import run_work_unit
+from evflex.runner import isolated_process_pool, run_work_unit
 
 
 def _run_core_unit(
@@ -81,26 +81,21 @@ def main() -> None:
         flush=True,
     )
     outcomes = []
-    if args.workers == 1:
-        for ordinal, unit in enumerate(units, start=1):
-            print(f"[{ordinal}/{len(units)}] {unit['work_unit_id']}", flush=True)
-            outcomes.append(_run_core_unit(str(repo), unit, args.role, args.resume))
-    else:
-        with ProcessPoolExecutor(max_workers=2) as executor:
-            futures = {
-                executor.submit(_run_core_unit, str(repo), unit, args.role, args.resume): unit
-                for unit in units
-            }
-            completed = 0
-            for future in as_completed(futures):
-                outcome = future.result()
-                outcomes.append(outcome)
-                completed += 1
-                print(
-                    f"[{completed}/{len(units)}] {outcome['work_unit_id']} "
-                    f"{outcome['runner_status']}",
-                    flush=True,
-                )
+    with isolated_process_pool(args.workers) as executor:
+        futures = {
+            executor.submit(_run_core_unit, str(repo), unit, args.role, args.resume): unit
+            for unit in units
+        }
+        completed = 0
+        for future in as_completed(futures):
+            outcome = future.result()
+            outcomes.append(outcome)
+            completed += 1
+            print(
+                f"[{completed}/{len(units)}] {outcome['work_unit_id']} "
+                f"{outcome['runner_status']}",
+                flush=True,
+            )
 
     summary = {
         "role": args.role,

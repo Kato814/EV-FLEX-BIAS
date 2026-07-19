@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor
 from contextlib import contextmanager
 import json
 import os
@@ -17,6 +18,15 @@ SCIENTIFIC_PATTERNS = (
     ("Trajectory alpha LP failed", "TRAJECTORY_INFEASIBLE"),
     ("point optimization failed", "POINT_OPTIMIZATION_INFEASIBLE"),
 )
+
+
+def isolated_process_pool(workers: int) -> ProcessPoolExecutor:
+    if not 1 <= workers <= 2:
+        raise ValueError("workers must be 1 or 2 under the frozen resource policy")
+    return ProcessPoolExecutor(
+        max_workers=workers,
+        max_tasks_per_child=1,
+    )
 
 
 @contextmanager
