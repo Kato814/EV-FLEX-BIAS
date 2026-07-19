@@ -182,7 +182,7 @@ Create `config/resource_limits_v2_0.json`:
 {
   "numeric_threads": 1,
   "regression_workers": 1,
-  "formal_workers_max": 2
+  "formal_workers_max": 1
 }
 ```
 
@@ -802,7 +802,7 @@ Expected: G1 PASS with 24/24 status matches, all numerical tolerances satisfied,
 
 - [ ] **Step 4: Test process-count determinism**
 
-Run the same golden set with two workers. Compare canonicalized evaluation rows after excluding runtime and attempt metadata.
+Repeat the same golden set with one isolated worker. Compare canonicalized evaluation rows after excluding runtime and attempt metadata. Two-worker numerical execution is prohibited on this environment after the verified SciPy/HiGHS native access violation recorded during development execution.
 
 Expected: worker counts 1 and 2 produce identical scientific fields within G1 tolerances.
 
@@ -887,7 +887,7 @@ Allow attempts 1-3 only for unhandled infrastructure exceptions. Physical termin
 
 - [ ] **Step 4: Implement the manifest CLI**
 
-The CLI accepts `--role development`, `--role development_ablation`, or `--role holdout`. It rejects holdout unless the verified unlock record exists. It supports `--workers 1..2`, `--resume`, and `--max-work-units` for smoke tests. It rejects worker counts above the frozen resource limit and never accepts a seed override.
+The CLI accepts `--role development`, `--role development_ablation`, or `--role holdout`. It rejects holdout unless the verified unlock record exists. It supports only `--workers 1`, plus `--resume` and `--max-work-units` for smoke tests. It rejects all other worker counts and never accepts a seed override.
 
 - [ ] **Step 5: Test crash-and-resume behavior**
 
@@ -944,7 +944,7 @@ Run:
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_manifest_v2_0.py `
   --manifest manifests/core_work_units_v2_0.csv `
-  --role development --workers 2 --resume
+  --role development --workers 1 --resume
 ```
 
 Monitor terminal counts and fresh modification times. Never infer completion from CPU activity alone.
@@ -1064,7 +1064,7 @@ Run:
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_manifest_v2_0.py `
   --manifest manifests/compact_ablation_v2_0.csv `
-  --role development_ablation --workers 2 --resume
+  --role development_ablation --workers 1 --resume
 ```
 
 Expected: 336 terminal work-unit records and no replacement IDs.
@@ -1179,7 +1179,7 @@ Run:
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_manifest_v2_0.py `
   --manifest manifests/core_work_units_v2_0.csv `
-  --role holdout --workers 2 --resume `
+  --role holdout --workers 1 --resume `
   --unlock state/holdout_unlock_v2_0.json
 ```
 

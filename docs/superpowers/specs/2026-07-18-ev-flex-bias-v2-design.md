@@ -105,7 +105,7 @@ The D5 v1.2 engine supplies the verified multi-period EV trajectory formulation,
 
 For each scenario-direction, all three durations are solved together. A core work unit therefore contains three evaluation rows; 512 work units produce 1,536 evaluations, with 384 development work units producing 1,152 evaluations and 128 holdout work units producing 384 evaluations. For a requested duration, the engine may select a physically feasible schedule from that duration or a longer nested duration when it has greater capacity. Ties select the shortest source duration. This enforces the mathematical non-increasing capacity relation across 15, 30, and 60 minutes without using holdout outcomes.
 
-OpenDSS work uses process isolation. BLAS, OpenMP, MKL, NumExpr, and scikit-learn threads are fixed at one. Numerical execution uses one process for regression and at most two processes for formal manifests on the 20-core, 32-GB local machine. V2.0 never exceeds two concurrent numerical processes.
+OpenDSS work uses process isolation. BLAS, OpenMP, MKL, NumExpr, and scikit-learn threads are fixed at one. Numerical execution uses one process for regression and formal manifests on the 20-core, 32-GB local machine. Every work unit runs in a fresh child process. Concurrent numerical processes are prohibited after a verified SciPy/HiGHS native access violation under two-worker execution.
 
 Formal V2.0 evaluations use `0.95-1.06 pu` voltage limits, `2%` maximum VUF, and unit line/feeder loading limits. The G1 reproduction adapter alone retains the archived D5 v1.2 `1.05 pu` upper voltage limit so its numerical outputs remain directly comparable to the frozen golden rows; this compatibility mode is never used for V2.0 development, ablation, or holdout evidence.
 

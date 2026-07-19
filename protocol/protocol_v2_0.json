@@ -38,7 +38,7 @@
   "resources": {
     "numeric_threads": 1,
     "regression_workers": 1,
-    "formal_workers_max": 2
+    "formal_workers_max": 1
   },
   "holdout": {
     "status": "SEALED",

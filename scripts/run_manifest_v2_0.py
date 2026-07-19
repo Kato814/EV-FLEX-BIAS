@@ -57,8 +57,8 @@ def main() -> None:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--max-work-units", type=int)
     args = parser.parse_args()
-    if not 1 <= args.workers <= 2:
-        raise SystemExit("--workers must be 1 or 2 under the frozen resource policy")
+    if args.workers != 1:
+        raise SystemExit("--workers must be exactly 1 under the frozen resource policy")
     if args.max_work_units is not None and args.max_work_units < 1:
         raise SystemExit("--max-work-units must be positive")
 

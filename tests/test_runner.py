@@ -42,6 +42,10 @@ def success_rows(work_unit):
 
 
 class RunnerTest(unittest.TestCase):
+    def test_pool_rejects_concurrent_numerical_workers(self):
+        with self.assertRaisesRegex(ValueError, "exactly 1"):
+            runner.isolated_process_pool(2)
+
     def test_pool_recycles_process_after_each_work_unit(self):
         with runner.isolated_process_pool(1) as pool:
             first_pid = pool.submit(current_process_id).result(timeout=30)

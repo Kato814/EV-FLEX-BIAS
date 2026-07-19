@@ -21,8 +21,8 @@ SCIENTIFIC_PATTERNS = (
 
 
 def isolated_process_pool(workers: int) -> ProcessPoolExecutor:
-    if not 1 <= workers <= 2:
-        raise ValueError("workers must be 1 or 2 under the frozen resource policy")
+    if workers != 1:
+        raise ValueError("workers must be exactly 1 under the frozen resource policy")
     return ProcessPoolExecutor(
         max_workers=workers,
         max_tasks_per_child=1,
