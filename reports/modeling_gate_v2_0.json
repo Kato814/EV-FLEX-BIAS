@@ -1,0 +1,156 @@
+{
+  "cells_with_applicability_region": 6,
+  "cells_without_applicability_region": [
+    "ieee13|inc|15",
+    "lv906|inc|15",
+    "lv906|inc|30",
+    "lv906|dec|15",
+    "lv906|dec|30",
+    "lv906|dec|60"
+  ],
+  "development_evaluations": 1152,
+  "excluded_scientific_terminal_evaluations": 6,
+  "expected_model_records": 12,
+  "gate": "G3_MODEL_THRESHOLD_FREEZE",
+  "gate_status": "PASS",
+  "model_records": 12,
+  "modeling_eligible_evaluations": 1146,
+  "models_path": "results/modeling_v2_0/applicability_models_v2_0.json",
+  "models_sha256": "eb3b6ff027abf91fdc5235e8ef88f227b6a10e16ef92c41028bb97fb377fe41a",
+  "numeric_threads": 1,
+  "oof_float_read_policy": "pandas float_precision='round_trip' for exact threshold audits",
+  "oof_path": "results/modeling_v2_0/development_oof_predictions_v2_0.csv",
+  "oof_predictions": 1146,
+  "oof_roles": [
+    "development"
+  ],
+  "oof_sha256": "e44bcef96b04abf3e0bb6f587b96d6a19600d46ca5af32e47e7872dbd9b2a199",
+  "source_hashes": {
+    "base_scenarios": "4b73b53ca43fcc41e17c717615562b8e243b3a9a32f8110f2abdf4d04a91bcfc",
+    "development_evaluations": "2587967768a30afbc0ef138bb51d0c705476b68bcee70039e780d3a3988283f6",
+    "population_summary": "3b329db1baa224d8a65a2a4a99d657af6a8d60231c54c90d5897887bddeafe71"
+  },
+  "threshold_summaries": [
+    {
+      "cell_id": "ieee13|inc|15",
+      "has_applicability_region": false,
+      "overall_oof_brier": 0.07417361215568842,
+      "selected_c": 3.0,
+      "threshold": null,
+      "training_n": 96
+    },
+    {
+      "cell_id": "ieee13|inc|30",
+      "has_applicability_region": true,
+      "overall_oof_brier": 0.07884983878221072,
+      "selected_c": 3.0,
+      "threshold": {
+        "false_safe_rate": 0.041666666666666664,
+        "risk_threshold": 0.3041329565697687,
+        "selected_n": 24
+      },
+      "training_n": 96
+    },
+    {
+      "cell_id": "ieee13|inc|60",
+      "has_applicability_region": true,
+      "overall_oof_brier": 0.09468721958868354,
+      "selected_c": 1.0,
+      "threshold": {
+        "false_safe_rate": 0.046511627906976744,
+        "risk_threshold": 0.37916104545311985,
+        "selected_n": 43
+      },
+      "training_n": 96
+    },
+    {
+      "cell_id": "ieee13|dec|15",
+      "has_applicability_region": true,
+      "overall_oof_brier": 0.06079854625678414,
+      "selected_c": 1.0,
+      "threshold": {
+        "false_safe_rate": 0.04819277108433735,
+        "risk_threshold": 0.338264096364206,
+        "selected_n": 83
+      },
+      "training_n": 96
+    },
+    {
+      "cell_id": "ieee13|dec|30",
+      "has_applicability_region": true,
+      "overall_oof_brier": 0.06230137044714101,
+      "selected_c": 1.0,
+      "threshold": {
+        "false_safe_rate": 0.04938271604938271,
+        "risk_threshold": 0.2717152834940212,
+        "selected_n": 81
+      },
+      "training_n": 96
+    },
+    {
+      "cell_id": "ieee13|dec|60",
+      "has_applicability_region": true,
+      "overall_oof_brier": 0.04459234337734133,
+      "selected_c": 1.0,
+      "threshold": {
+        "false_safe_rate": 0.0449438202247191,
+        "risk_threshold": 0.44201338391965056,
+        "selected_n": 89
+      },
+      "training_n": 96
+    },
+    {
+      "cell_id": "lv906|inc|15",
+      "has_applicability_region": false,
+      "overall_oof_brier": 0.10037560299527513,
+      "selected_c": 0.3,
+      "threshold": null,
+      "training_n": 95
+    },
+    {
+      "cell_id": "lv906|inc|30",
+      "has_applicability_region": false,
+      "overall_oof_brier": 0.08125659790276044,
+      "selected_c": 10.0,
+      "threshold": null,
+      "training_n": 95
+    },
+    {
+      "cell_id": "lv906|inc|60",
+      "has_applicability_region": true,
+      "overall_oof_brier": 0.09449638193560177,
+      "selected_c": 1.0,
+      "threshold": {
+        "false_safe_rate": 0.04081632653061224,
+        "risk_threshold": 0.22568098168218248,
+        "selected_n": 49
+      },
+      "training_n": 95
+    },
+    {
+      "cell_id": "lv906|dec|15",
+      "has_applicability_region": false,
+      "overall_oof_brier": 0.07345127716130075,
+      "selected_c": 0.3,
+      "threshold": null,
+      "training_n": 95
+    },
+    {
+      "cell_id": "lv906|dec|30",
+      "has_applicability_region": false,
+      "overall_oof_brier": 0.07345127716130075,
+      "selected_c": 0.3,
+      "threshold": null,
+      "training_n": 95
+    },
+    {
+      "cell_id": "lv906|dec|60",
+      "has_applicability_region": false,
+      "overall_oof_brier": 0.20731845666973728,
+      "selected_c": 0.1,
+      "threshold": null,
+      "training_n": 95
+    }
+  ],
+  "violations": {}
+}
