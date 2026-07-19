@@ -1,0 +1,15 @@
+{
+  "audit_commit": "f6f51d3797dc70c0733a4c74118aadad42c19f39",
+  "freeze_report": "reports/pre_holdout_freeze_v2_0.json",
+  "freeze_report_sha256": "4fb58212f8513f0b9a27791b81753410837e43a4f47eea75ee074f16db8ca604",
+  "frozen_model_sha256": "eb3b6ff027abf91fdc5235e8ef88f227b6a10e16ef92c41028bb97fb377fe41a",
+  "holdout_open_count": 1,
+  "opened_at_utc": "2026-07-19T11:48:50.114823+00:00",
+  "protocol_version": "EV-FLEX-BIAS-V2.0",
+  "refit_allowed": false,
+  "replacement_ids_allowed": false,
+  "rethreshold_allowed": false,
+  "source_commit": "1b7de30efd37a6661d8731c64de2eae27349086d",
+  "status": "UNLOCKED",
+  "verified_file_records": 99
+}
