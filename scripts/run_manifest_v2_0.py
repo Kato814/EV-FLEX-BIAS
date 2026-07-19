@@ -8,6 +8,7 @@ from typing import Any
 
 import pandas as pd
 
+from evflex.ablation import evaluate_ablation, validate_ablation_manifest
 from evflex.engine import compare_all_durations
 from evflex.runner import isolated_process_pool, run_work_unit
 
@@ -16,11 +17,13 @@ def _run_core_unit(
     repo_text: str, work_unit: dict[str, Any], role: str, resume: bool
 ) -> dict[str, Any]:
     repo = Path(repo_text)
-    unit_id = str(work_unit["work_unit_id"])
+    unit_id = str(work_unit.get("work_unit_id", work_unit.get("ablation_id")))
     result_path = repo / "results" / "work_units" / role / f"{unit_id}.json"
     lock_path = repo / "state" / "runtime" / "locks" / role / f"{unit_id}.lock"
 
     def compute(unit, _attempt):
+        if role == "development_ablation":
+            return evaluate_ablation(repo, unit)
         return compare_all_durations(repo, unit)
 
     return run_work_unit(
@@ -66,14 +69,13 @@ def main() -> None:
     _verify_prerequisites(repo, args.role)
     manifest_path = args.manifest if args.manifest.is_absolute() else repo / args.manifest
     frame = pd.read_csv(manifest_path)
+    if args.role == "development_ablation":
+        validate_ablation_manifest(frame)
     selected = frame.loc[frame["data_role"] == args.role].copy()
     if args.max_work_units is not None:
         selected = selected.head(args.max_work_units)
     if selected.empty:
         raise SystemExit(f"No work units for role {args.role}")
-    if args.role == "development_ablation":
-        raise SystemExit("The ablation numerical adapter is frozen in Task 10; no runs were started")
-
     units = selected.to_dict("records")
     print(
         f"role={args.role} work_units={len(units)} workers={args.workers} "
