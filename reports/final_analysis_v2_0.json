@@ -1,0 +1,45 @@
+{
+  "actual_evaluations": 384,
+  "analysis_code_commit": "e49fc1f2a1fc2ae2ab523ec9ef7e0494e2ced4b2",
+  "applicability_cells": 12,
+  "artifact": "final_holdout_analysis",
+  "claim_status_counts": {
+    "INSUFFICIENT_HOLDOUT_N": 3,
+    "NOT_VALIDATED_FALSE_SAFE": 1,
+    "NO_DEVELOPMENT_RULE": 6,
+    "VALIDATED": 2
+  },
+  "directional_bootstrap": {
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 2026072002,
+    "bootstrap_stratification": "call_time within feeder-duration",
+    "failed_evaluation_ids": [],
+    "paired_scenario_duration_records": 192,
+    "successful_evaluations": 384,
+    "unpaired_evaluation_ids": []
+  },
+  "directional_cells": 6,
+  "expected_evaluations": 384,
+  "failed_or_unpaired_directional_ids": [],
+  "frozen_model": "results/modeling_v2_0/applicability_models_v2_0.json",
+  "frozen_model_sha256_after": "eb3b6ff027abf91fdc5235e8ef88f227b6a10e16ef92c41028bb97fb377fe41a",
+  "frozen_model_sha256_before": "eb3b6ff027abf91fdc5235e8ef88f227b6a10e16ef92c41028bb97fb377fe41a",
+  "frozen_model_unchanged": true,
+  "gate_status": "PASS",
+  "holdout_open_count": 1,
+  "holdout_opened_at_utc": "2026-07-19T11:48:50.114823+00:00",
+  "output_hashes": {
+    "reports/holdout_gate_v2_0.json": "a4f59b1d6a8701b33a848e24ef0b751ac573d375eb6c3bf23321bd65bb117aa2",
+    "reports/holdout_work_unit_hashes_v2_0.csv": "2870ed6b05f2ff12b70777235667928063726ac0c26553bf56fd49362416cb40",
+    "results/final_analysis_v2_0/applicability_validation_v2_0.csv": "0382cb0633272d3e0410026fe1222318e319a0861fd4bfa6b11ea0ef743db992",
+    "results/final_analysis_v2_0/directional_summary_v2_0.csv": "aa6084902de60b49947205476c1ee095944560e4707a7681ced954cb6772ba32",
+    "results/holdout_v2_0/holdout_evaluations_v2_0.csv": "828bd0839b387eaf226b561d7f964acb0e98e338ed093c7630758ba22eb1cbd4"
+  },
+  "protocol_id": "EV-FLEX-BIAS-V2.0",
+  "refit_performed": false,
+  "replacement_ids_used": false,
+  "rethreshold_performed": false,
+  "scientific_terminal_count": 0,
+  "scientific_terminal_ids": [],
+  "successful_evaluations": 384
+}
