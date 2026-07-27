@@ -1,0 +1,16 @@
+{
+  "asset_id": "table3_ablation_summary_v2_0",
+  "asset_type": "table",
+  "contains_experimental_values": true,
+  "exports": [],
+  "protocol_id": "EV-FLEX-BIAS-V2.0",
+  "source_artifacts": [
+    {
+      "path": "results/ablation_v2_0/ablation_contrasts_v2_0.csv",
+      "sha256": "bdf9cdca6f4fc91c03dd98e5a5eeade06d771b0b0bacb19693a6bf43fb7d6fbc"
+    }
+  ],
+  "source_data_csv": "paper/data/table3_ablation_summary_v2_0.csv",
+  "source_data_sha256": "76ee5ce9ea0f384cd6b68384e7f665030b63243ba2f986162b911ebb6ae9014c",
+  "statistics": "Predeclared upper factor level versus reference; fixed paired bootstrap outputs."
+}

@@ -1,0 +1,49 @@
+{
+  "asset_id": "fig2_alpha_map_v2_0",
+  "asset_type": "figure",
+  "backend": "Python/matplotlib",
+  "contains_experimental_values": true,
+  "core_conclusion": "Balanced-model deliverability mapping depends on feeder, service direction, and requested duration.",
+  "exports": [
+    {
+      "bytes": 30011,
+      "path": "paper/figures/fig2_alpha_map_v2_0.svg",
+      "sha256": "5a585d46002f83dd8d9bf61f59d8d290bcc9364ad087391537cba36e136b4125"
+    },
+    {
+      "bytes": 42180,
+      "path": "paper/figures/fig2_alpha_map_v2_0.pdf",
+      "sha256": "d98d6d418d686a9533a85b76fff711100492d0ce1e96cc159650da8cf3bc6acf"
+    },
+    {
+      "bytes": 183107,
+      "path": "paper/figures/fig2_alpha_map_v2_0.png",
+      "sha256": "3d658ff4abfe16c4733db43c606128767a686f2c2510fa42f3e6ca6389e10af4"
+    },
+    {
+      "bytes": 529952,
+      "path": "paper/figures/fig2_alpha_map_v2_0.tiff",
+      "sha256": "113a94de5e719ecc68d7052481def30d646f99bbfb5ef929a5fb89552fafacb1"
+    }
+  ],
+  "figure_archetype": "quantitative grid",
+  "final_size_mm": [
+    180.0,
+    88.0
+  ],
+  "font": "Times New Roman with serif fallback",
+  "gridlines": false,
+  "protocol_id": "EV-FLEX-BIAS-V2.0",
+  "raster_dpi": 600,
+  "reviewer_risk": "Pooling cells could hide feeder- or direction-specific bias.",
+  "source_artifacts": [
+    {
+      "path": "results/development_v2_0/development_evaluations_v2_0.csv",
+      "sha256": "2587967768a30afbc0ef138bb51d0c705476b68bcee70039e780d3a3988283f6"
+    }
+  ],
+  "source_data_csv": "paper/data/fig2_alpha_map_v2_0_source.csv",
+  "source_data_sha256": "62f3ae08c3a346f32ee525727f4e5030d3d532f604597021d30ef0b36144bfa4",
+  "statistics": "Median and interquartile range among successful development evaluations.",
+  "ticks": "inward on four sides; top/right labels suppressed"
+}

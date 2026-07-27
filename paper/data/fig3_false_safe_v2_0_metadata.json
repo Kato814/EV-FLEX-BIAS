@@ -1,0 +1,49 @@
+{
+  "asset_id": "fig3_false_safe_v2_0",
+  "asset_type": "figure",
+  "backend": "Python/matplotlib",
+  "contains_experimental_values": true,
+  "core_conclusion": "Development false-safe prevalence is cell-specific and cannot be summarized by one global reliability rate.",
+  "exports": [
+    {
+      "bytes": 20152,
+      "path": "paper/figures/fig3_false_safe_v2_0.svg",
+      "sha256": "0cf96dea3105498c7397f6d7d59f33118e53743029a860b41fe7f4de63d48ccb"
+    },
+    {
+      "bytes": 34538,
+      "path": "paper/figures/fig3_false_safe_v2_0.pdf",
+      "sha256": "9524ac485972b6bf6323074381ee065a45ee77137a97d9fa174e2398ac0e535c"
+    },
+    {
+      "bytes": 225441,
+      "path": "paper/figures/fig3_false_safe_v2_0.png",
+      "sha256": "6c19a626c3ba1f4e40d432215cac7ca6ec246a351b6a25158cd6ccc454e8c706"
+    },
+    {
+      "bytes": 1166408,
+      "path": "paper/figures/fig3_false_safe_v2_0.tiff",
+      "sha256": "ddf8b84c9247bbf1ebd1c829f66b916c9294afd39ef41ac175ac869799adc7e7"
+    }
+  ],
+  "figure_archetype": "quantitative grid",
+  "final_size_mm": [
+    180.0,
+    82.0
+  ],
+  "font": "Times New Roman with serif fallback",
+  "gridlines": false,
+  "protocol_id": "EV-FLEX-BIAS-V2.0",
+  "raster_dpi": 600,
+  "reviewer_risk": "Rates must show eligible n and use a common color scale.",
+  "source_artifacts": [
+    {
+      "path": "results/development_v2_0/development_evaluations_v2_0.csv",
+      "sha256": "2587967768a30afbc0ef138bb51d0c705476b68bcee70039e780d3a3988283f6"
+    }
+  ],
+  "source_data_csv": "paper/data/fig3_false_safe_v2_0_source.csv",
+  "source_data_sha256": "62f3ae08c3a346f32ee525727f4e5030d3d532f604597021d30ef0b36144bfa4",
+  "statistics": "Empirical alpha_map < 0.95 rate among successful development evaluations.",
+  "ticks": "inward on four sides; top/right labels suppressed"
+}

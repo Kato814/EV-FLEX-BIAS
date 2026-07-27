@@ -1,0 +1,49 @@
+{
+  "asset_id": "fig5_ablation_v2_0",
+  "asset_type": "figure",
+  "backend": "Python/matplotlib",
+  "contains_experimental_values": true,
+  "core_conclusion": "Predeclared upper physical factor levels alter balanced-to-three-phase mapping in a feeder-, time-, and direction-dependent manner.",
+  "exports": [
+    {
+      "bytes": 37122,
+      "path": "paper/figures/fig5_ablation_v2_0.svg",
+      "sha256": "6ac9b216b76cc3f64529bb40798935832972f79c570e7ad3b7e4ca7b05ade4c5"
+    },
+    {
+      "bytes": 59993,
+      "path": "paper/figures/fig5_ablation_v2_0.pdf",
+      "sha256": "23473730241ac6ddaebcc6893095c468bd35705e0400d69a3615caf5b04d278d"
+    },
+    {
+      "bytes": 178400,
+      "path": "paper/figures/fig5_ablation_v2_0.png",
+      "sha256": "70ee17b3ebbf07f228ef16bf4c22452143c9baeffb1990c76955ed94b0bc593a"
+    },
+    {
+      "bytes": 480698,
+      "path": "paper/figures/fig5_ablation_v2_0.tiff",
+      "sha256": "e730101fa00e4c1fd51530edfca81181b91d8c5566ae44be4edcf0c9b03e3ddd"
+    }
+  ],
+  "figure_archetype": "quantitative grid",
+  "final_size_mm": [
+    180.0,
+    92.0
+  ],
+  "font": "Times New Roman with serif fallback",
+  "gridlines": false,
+  "protocol_id": "EV-FLEX-BIAS-V2.0",
+  "raster_dpi": 600,
+  "reviewer_risk": "Factor levels must be predeclared rather than outcome-selected.",
+  "source_artifacts": [
+    {
+      "path": "results/ablation_v2_0/ablation_contrasts_v2_0.csv",
+      "sha256": "bdf9cdca6f4fc91c03dd98e5a5eeade06d771b0b0bacb19693a6bf43fb7d6fbc"
+    }
+  ],
+  "source_data_csv": "paper/data/fig5_ablation_v2_0_source.csv",
+  "source_data_sha256": "76ee5ce9ea0f384cd6b68384e7f665030b63243ba2f986162b911ebb6ae9014c",
+  "statistics": "Predeclared upper-level paired contrasts; medians shown across feeder-time strata.",
+  "ticks": "inward on four sides; top/right labels suppressed"
+}

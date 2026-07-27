@@ -1,0 +1,49 @@
+{
+  "asset_id": "fig6_holdout_v2_0",
+  "asset_type": "figure",
+  "backend": "Python/matplotlib",
+  "contains_experimental_values": true,
+  "core_conclusion": "Frozen applicability rules validate only in specific feeder-direction-duration cells on the one-pass holdout.",
+  "exports": [
+    {
+      "bytes": 32301,
+      "path": "paper/figures/fig6_holdout_v2_0.svg",
+      "sha256": "13ab6c8717d67d3053d41894ec15c944d93733b11d73678e2748d9e056943f1f"
+    },
+    {
+      "bytes": 54962,
+      "path": "paper/figures/fig6_holdout_v2_0.pdf",
+      "sha256": "2f27542ec47fb6a5ccf6403bde079b20ec607dab0eb062690c3589c3ffda040d"
+    },
+    {
+      "bytes": 343234,
+      "path": "paper/figures/fig6_holdout_v2_0.png",
+      "sha256": "92512139b6a1fd6de7771eb79a3005b94c4ae0ee3ad3872be5b5247f851404f0"
+    },
+    {
+      "bytes": 656346,
+      "path": "paper/figures/fig6_holdout_v2_0.tiff",
+      "sha256": "b0dea846b4613214e816c7fbf052253224bdd544c32d7810352d94be9caa7a1b"
+    }
+  ],
+  "figure_archetype": "quantitative grid",
+  "final_size_mm": [
+    180.0,
+    104.0
+  ],
+  "font": "Times New Roman with serif fallback",
+  "gridlines": false,
+  "protocol_id": "EV-FLEX-BIAS-V2.0",
+  "raster_dpi": 600,
+  "reviewer_risk": "Insufficient n and absent development rules must remain explicit.",
+  "source_artifacts": [
+    {
+      "path": "results/final_analysis_v2_0/applicability_validation_v2_0.csv",
+      "sha256": "0382cb0633272d3e0410026fe1222318e319a0861fd4bfa6b11ea0ef743db992"
+    }
+  ],
+  "source_data_csv": "paper/data/fig6_holdout_v2_0_source.csv",
+  "source_data_sha256": "d8eb6ab0fb72115f4e7b9d98abe24e8f203aedd37fbd2685fc4546ca449ffb80",
+  "statistics": "One-pass selected false-safe rate with two-sided Wilson 95% interval.",
+  "ticks": "inward on four sides; top/right labels suppressed"
+}

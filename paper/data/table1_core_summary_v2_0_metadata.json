@@ -1,0 +1,20 @@
+{
+  "asset_id": "table1_core_summary_v2_0",
+  "asset_type": "table",
+  "contains_experimental_values": true,
+  "exports": [],
+  "protocol_id": "EV-FLEX-BIAS-V2.0",
+  "source_artifacts": [
+    {
+      "path": "results/development_v2_0/development_evaluations_v2_0.csv",
+      "sha256": "2587967768a30afbc0ef138bb51d0c705476b68bcee70039e780d3a3988283f6"
+    },
+    {
+      "path": "results/holdout_v2_0/holdout_evaluations_v2_0.csv",
+      "sha256": "828bd0839b387eaf226b561d7f964acb0e98e338ed093c7630758ba22eb1cbd4"
+    }
+  ],
+  "source_data_csv": "paper/data/table1_core_summary_v2_0.csv",
+  "source_data_sha256": "c762b06d1a1cb63c196377de971a406b53f709c7e61eb63cd689c1f03eed7e64",
+  "statistics": "Medians and empirical rates among successful evaluations; terminal counts retained."
+}
