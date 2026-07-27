@@ -1,0 +1,23 @@
+{
+  "artifact": "final_manuscript_visual_qa",
+  "protocol_id": "EV-FLEX-BIAS-V2.0",
+  "docx_sha256": "9c04fe562cb2e87b3f9dd24d4f29bbac6bc134bc3216f40994a6291ae6649e61",
+  "pdf_sha256": "3c04dd045f00e35bc188422f5817188f87de136e0462ab0839800de1e91c96c3",
+  "rendered_page_count": 5,
+  "render_dpi": 120,
+  "page_sha256": {
+    "page-1.png": "971ec66d756c0ebd9ce27036d5fba5da3b7b461db23729b1bf56c818d55b5822",
+    "page-2.png": "c3eb293f1a73da0edeeb1fc6b4134f113f18d1e10b6ba6ac0aa90fe6aea80bae",
+    "page-3.png": "9cb180f9725c3abf26496dc405076699ca4848430019237c27b66d4c2c4950e5",
+    "page-4.png": "fc7ef5bcc5769ad4eda192ba2437feaf628a4cf7261dc8b2c6bda53ed1bcb2a2",
+    "page-5.png": "5a610a994d4e9bdb371e804f2f45285d0c9a37f36d7ef18b4669bd7627125886"
+  },
+  "inspection_scope": [
+    "title, author placeholders, abstract, and two-column transition",
+    "equation and section numbering",
+    "figure legibility and captions",
+    "table legibility and status highlighting",
+    "references, clipping, overlap, orphaned headings, and internal markers"
+  ],
+  "visual_inspection_status": "PASS"
+}

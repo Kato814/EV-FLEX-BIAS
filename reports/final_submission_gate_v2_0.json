@@ -134,6 +134,9 @@
   "protocol_id": "EV-FLEX-BIAS-V2.0",
   "ready_for_upload": false,
   "render": {
+    "final_artifact_hashes_match_record": true,
+    "live_hashes_match_record": true,
+    "live_render_available": true,
     "matches_pdf_page_count": true,
     "page_sha256": {
       "page-1.png": "971ec66d756c0ebd9ce27036d5fba5da3b7b461db23729b1bf56c818d55b5822",
@@ -145,12 +148,13 @@
     "passed": true,
     "render_directory": "paper/rendered/final_iter7",
     "rendered_page_count": 5,
-    "visual_inspection_status": "PASS"
+    "visual_inspection_status": "PASS",
+    "visual_qa_path": "reports/final_visual_qa_v2_0.json"
   },
   "reproducibility_manifest": {
     "path": "reports/final_reproducibility_manifest_v2_0.csv",
-    "row_count": 21,
-    "sha256": "1eaf6d68a5cfcc49773b598773a80944dd32222daba95cc2b2cc8df482d8be49"
+    "row_count": 22,
+    "sha256": "e9a79d628f0718a4000fd7f7ba7c87517bf260286a5e9d91964a928de9d62601"
   },
   "template_source_valid": true,
   "upstream_gates": [

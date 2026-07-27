@@ -1,5 +1,5 @@
 protocol_id,role,path,bytes,sha256
-EV-FLEX-BIAS-V2.0,conference_cfp,../../../IEEE_PES_ISGT_ASIA_2026_CFP.pdf,506382,732328cda9036d7c1fb6cd63abddd88ad880b98b5b161d706211c69030e8ee00
+EV-FLEX-BIAS-V2.0,conference_cfp,../IEEE_PES_ISGT_ASIA_2026_CFP.pdf,506382,732328cda9036d7c1fb6cd63abddd88ad880b98b5b161d706211c69030e8ee00
 EV-FLEX-BIAS-V2.0,conference_template_source,paper/conference/conference-template-letter.docx,34065,4589779a1a74782dc5a7a657a9907f243c9dd54510cb6c154acaf24cc9079852
 EV-FLEX-BIAS-V2.0,conference_template_working,paper/conference/conference-template-transitional.docx,36447,058d47f060d96cba413b83741061801f5fbde4948e1bdaade79045c05f474ac8
 EV-FLEX-BIAS-V2.0,template_source_manifest,paper/conference/template_source_manifest.json,1946,9d0f731380a01091c7848d9680c9404e7771d59aabfa7f95a3954ee0b524984d
@@ -17,6 +17,7 @@ EV-FLEX-BIAS-V2.0,manuscript_builder,paper/build_manuscript_v2_0.py,18675,630670
 EV-FLEX-BIAS-V2.0,manuscript_value_ledger,paper/generated_values_v2_0.json,203941,c7effb9e17b76aeb61e454b1d3f65f3b29073c0d57b9e84d19eab04b73a1c76d
 EV-FLEX-BIAS-V2.0,manuscript_number_gate,reports/manuscript_number_gate_v2_0.json,4362,2b6165f18f428b70ffa77b9a51e5368a3bace2b476a5aa1b419206bc917dd2b3
 EV-FLEX-BIAS-V2.0,figure_qa,paper/figure_qa_v2_0.md,970,b1358312ae4ba06bcb6c17de14748a2bb4c15557cb2f61b3539afabe9f9eaa6e
+EV-FLEX-BIAS-V2.0,final_visual_qa,reports/final_visual_qa_v2_0.json,1095,dda5fd46ca5c10472a7179d1c30b04a399aee6f28c807dc63120bb4b4e06375e
 EV-FLEX-BIAS-V2.0,submission_checklist,reports/submission_checklist_v2_0.md,1919,d53b16801b303f202fc8e8006d7f6451db0543312c03171233d2c6a10bdc59de
 EV-FLEX-BIAS-V2.0,final_docx,paper/EV_V1G_V2G_ISGT_Asia_2026_v2_0.docx,830999,9c04fe562cb2e87b3f9dd24d4f29bbac6bc134bc3216f40994a6291ae6649e61
 EV-FLEX-BIAS-V2.0,final_pdf,paper/EV_V1G_V2G_ISGT_Asia_2026_v2_0.pdf,656975,3c04dd045f00e35bc188422f5817188f87de136e0462ab0839800de1e91c96c3

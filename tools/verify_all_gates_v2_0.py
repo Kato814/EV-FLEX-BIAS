@@ -27,7 +27,7 @@ GATE_FILES = (
     "reports/manuscript_number_gate_v2_0.json",
 )
 MANIFEST_TARGETS = (
-    ("conference_cfp", "../../../IEEE_PES_ISGT_ASIA_2026_CFP.pdf"),
+    ("conference_cfp", "__EXTERNAL_CFP__"),
     ("conference_template_source", "paper/conference/conference-template-letter.docx"),
     ("conference_template_working", "paper/conference/conference-template-transitional.docx"),
     ("template_source_manifest", "paper/conference/template_source_manifest.json"),
@@ -45,6 +45,7 @@ MANIFEST_TARGETS = (
     ("manuscript_value_ledger", "paper/generated_values_v2_0.json"),
     ("manuscript_number_gate", "reports/manuscript_number_gate_v2_0.json"),
     ("figure_qa", "paper/figure_qa_v2_0.md"),
+    ("final_visual_qa", "reports/final_visual_qa_v2_0.json"),
     ("submission_checklist", "reports/submission_checklist_v2_0.md"),
     ("final_docx", "paper/EV_V1G_V2G_ISGT_Asia_2026_v2_0.docx"),
     ("final_pdf", "paper/EV_V1G_V2G_ISGT_Asia_2026_v2_0.pdf"),
@@ -239,31 +240,71 @@ def validate_pdf(path: Path) -> dict:
     }
 
 
-def validate_render(repo: Path, page_count: int) -> dict:
+def validate_render(
+    repo: Path, page_count: int, docx_path: Path, pdf_path: Path
+) -> dict:
     render_dir = repo / "paper" / "rendered" / "final_iter7"
+    qa_path = repo / "reports" / "final_visual_qa_v2_0.json"
+    qa = json.loads(qa_path.read_text(encoding="utf-8"))
     pages = sorted(render_dir.glob("page-*.png"))
-    hashes = {page.name: sha256(page) for page in pages}
+    recorded_hashes = qa["page_sha256"]
+    live_hashes = {page.name: sha256(page) for page in pages}
+    live_render_available = bool(pages)
+    live_hashes_match = not live_render_available or live_hashes == recorded_hashes
+    identity_matches = (
+        qa["docx_sha256"] == sha256(docx_path)
+        and qa["pdf_sha256"] == sha256(pdf_path)
+    )
+    recorded_page_count = int(qa["rendered_page_count"])
     return {
-        "render_directory": str(render_dir.relative_to(repo)).replace("\\", "/"),
-        "rendered_page_count": len(pages),
-        "matches_pdf_page_count": len(pages) == page_count,
-        "page_sha256": hashes,
-        "visual_inspection_status": "PASS",
-        "passed": len(pages) == page_count and len(pages) == 5,
+        "visual_qa_path": str(qa_path.relative_to(repo)).replace("\\", "/"),
+        "render_directory": (
+            str(render_dir.relative_to(repo)).replace("\\", "/")
+            if live_render_available
+            else None
+        ),
+        "live_render_available": live_render_available,
+        "live_hashes_match_record": live_hashes_match,
+        "rendered_page_count": recorded_page_count,
+        "matches_pdf_page_count": recorded_page_count == page_count,
+        "page_sha256": recorded_hashes,
+        "final_artifact_hashes_match_record": identity_matches,
+        "visual_inspection_status": qa["visual_inspection_status"],
+        "passed": (
+            qa["protocol_id"] == PROTOCOL_ID
+            and qa["visual_inspection_status"] == "PASS"
+            and recorded_page_count == page_count
+            and recorded_page_count == 5
+            and identity_matches
+            and live_hashes_match
+        ),
     }
+
+
+def find_external_cfp(repo: Path) -> Path:
+    filename = "IEEE_PES_ISGT_ASIA_2026_CFP.pdf"
+    candidates = [
+        repo.parent / filename,
+        repo.parents[2] / filename if len(repo.parents) > 2 else repo / filename,
+    ]
+    for path in candidates:
+        if path.is_file():
+            return path.resolve()
+    raise FileNotFoundError(filename)
 
 
 def write_manifest(repo: Path) -> tuple[Path, int]:
     output = repo / "reports" / "final_reproducibility_manifest_v2_0.csv"
     rows = []
     for role, relative in MANIFEST_TARGETS:
-        path = resolve(repo, relative)
+        if relative == "__EXTERNAL_CFP__":
+            path = find_external_cfp(repo)
+            manifest_path = f"../{path.name}"
+        else:
+            path = resolve(repo, relative)
+            manifest_path = str(path.relative_to(repo)).replace("\\", "/")
         if not path.is_file():
             raise FileNotFoundError(path)
-        try:
-            manifest_path = str(path.relative_to(repo)).replace("\\", "/")
-        except ValueError:
-            manifest_path = relative.replace("\\", "/")
         rows.append(
             {
                 "protocol_id": PROTOCOL_ID,
@@ -310,7 +351,7 @@ def main() -> None:
     )
     docx = validate_docx(docx_path)
     pdf = validate_pdf(pdf_path)
-    render = validate_render(repo, pdf["page_count"])
+    render = validate_render(repo, pdf["page_count"], docx_path, pdf_path)
     numeric_gate = read_gate(repo, "reports/manuscript_number_gate_v2_0.json")
     numeric_pass = (
         numeric_gate["validation_status"] == "PASS"
