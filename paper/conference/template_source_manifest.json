@@ -1,0 +1,45 @@
+{
+  "protocol_id": "EV-FLEX-BIAS-V2.0",
+  "retrieved_at_utc": "2026-07-27T03:50:45.8469080Z",
+  "conference_submission_url": "https://attend.ieee.org/isgt-asia-2026/submission/",
+  "conference_template_url": "https://attend.ieee.org/isgt-asia-2026/wp-content/uploads/sites/526/conference-template-letter.docx",
+  "downloaded_filename": "conference-template-letter.docx",
+  "downloaded_bytes": 34065,
+  "downloaded_sha256": "4589779a1a74782dc5a7a657a9907f243c9dd54510cb6c154acaf24cc9079852",
+  "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "etag": "\"6a1a9855-8511\"",
+  "last_modified_gmt": "Sat, 30 May 2026 07:57:09 GMT",
+  "downloaded_ooxml_profile": "Strict OOXML",
+  "downloaded_page_size": {
+    "name": "US Letter",
+    "width_pt": 612.0,
+    "height_pt": 792.0
+  },
+  "conference_requirements_observed": {
+    "language": "English",
+    "full_paper_pages_min": 4,
+    "full_paper_pages_max": 6,
+    "submission_format": "single PDF",
+    "page_size": "A4",
+    "submission_system": "https://easychair.org/conferences/?conf=isgtasia2026",
+    "paper_deadline": "2026-08-20"
+  },
+  "working_copy": {
+    "filename": "conference-template-transitional.docx",
+    "bytes": 36447,
+    "sha256": "058d47f060d96cba413b83741061801f5fbde4948e1bdaade79045c05f474ac8",
+    "normalization": "Microsoft Word Save As DOCX from a read-only open of the retained Strict OOXML download"
+  },
+  "required_geometry_correction": {
+    "reason": "The conference page explicitly requires A4, while its provided Word file is internally US Letter and instructs A4 users to use A4 formatting.",
+    "final_width_mm": 210.0,
+    "final_height_mm": 297.0,
+    "generic_template_substituted": false
+  },
+  "cfp_source": {
+    "path": "../../../IEEE_PES_ISGT_ASIA_2026_CFP.pdf",
+    "bytes": 506382,
+    "sha256": "732328cda9036d7c1fb6cd63abddd88ad880b98b5b161d706211c69030e8ee00",
+    "visually_inspected_pages": 1
+  }
+}
