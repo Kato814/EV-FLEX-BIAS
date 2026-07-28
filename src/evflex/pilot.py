@@ -280,6 +280,8 @@ def phase_balanced_tie_break(
             raise ValueError("direction must be 'inc' or 'dec'")
     if mode not in {"v1g", "v2g"}:
         raise ValueError("mode must be 'v1g' or 'v2g'")
+    if direction is None:
+        direction = "inc" if mode == "v1g" else "dec"
     if direction is not None and direction not in {"inc", "dec"}:
         raise ValueError("direction must be 'inc' or 'dec'")
     expected_mode = {"inc": "v1g", "dec": "v2g"}.get(direction)
@@ -323,6 +325,7 @@ def phase_balanced_tie_break(
         "charge": None,
         "discharge": None,
         "mode": mode,
+        "direction": direction,
         "vehicle_identity_sha256": vehicle_hash,
         "original_schedule_sha256": original_schedule_hash,
         "tied_schedule_sha256": None,
@@ -1145,13 +1148,23 @@ def evaluate_pilot_work_unit(
         baseline_summary["feasible"]
         and baseline_summary["complete_coverage"]
         and baseline_summary["checked_intervals"] == 96
+        and baseline_summary["nonconverged_checks"] == 0
+        and baseline_summary["numerical_failure_checks"] == 0
+        and baseline_summary["failure_class"] == "NONE"
     )
     if baseline_valid:
         baseline_status = "VALID"
-    elif baseline_summary["numerical_failure_checks"] > 0:
-        baseline_status = "BASELINE_NUMERICAL_INVALID"
-    else:
+    elif (
+        baseline_summary["complete_coverage"]
+        and baseline_summary["checked_intervals"] == 96
+        and baseline_summary["nonconverged_checks"] == 0
+        and baseline_summary["numerical_failure_checks"] == 0
+        and baseline_summary["failure_class"] == "PHYSICAL_CONSTRAINT"
+        and baseline_summary["explicit_physical_witness"]
+    ):
         baseline_status = "BASELINE_PHYSICAL_INVALID"
+    else:
+        baseline_status = "BASELINE_NUMERICAL_INVALID"
 
     alpha_settings = loaded_config["alpha_search"]
     coarse_step = float(alpha_settings["coarse_step"])
@@ -1234,6 +1247,8 @@ def evaluate_pilot_work_unit(
                         "alpha_transfer_tied": None,
                         "tie_comparator_valid": None,
                         "tie_break_status": "NOT_RUN_SCHEDULE_SOLVER_INVALID",
+                        "alpha1_cold_timing_s": None,
+                        "alpha1_cold_timing_scope": None,
                         "alpha1_first_replay_timing_s": None,
                         "alpha1_first_replay_scope": None,
                         "alpha1_warm_timing_s": [],
@@ -1310,6 +1325,12 @@ def evaluate_pilot_work_unit(
                 selected["max_ev_invariant_error"]
             ),
             "ev_invariant_errors": dict(selected["ev_invariant_errors"]),
+            "reported_ev_invariant_errors": dict(
+                selected["reported_ev_invariant_errors"]
+            ),
+            "derived_ev_invariant_errors": dict(
+                selected["derived_ev_invariant_errors"]
+            ),
             "simultaneous_slots": int(selected["simultaneous_slots"]),
         }
         if not baseline_valid:
@@ -1325,6 +1346,8 @@ def evaluate_pilot_work_unit(
                         "alpha_transfer_tied": None,
                         "tie_comparator_valid": None,
                         "tie_break_status": "NOT_RUN_BASELINE_INVALID",
+                        "alpha1_cold_timing_s": None,
+                        "alpha1_cold_timing_scope": None,
                         "alpha1_first_replay_timing_s": None,
                         "alpha1_first_replay_scope": None,
                         "alpha1_warm_timing_s": [],
@@ -1349,6 +1372,8 @@ def evaluate_pilot_work_unit(
                         "alpha_transfer_tied": None,
                         "tie_comparator_valid": None,
                         "tie_break_status": "NOT_APPLICABLE_INACTIVE",
+                        "alpha1_cold_timing_s": None,
+                        "alpha1_cold_timing_scope": None,
                         "alpha1_first_replay_timing_s": None,
                         "alpha1_first_replay_scope": None,
                         "alpha1_warm_timing_s": [],
@@ -1360,12 +1385,6 @@ def evaluate_pilot_work_unit(
                 )
             )
             continue
-
-        path, path_reused, path_source = corrected_path(
-            schedule,
-            requested_duration=requested_duration,
-            role="original",
-        )
 
         legacy_reused = schedule_hash in legacy_cache
         if not legacy_reused:
@@ -1401,7 +1420,7 @@ def evaluate_pilot_work_unit(
                     "detail": f"{type(exc).__name__}: {exc}",
                     "first_replay_s": None,
                     "first_replay_scope": (
-                        "FIRST_IN_PROCESS_REPLAY_NOT_COLD_START"
+                        "FIRST_SCHEDULE_REPLAY_AFTER_COMMON_BASELINE_WITH_PREBUILT_TRUTH_CACHE"
                     ),
                     "warm_s": [],
                     "warm_p95_s": None,
@@ -1416,6 +1435,11 @@ def evaluate_pilot_work_unit(
                 }
             timing_owner[schedule_hash] = requested_duration
         timing = timing_cache[schedule_hash]
+        path, path_reused, path_source = corrected_path(
+            schedule,
+            requested_duration=requested_duration,
+            role="original",
+        )
 
         tie_reused = schedule_hash in tie_cache
         if not tie_reused:
@@ -1494,6 +1518,10 @@ def evaluate_pilot_work_unit(
                 ),
                 "alpha1_timing_status": timing["status"],
                 "alpha1_timing_detail": timing["detail"],
+                "alpha1_cold_timing_s": timing["first_replay_s"],
+                "alpha1_cold_timing_scope": timing[
+                    "first_replay_scope"
+                ],
                 "alpha1_first_replay_timing_s": timing[
                     "first_replay_s"
                 ],
@@ -1696,22 +1724,87 @@ def _normalize_raw_balanced_result(
     if not math.isfinite(flex) or flex < 0:
         raise ValueError("raw balanced flex_kw must be finite and nonnegative")
     result["flex_kw"] = flex
-    charge = np.maximum(result["schedule"], 0.0)
-    discharge = np.maximum(-result["schedule"], 0.0)
-    invariants = _trajectory_invariants(
+
+    reported: dict[str, float | int] = {}
+    for name in (
+        "max_departure_error_kwh",
+        "max_reserve_violation_kwh",
+        "max_capacity_violation_kwh",
+    ):
+        value = _finite_or_none(result.get(name))
+        if value is None or value < 0:
+            raise ValueError(
+                f"reported EV invariant {name} must be present, finite, and nonnegative"
+            )
+        reported[name] = value
+    simultaneous = _nonnegative_integer(result.get("simultaneous_slots"))
+    if simultaneous is None:
+        raise ValueError(
+            "reported EV invariant simultaneous_slots must be present "
+            "and a nonnegative integer"
+        )
+    reported["simultaneous_slots"] = simultaneous
+    reported["max_ev_invariant_error"] = max(
+        float(reported["max_departure_error_kwh"]),
+        float(reported["max_reserve_violation_kwh"]),
+        float(reported["max_capacity_violation_kwh"]),
+    )
+
+    has_charge = "charge" in result
+    has_discharge = "discharge" in result
+    if has_charge != has_discharge:
+        raise ValueError(
+            "raw balanced charge and discharge witnesses must be supplied together"
+        )
+    if has_charge:
+        charge = _validated_schedule(
+            result["charge"], len(fleet), "raw balanced charge"
+        )
+        discharge = _validated_schedule(
+            result["discharge"], len(fleet), "raw balanced discharge"
+        )
+        if np.any(charge < 0) or np.any(discharge < 0):
+            raise ValueError(
+                "raw balanced charge and discharge witnesses must be nonnegative"
+            )
+    else:
+        charge = np.maximum(result["schedule"], 0.0)
+        discharge = np.maximum(-result["schedule"], 0.0)
+
+    derived = _trajectory_invariants(
         fleet,
         result["schedule"],
         charge,
         discharge,
         "v1g" if direction == "inc" else "v2g",
     )
-    result.update(invariants)
-    result["ev_invariant_errors"] = dict(invariants)
+    combined = dict(derived)
+    for name in (
+        "max_departure_error_kwh",
+        "max_reserve_violation_kwh",
+        "max_capacity_violation_kwh",
+    ):
+        combined[name] = max(float(reported[name]), float(derived[name]))
+    combined["simultaneous_slots"] = max(
+        int(reported["simultaneous_slots"]),
+        int(derived["simultaneous_slots"]),
+    )
+    combined["max_ev_invariant_error"] = max(
+        float(reported["max_ev_invariant_error"]),
+        float(derived["max_ev_invariant_error"]),
+        float(combined["max_departure_error_kwh"]),
+        float(combined["max_reserve_violation_kwh"]),
+        float(combined["max_capacity_violation_kwh"]),
+    )
+    result["reported_ev_invariant_errors"] = dict(reported)
+    result["derived_ev_invariant_errors"] = dict(derived)
+    result.update(combined)
+    result["ev_invariant_errors"] = dict(combined)
     physical = bool(
         result.get("success") is True
         and result.get("physical_feasible") is True
-        and invariants["max_ev_invariant_error"] <= 1e-6
-        and invariants["simultaneous_slots"] == 0
+        and combined["max_ev_invariant_error"] <= 1e-6
+        and combined["simultaneous_slots"] == 0
     )
     result["physical_feasible"] = physical
     return result
@@ -1755,14 +1848,18 @@ def _compact_audit_summary(result: Any) -> dict[str, Any]:
         result.get("numerical_failure_checks", 0)
     )
     nonconverged_checks = int(result.get("nonconverged_checks", 0))
+    declared_failure_class = str(result.get("failure_class", "NONE"))
     if numerical_failure_checks or nonconverged_checks:
         failure_class = "NUMERICAL_INVALID"
-    elif physical_violation_checks:
+    elif declared_failure_class in {
+        "NUMERICAL_INVALID",
+        "UNCLASSIFIED_INVALID",
+    }:
+        failure_class = declared_failure_class
+    elif physical_violation_checks or declared_failure_class == "PHYSICAL_CONSTRAINT":
         failure_class = "PHYSICAL_CONSTRAINT"
     elif violations:
-        failure_class = str(
-            result.get("failure_class", "UNCLASSIFIED_INVALID")
-        )
+        failure_class = "UNCLASSIFIED_INVALID"
     else:
         failure_class = "NONE"
     raw_trace = result.get("slot_audit_trace", [])
@@ -1792,6 +1889,16 @@ def _compact_audit_summary(result: Any) -> dict[str, Any]:
         for item in violations
         if isinstance(item, Mapping) and _nonnegative_integer(item.get("slot")) is not None
     ]
+    explicit_physical_witness = bool(
+        any(item["physical_witness"] for item in slot_trace)
+        or any(
+            isinstance(item, Mapping)
+            and item.get("physical_witness") is True
+            for item in violations
+        )
+    )
+    if failure_class == "PHYSICAL_CONSTRAINT" and not explicit_physical_witness:
+        failure_class = "UNCLASSIFIED_INVALID"
     return {
         "feasible": bool(result.get("feasible") is True),
         "checked_intervals": checked,
@@ -1810,6 +1917,7 @@ def _compact_audit_summary(result: Any) -> dict[str, Any]:
         "numerical_failure_checks": numerical_failure_checks,
         "physical_violation_checks": physical_violation_checks,
         "failure_class": failure_class,
+        "explicit_physical_witness": explicit_physical_witness,
         "violation_count": len(violations),
         "first_failure_slot": min(failure_slots, default=None),
         "slot_trace": slot_trace,
@@ -2009,7 +2117,9 @@ def _benchmark_alpha_one(
             else None
         ),
         "first_replay_s": timings[0],
-        "first_replay_scope": "FIRST_IN_PROCESS_REPLAY_NOT_COLD_START",
+        "first_replay_scope": (
+            "FIRST_SCHEDULE_REPLAY_AFTER_COMMON_BASELINE_WITH_PREBUILT_TRUTH_CACHE"
+        ),
         "warm_s": timings[1:],
         "warm_p95_s": float(np.percentile(warm, 95, method="higher")),
         "warm_cv": cv,
@@ -2415,6 +2525,10 @@ def build_pilot_network_class(
             return report
 
         def audit_context(self) -> dict[str, Any]:
+            (
+                transformer_rating_multiplier,
+                transformer_rating_basis,
+            ) = _transformer_rating_normalization(self)
             return {
                 "adapter_schema": _PILOT_ADAPTER_SCHEMA,
                 "adapter_version": _PILOT_ADAPTER_VERSION,
@@ -2431,13 +2545,9 @@ def build_pilot_network_class(
                 "feeder_kva": float(self._pilot_feeder_kva),
                 "line_thermal_in_scope": False,
                 "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
-                "transformer_rating_basis": (
-                    "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
-                    if str(self.model) == "balanced"
-                    else "NATIVE_SYSTEM_TOTAL_KVA"
-                ),
+                "transformer_rating_basis": transformer_rating_basis,
                 "transformer_rating_multiplier": (
-                    3.0 if str(self.model) == "balanced" else 1.0
+                    transformer_rating_multiplier
                 ),
             }
 
@@ -2503,6 +2613,24 @@ def _pilot_network_settings(config: Mapping[str, Any]) -> dict[str, Any]:
         "feeder_limit": feeder_limit,
         "feeder_kva": feeder_kva,
     }
+
+
+def _transformer_rating_normalization(
+    network: Any,
+) -> tuple[float, str]:
+    cfg = getattr(network, "cfg", None)
+    positive_sequence = bool(
+        str(getattr(network, "model", "")) == "balanced"
+        and isinstance(cfg, Mapping)
+        and cfg.get("balanced") == "posseq"
+    )
+    multiplier = 3.0 if positive_sequence else 1.0
+    basis = (
+        "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
+        if positive_sequence
+        else "NATIVE_SYSTEM_TOTAL_KVA"
+    )
+    return multiplier, basis
 
 
 def _evaluate_pilot_network(
@@ -2629,14 +2757,10 @@ def _evaluate_pilot_network(
     transformer_labels: list[str] = []
     transformer_ratings: dict[str, float] = {}
     transformer_raw_ratings: dict[str, float] = {}
-    transformer_rating_multiplier = (
-        3.0 if str(network.model) == "balanced" else 1.0
-    )
-    transformer_rating_basis = (
-        "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
-        if transformer_rating_multiplier == 3.0
-        else "NATIVE_SYSTEM_TOTAL_KVA"
-    )
+    (
+        transformer_rating_multiplier,
+        transformer_rating_basis,
+    ) = _transformer_rating_normalization(network)
     enabled_transformers = 0
     rated_transformers = 0
     try:
