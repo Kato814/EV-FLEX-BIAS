@@ -1,0 +1,5248 @@
+{
+  "attempt_count": 1,
+  "data_role": "development_pilot",
+  "evaluations": [
+    {
+      "active_offer": true,
+      "active_offer_threshold_kw": 25.0,
+      "alpha1_cold_timing_s": 0.029831300023943186,
+      "alpha1_cold_timing_scope": "FIRST_SCHEDULE_REPLAY_AFTER_COMMON_BASELINE_WITH_PREBUILT_TRUTH_CACHE",
+      "alpha1_first_replay_scope": "FIRST_SCHEDULE_REPLAY_AFTER_COMMON_BASELINE_WITH_PREBUILT_TRUTH_CACHE",
+      "alpha1_first_replay_timing_s": 0.029831300023943186,
+      "alpha1_timing_checked_intervals": [
+        96,
+        96,
+        96,
+        96
+      ],
+      "alpha1_timing_detail": null,
+      "alpha1_timing_failure_class": [
+        "NONE",
+        "NONE",
+        "NONE",
+        "NONE"
+      ],
+      "alpha1_timing_nonconverged_checks": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "alpha1_timing_numerical_failure_checks": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "alpha1_timing_physical_violation_checks": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "alpha1_timing_power_flow_evaluations": [
+        64,
+        64,
+        64,
+        64
+      ],
+      "alpha1_timing_status": "SUCCESS",
+      "alpha1_warm_cv": 0.01982282681208979,
+      "alpha1_warm_p95_s": 0.02899350004736334,
+      "alpha1_warm_timing_s": [
+        0.02899350004736334,
+        0.028774499893188477,
+        0.027701099985279143
+      ],
+      "alpha_legacy_verifier": 1.0,
+      "alpha_legacy_verifier_detail": null,
+      "alpha_legacy_verifier_status": "SUCCESS",
+      "alpha_nonmonotone": false,
+      "alpha_path_audit": {
+        "alpha_trace": [
+          {
+            "alpha": 0.0,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.02,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.04,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.06,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.08,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.1,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.12,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.14,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.16,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.18,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.2,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.22,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.24,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.26,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.28,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.3,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.32,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.34,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.36,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.38,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.4,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.42,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.44,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.46,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.48,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.5,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.52,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.54,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.56,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.58,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.6,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.62,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.64,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.66,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.68,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.7,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.72,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.74,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.76,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.78,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.8,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.82,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.84,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.86,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.88,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.9,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.92,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.94,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.96,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.98,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 1.0,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          }
+        ],
+        "audit_calls": 51,
+        "complete_audits": 51,
+        "early_stopped_audits": 0,
+        "maximum_checked_intervals": 96,
+        "minimum_checked_intervals": 96,
+        "numerical_failure_audits": 0,
+        "physical_boundary_audits": 0,
+        "power_flow_evaluations": 3200,
+        "reused_baseline_intervals": 1696
+      },
+      "alpha_path_reuse_source_requested_duration_min": null,
+      "alpha_path_reuse_source_role": null,
+      "alpha_path_reused": false,
+      "alpha_path_scientific_valid": true,
+      "alpha_path_status": "VALID",
+      "alpha_path_valid_baseline": true,
+      "alpha_prefix": 1.0,
+      "alpha_sup": 1.0,
+      "alpha_tie_nonmonotone": null,
+      "alpha_tie_path_audit": null,
+      "alpha_tie_path_reuse_source_requested_duration_min": null,
+      "alpha_tie_path_reuse_source_role": null,
+      "alpha_tie_path_reused": null,
+      "alpha_tie_path_status": "NOT_RUN_TIE_INVALID",
+      "alpha_tie_prefix": null,
+      "alpha_tie_sup": null,
+      "alpha_transfer": 1.0,
+      "alpha_transfer_tied": null,
+      "baseline_audit": {
+        "checked_intervals": 96,
+        "complete_coverage": true,
+        "converged_checks": 96,
+        "coverage_counts": {
+          "all_bus_count": 16,
+          "enabled_transformer_count": 5,
+          "energized_voltage_node_count": 41,
+          "feeder_rating_multiplier": 1.0,
+          "line_count": 12,
+          "line_thermal_in_scope": false,
+          "monitored_bus_count": 16,
+          "monitored_voltage_node_count": 41,
+          "monitored_vuf_bus_count": 11,
+          "rated_transformer_count": 5,
+          "three_phase_bus_count": 11,
+          "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
+          "transformer_rating_basis": "NATIVE_SYSTEM_TOTAL_KVA",
+          "transformer_rating_coverage": 1.0,
+          "transformer_rating_multiplier": 1.0
+        },
+        "coverage_ratio": 1.0,
+        "explicit_physical_witness": false,
+        "failure_class": "NONE",
+        "feasible": true,
+        "feeder_loading_max": 0.5965433421801234,
+        "first_failure_slot": null,
+        "nonconverged_checks": 0,
+        "numerical_failure_checks": 0,
+        "physical_violation_checks": 0,
+        "power_flow_evaluations": 96,
+        "reused_baseline_intervals": 0,
+        "slot_trace": [
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 0
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 1
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 2
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 3
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 4
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 5
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 6
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 7
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 8
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 9
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 10
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 11
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 12
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 13
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 14
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 15
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 16
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 17
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 18
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 19
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 20
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 21
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 22
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 23
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 24
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 25
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 26
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 27
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 28
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 29
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 30
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 31
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 32
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 33
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 34
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 35
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 36
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 37
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 38
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 39
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 40
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 41
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 42
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 43
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 44
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 45
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 46
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 47
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 48
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 49
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 50
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 51
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 52
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 53
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 54
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 55
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 56
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 57
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 58
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 59
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 60
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 61
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 62
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 63
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 64
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 65
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 66
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 67
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 68
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 69
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 70
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 71
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 72
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 73
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 74
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 75
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 76
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 77
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 78
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 79
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 80
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 81
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 82
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 83
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 84
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 85
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 86
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 87
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 88
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 89
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 90
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 91
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 92
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 93
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 94
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 95
+          }
+        ],
+        "transformer_loading_max": 0.7644602838080311,
+        "violation_count": 0,
+        "vmax": 1.049922084690863,
+        "vmin": 0.9927181906668245,
+        "vufmax": 1.5748829058802425
+      },
+      "baseline_schedule_sha256": "6280af04e4c13212c2ad5bfaa178151743c9628d27ec0378f333ebe9450b7dd4",
+      "baseline_status": "VALID",
+      "bus_phase_time_sha256": "37e5f9b99813d6ee22a0ae09e948213e52ab686e4b15b0486d36da28c5630846",
+      "call_time": "19:00",
+      "canonical_schedule_reused": false,
+      "data_role": "development_pilot",
+      "derived_ev_invariant_errors": {
+        "max_availability_violation_kw": 0.0,
+        "max_capacity_violation_kwh": 0.0,
+        "max_charge_limit_violation_kw": 0.0,
+        "max_departure_error_kwh": 4.973799150320701e-13,
+        "max_discharge_budget_violation_kwh": 0.0,
+        "max_discharge_limit_violation_kw": 2.6645352591003757e-15,
+        "max_ev_invariant_error": 4.973799150320701e-13,
+        "max_reserve_violation_kwh": 0.0,
+        "max_schedule_identity_error_kw": 0.0,
+        "simultaneous_slots": 0
+      },
+      "direction": "dec",
+      "duration_min": 15,
+      "eligible_for_scientific_denominator": true,
+      "ev_invariant_errors": {
+        "max_availability_violation_kw": 0.0,
+        "max_capacity_violation_kwh": 0.0,
+        "max_charge_limit_violation_kw": 0.0,
+        "max_departure_error_kwh": 4.973799150320701e-13,
+        "max_discharge_budget_violation_kwh": 0.0,
+        "max_discharge_limit_violation_kw": 2.6645352591003757e-15,
+        "max_ev_invariant_error": 4.973799150320701e-13,
+        "max_reserve_violation_kwh": 0.0,
+        "max_schedule_identity_error_kw": 0.0,
+        "simultaneous_slots": 0
+      },
+      "evaluation_id": "v20_core_ieee13_1900_17__dec__15m",
+      "f_bal_kw": 483.3685855123872,
+      "feeder": "ieee13",
+      "legacy_verifier_reused": false,
+      "legacy_verifier_source_requested_duration_min": 15,
+      "max_availability_violation_kw": 0.0,
+      "max_capacity_violation_kwh": 0.0,
+      "max_charge_limit_violation_kw": 0.0,
+      "max_departure_error_kwh": 4.973799150320701e-13,
+      "max_discharge_budget_violation_kwh": 0.0,
+      "max_discharge_limit_violation_kw": 2.6645352591003757e-15,
+      "max_ev_invariant_error": 4.973799150320701e-13,
+      "max_reserve_violation_kwh": 0.0,
+      "max_schedule_identity_error_kw": 0.0,
+      "monotonic_closure_promoted": false,
+      "protocol_version": "EV-FLEX-BIAS-V2.1-PILOT",
+      "raw_schedule_failure_by_duration": {},
+      "reported_ev_invariant_errors": {
+        "max_capacity_violation_kwh": 0.0,
+        "max_departure_error_kwh": 4.973799150320701e-13,
+        "max_ev_invariant_error": 4.973799150320701e-13,
+        "max_reserve_violation_kwh": 0.0,
+        "simultaneous_slots": 0
+      },
+      "requested_duration_min": 15,
+      "reuse_source_requested_duration_min": null,
+      "scenario_id": "ieee13_1900_17",
+      "scenario_seed": 2026071616,
+      "schedule_sha256": "e57f41b2819b802cf4a42576c56917808f994c16e8ecd45d14d05767892d75b6",
+      "scientific_status": "VALID",
+      "simultaneous_slots": 0,
+      "source_duration_min": 15,
+      "status": "SUCCESS",
+      "tie_break_detail": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "tie_break_reused": false,
+      "tie_break_source_requested_duration_min": 15,
+      "tie_break_status": "COMPARATOR_INVALID",
+      "tie_bus_phase_time_sha256": "da23768f6fa582362199aed39b7ada4f748a0e7a79954434062a60bbdd24c853",
+      "tie_comparator_valid": false,
+      "tie_declared_offer_absolute_gap_kw": 3.410605131648481e-13,
+      "tie_declared_offer_identity": true,
+      "tie_max_bus_time_error_kw": 3.340439036492171e-12,
+      "tie_max_ev_invariant_error": 6.821210263296962e-13,
+      "tie_offer_relative_difference": 0.0,
+      "tie_offer_retention": 1.0,
+      "tie_original_phase_l1": 1572.7217190262747,
+      "tie_original_schedule_sha256": "e57f41b2819b802cf4a42576c56917808f994c16e8ecd45d14d05767892d75b6",
+      "tie_phase_l1": 1119.8032142553034,
+      "tie_primary_objective": 1015.7065331562643,
+      "tie_primary_objective_optimum": 1015.7055174507468,
+      "tie_primary_objective_original": 1015.7055174507299,
+      "tie_primary_objective_original_relative_gap": 1.667741144405293e-14,
+      "tie_primary_objective_relative_gap": 1.0000000000373082e-06,
+      "tie_primary_objective_tied_relative_gap": 1.0000000000373082e-06,
+      "tie_schedule_sha256": "1ddcc02f9b376b4b7645b432d101d7e7957b552af203ca90155763ba7bb7d372",
+      "tie_simultaneous_slots": 0,
+      "timing_independent_schedule": true,
+      "timing_reused": false,
+      "timing_source_requested_duration_min": 15,
+      "vehicle_identity_sha256": "52c43ac705553c849953e312edab421a818526cdfa15a320f84bc1bd02b5a621",
+      "work_unit_id": "v20_work_ieee13_1900_17__dec"
+    },
+    {
+      "active_offer": true,
+      "active_offer_threshold_kw": 25.0,
+      "alpha1_cold_timing_s": 0.02425949997268617,
+      "alpha1_cold_timing_scope": "FIRST_SCHEDULE_REPLAY_AFTER_COMMON_BASELINE_WITH_PREBUILT_TRUTH_CACHE",
+      "alpha1_first_replay_scope": "FIRST_SCHEDULE_REPLAY_AFTER_COMMON_BASELINE_WITH_PREBUILT_TRUTH_CACHE",
+      "alpha1_first_replay_timing_s": 0.02425949997268617,
+      "alpha1_timing_checked_intervals": [
+        96,
+        96,
+        96,
+        96
+      ],
+      "alpha1_timing_detail": null,
+      "alpha1_timing_failure_class": [
+        "NONE",
+        "NONE",
+        "NONE",
+        "NONE"
+      ],
+      "alpha1_timing_nonconverged_checks": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "alpha1_timing_numerical_failure_checks": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "alpha1_timing_physical_violation_checks": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "alpha1_timing_power_flow_evaluations": [
+        74,
+        74,
+        74,
+        74
+      ],
+      "alpha1_timing_status": "SUCCESS",
+      "alpha1_warm_cv": 0.035920686816148004,
+      "alpha1_warm_p95_s": 0.03270640003029257,
+      "alpha1_warm_timing_s": [
+        0.029949599993415177,
+        0.03270640003029257,
+        0.03143669990822673
+      ],
+      "alpha_legacy_verifier": 1.0,
+      "alpha_legacy_verifier_detail": null,
+      "alpha_legacy_verifier_status": "SUCCESS",
+      "alpha_nonmonotone": false,
+      "alpha_path_audit": {
+        "alpha_trace": [
+          {
+            "alpha": 0.0,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.02,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.04,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.06,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.08,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.1,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.12,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.14,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.16,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.18,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.2,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.22,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.24,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.26,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.28,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.3,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.32,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.34,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.36,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.38,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.4,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.42,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.44,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.46,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.48,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.5,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.52,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.54,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.56,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.58,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.6,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.62,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.64,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.66,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.68,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.7,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.72,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.74,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.76,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.78,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.8,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.82,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.84,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.86,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.88,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.9,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.92,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.94,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.96,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.98,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 1.0,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          }
+        ],
+        "audit_calls": 51,
+        "complete_audits": 51,
+        "early_stopped_audits": 0,
+        "maximum_checked_intervals": 96,
+        "minimum_checked_intervals": 96,
+        "numerical_failure_audits": 0,
+        "physical_boundary_audits": 0,
+        "power_flow_evaluations": 3700,
+        "reused_baseline_intervals": 1196
+      },
+      "alpha_path_reuse_source_requested_duration_min": null,
+      "alpha_path_reuse_source_role": null,
+      "alpha_path_reused": false,
+      "alpha_path_scientific_valid": true,
+      "alpha_path_status": "VALID",
+      "alpha_path_valid_baseline": true,
+      "alpha_prefix": 1.0,
+      "alpha_sup": 1.0,
+      "alpha_tie_nonmonotone": null,
+      "alpha_tie_path_audit": null,
+      "alpha_tie_path_reuse_source_requested_duration_min": null,
+      "alpha_tie_path_reuse_source_role": null,
+      "alpha_tie_path_reused": null,
+      "alpha_tie_path_status": "NOT_RUN_TIE_INVALID",
+      "alpha_tie_prefix": null,
+      "alpha_tie_sup": null,
+      "alpha_transfer": 1.0,
+      "alpha_transfer_tied": null,
+      "baseline_audit": {
+        "checked_intervals": 96,
+        "complete_coverage": true,
+        "converged_checks": 96,
+        "coverage_counts": {
+          "all_bus_count": 16,
+          "enabled_transformer_count": 5,
+          "energized_voltage_node_count": 41,
+          "feeder_rating_multiplier": 1.0,
+          "line_count": 12,
+          "line_thermal_in_scope": false,
+          "monitored_bus_count": 16,
+          "monitored_voltage_node_count": 41,
+          "monitored_vuf_bus_count": 11,
+          "rated_transformer_count": 5,
+          "three_phase_bus_count": 11,
+          "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
+          "transformer_rating_basis": "NATIVE_SYSTEM_TOTAL_KVA",
+          "transformer_rating_coverage": 1.0,
+          "transformer_rating_multiplier": 1.0
+        },
+        "coverage_ratio": 1.0,
+        "explicit_physical_witness": false,
+        "failure_class": "NONE",
+        "feasible": true,
+        "feeder_loading_max": 0.5965433421801234,
+        "first_failure_slot": null,
+        "nonconverged_checks": 0,
+        "numerical_failure_checks": 0,
+        "physical_violation_checks": 0,
+        "power_flow_evaluations": 96,
+        "reused_baseline_intervals": 0,
+        "slot_trace": [
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 0
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 1
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 2
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 3
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 4
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 5
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 6
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 7
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 8
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 9
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 10
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 11
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 12
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 13
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 14
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 15
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 16
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 17
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 18
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 19
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 20
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 21
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 22
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 23
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 24
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 25
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 26
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 27
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 28
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 29
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 30
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 31
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 32
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 33
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 34
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 35
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 36
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 37
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 38
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 39
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 40
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 41
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 42
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 43
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 44
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 45
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 46
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 47
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 48
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 49
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 50
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 51
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 52
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 53
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 54
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 55
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 56
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 57
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 58
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 59
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 60
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 61
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 62
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 63
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 64
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 65
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 66
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 67
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 68
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 69
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 70
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 71
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 72
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 73
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 74
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 75
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 76
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 77
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 78
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 79
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 80
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 81
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 82
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 83
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 84
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 85
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 86
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 87
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 88
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 89
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 90
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 91
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 92
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 93
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 94
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 95
+          }
+        ],
+        "transformer_loading_max": 0.7644602838080311,
+        "violation_count": 0,
+        "vmax": 1.049922084690863,
+        "vmin": 0.9927181906668245,
+        "vufmax": 1.5748829058802425
+      },
+      "baseline_schedule_sha256": "6280af04e4c13212c2ad5bfaa178151743c9628d27ec0378f333ebe9450b7dd4",
+      "baseline_status": "VALID",
+      "bus_phase_time_sha256": "5472d1ef568df0a5534880138534a1e64c0b94e64c325720b3834b27651984da",
+      "call_time": "19:00",
+      "canonical_schedule_reused": false,
+      "data_role": "development_pilot",
+      "derived_ev_invariant_errors": {
+        "max_availability_violation_kw": 0.0,
+        "max_capacity_violation_kwh": 0.0,
+        "max_charge_limit_violation_kw": 0.0,
+        "max_departure_error_kwh": 5.400124791776761e-13,
+        "max_discharge_budget_violation_kwh": 0.0,
+        "max_discharge_limit_violation_kw": 2.6645352591003757e-15,
+        "max_ev_invariant_error": 5.400124791776761e-13,
+        "max_reserve_violation_kwh": 0.0,
+        "max_schedule_identity_error_kw": 0.0,
+        "simultaneous_slots": 0
+      },
+      "direction": "dec",
+      "duration_min": 30,
+      "eligible_for_scientific_denominator": true,
+      "ev_invariant_errors": {
+        "max_availability_violation_kw": 0.0,
+        "max_capacity_violation_kwh": 0.0,
+        "max_charge_limit_violation_kw": 0.0,
+        "max_departure_error_kwh": 5.400124791776761e-13,
+        "max_discharge_budget_violation_kwh": 0.0,
+        "max_discharge_limit_violation_kw": 2.6645352591003757e-15,
+        "max_ev_invariant_error": 5.400124791776761e-13,
+        "max_reserve_violation_kwh": 0.0,
+        "max_schedule_identity_error_kw": 0.0,
+        "simultaneous_slots": 0
+      },
+      "evaluation_id": "v20_core_ieee13_1900_17__dec__30m",
+      "f_bal_kw": 483.3685855123872,
+      "feeder": "ieee13",
+      "legacy_verifier_reused": false,
+      "legacy_verifier_source_requested_duration_min": 30,
+      "max_availability_violation_kw": 0.0,
+      "max_capacity_violation_kwh": 0.0,
+      "max_charge_limit_violation_kw": 0.0,
+      "max_departure_error_kwh": 5.400124791776761e-13,
+      "max_discharge_budget_violation_kwh": 0.0,
+      "max_discharge_limit_violation_kw": 2.6645352591003757e-15,
+      "max_ev_invariant_error": 5.400124791776761e-13,
+      "max_reserve_violation_kwh": 0.0,
+      "max_schedule_identity_error_kw": 0.0,
+      "monotonic_closure_promoted": false,
+      "protocol_version": "EV-FLEX-BIAS-V2.1-PILOT",
+      "raw_schedule_failure_by_duration": {},
+      "reported_ev_invariant_errors": {
+        "max_capacity_violation_kwh": 0.0,
+        "max_departure_error_kwh": 5.400124791776761e-13,
+        "max_ev_invariant_error": 5.400124791776761e-13,
+        "max_reserve_violation_kwh": 0.0,
+        "simultaneous_slots": 0
+      },
+      "requested_duration_min": 30,
+      "reuse_source_requested_duration_min": null,
+      "scenario_id": "ieee13_1900_17",
+      "scenario_seed": 2026071616,
+      "schedule_sha256": "e6c3ac9010e84ec10023f6b8a3bd2aafc410209688a3ba2b628a5afccd822fe4",
+      "scientific_status": "VALID",
+      "simultaneous_slots": 0,
+      "source_duration_min": 30,
+      "status": "SUCCESS",
+      "tie_break_detail": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "tie_break_reused": false,
+      "tie_break_source_requested_duration_min": 30,
+      "tie_break_status": "COMPARATOR_INVALID",
+      "tie_bus_phase_time_sha256": "82fe7ad7b7f8130025b3dcb1a719e54eff4a52647dd445f05e8d27978f053cdf",
+      "tie_comparator_valid": false,
+      "tie_declared_offer_absolute_gap_kw": 3.410605131648481e-13,
+      "tie_declared_offer_identity": true,
+      "tie_max_bus_time_error_kw": 9.316991622654314e-13,
+      "tie_max_ev_invariant_error": 4.973799150320701e-13,
+      "tie_offer_relative_difference": 0.0,
+      "tie_offer_retention": 1.0,
+      "tie_original_phase_l1": 2973.3005519440717,
+      "tie_original_schedule_sha256": "e6c3ac9010e84ec10023f6b8a3bd2aafc410209688a3ba2b628a5afccd822fe4",
+      "tie_phase_l1": 2199.4495503598846,
+      "tie_primary_objective": 2031.3933274291226,
+      "tie_primary_objective_optimum": 2031.3912960378177,
+      "tie_primary_objective_original": 2031.3912960378311,
+      "tie_primary_objective_original_relative_gap": 6.603871384758039e-15,
+      "tie_primary_objective_relative_gap": 1.000000004339957e-06,
+      "tie_primary_objective_tied_relative_gap": 1.000000004339957e-06,
+      "tie_schedule_sha256": "f444f1366e38ef5e89862c9976b56a0a84fe0f50f0df7e458f01db521dad59d7",
+      "tie_simultaneous_slots": 0,
+      "timing_independent_schedule": true,
+      "timing_reused": false,
+      "timing_source_requested_duration_min": 30,
+      "vehicle_identity_sha256": "52c43ac705553c849953e312edab421a818526cdfa15a320f84bc1bd02b5a621",
+      "work_unit_id": "v20_work_ieee13_1900_17__dec"
+    },
+    {
+      "active_offer": true,
+      "active_offer_threshold_kw": 25.0,
+      "alpha1_cold_timing_s": 0.031041299924254417,
+      "alpha1_cold_timing_scope": "FIRST_SCHEDULE_REPLAY_AFTER_COMMON_BASELINE_WITH_PREBUILT_TRUTH_CACHE",
+      "alpha1_first_replay_scope": "FIRST_SCHEDULE_REPLAY_AFTER_COMMON_BASELINE_WITH_PREBUILT_TRUTH_CACHE",
+      "alpha1_first_replay_timing_s": 0.031041299924254417,
+      "alpha1_timing_checked_intervals": [
+        96,
+        96,
+        96,
+        96
+      ],
+      "alpha1_timing_detail": null,
+      "alpha1_timing_failure_class": [
+        "NONE",
+        "NONE",
+        "NONE",
+        "NONE"
+      ],
+      "alpha1_timing_nonconverged_checks": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "alpha1_timing_numerical_failure_checks": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "alpha1_timing_physical_violation_checks": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "alpha1_timing_power_flow_evaluations": [
+        82,
+        82,
+        82,
+        82
+      ],
+      "alpha1_timing_status": "SUCCESS",
+      "alpha1_warm_cv": 0.029603029903273962,
+      "alpha1_warm_p95_s": 0.03299319988582283,
+      "alpha1_warm_timing_s": [
+        0.03299319988582283,
+        0.030787999974563718,
+        0.03132810001261532
+      ],
+      "alpha_legacy_verifier": 1.0,
+      "alpha_legacy_verifier_detail": null,
+      "alpha_legacy_verifier_status": "SUCCESS",
+      "alpha_nonmonotone": false,
+      "alpha_path_audit": {
+        "alpha_trace": [
+          {
+            "alpha": 0.0,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.02,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.04,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.06,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.08,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.1,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.12,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.14,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.16,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.18,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.2,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.22,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.24,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.26,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.28,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.3,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.32,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.34,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.36,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.38,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.4,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.42,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.44,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.46,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.48,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.5,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.52,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.54,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.56,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.58,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.6,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.62,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.64,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.66,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.68,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.7,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.72,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.74,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.76,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.78,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.8,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.82,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.84,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.86,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.88,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.9,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.92,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.94,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.96,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.98,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 1.0,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          }
+        ],
+        "audit_calls": 51,
+        "complete_audits": 51,
+        "early_stopped_audits": 0,
+        "maximum_checked_intervals": 96,
+        "minimum_checked_intervals": 96,
+        "numerical_failure_audits": 0,
+        "physical_boundary_audits": 0,
+        "power_flow_evaluations": 4100,
+        "reused_baseline_intervals": 796
+      },
+      "alpha_path_reuse_source_requested_duration_min": null,
+      "alpha_path_reuse_source_role": null,
+      "alpha_path_reused": false,
+      "alpha_path_scientific_valid": true,
+      "alpha_path_status": "VALID",
+      "alpha_path_valid_baseline": true,
+      "alpha_prefix": 1.0,
+      "alpha_sup": 1.0,
+      "alpha_tie_nonmonotone": false,
+      "alpha_tie_path_audit": {
+        "alpha_trace": [
+          {
+            "alpha": 0.0,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.02,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.04,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.06,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.08,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.1,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.12,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.14,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.16,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.18,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.2,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.22,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.24,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.26,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.28,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.3,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.32,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.34,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.36,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.38,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.4,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.42,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.44,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.46,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.48,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.5,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.52,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.54,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.56,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.58,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.6,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.62,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.64,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.66,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.68,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.7,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.72,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.74,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.76,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.78,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.8,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.82,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.84,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.86,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.88,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.9,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.92,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.94,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.96,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 0.98,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          },
+          {
+            "alpha": 1.0,
+            "checked_intervals": 96,
+            "complete_coverage": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "first_failure_slot": null,
+            "nonconverged_checks": 0,
+            "numerical_failure_checks": 0,
+            "physical_violation_checks": 0
+          }
+        ],
+        "audit_calls": 51,
+        "complete_audits": 51,
+        "early_stopped_audits": 0,
+        "maximum_checked_intervals": 96,
+        "minimum_checked_intervals": 96,
+        "numerical_failure_audits": 0,
+        "physical_boundary_audits": 0,
+        "power_flow_evaluations": 4458,
+        "reused_baseline_intervals": 438
+      },
+      "alpha_tie_path_reuse_source_requested_duration_min": null,
+      "alpha_tie_path_reuse_source_role": null,
+      "alpha_tie_path_reused": false,
+      "alpha_tie_path_status": "VALID",
+      "alpha_tie_prefix": 1.0,
+      "alpha_tie_sup": 1.0,
+      "alpha_transfer": 1.0,
+      "alpha_transfer_tied": 1.0,
+      "baseline_audit": {
+        "checked_intervals": 96,
+        "complete_coverage": true,
+        "converged_checks": 96,
+        "coverage_counts": {
+          "all_bus_count": 16,
+          "enabled_transformer_count": 5,
+          "energized_voltage_node_count": 41,
+          "feeder_rating_multiplier": 1.0,
+          "line_count": 12,
+          "line_thermal_in_scope": false,
+          "monitored_bus_count": 16,
+          "monitored_voltage_node_count": 41,
+          "monitored_vuf_bus_count": 11,
+          "rated_transformer_count": 5,
+          "three_phase_bus_count": 11,
+          "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
+          "transformer_rating_basis": "NATIVE_SYSTEM_TOTAL_KVA",
+          "transformer_rating_coverage": 1.0,
+          "transformer_rating_multiplier": 1.0
+        },
+        "coverage_ratio": 1.0,
+        "explicit_physical_witness": false,
+        "failure_class": "NONE",
+        "feasible": true,
+        "feeder_loading_max": 0.5965433421801234,
+        "first_failure_slot": null,
+        "nonconverged_checks": 0,
+        "numerical_failure_checks": 0,
+        "physical_violation_checks": 0,
+        "power_flow_evaluations": 96,
+        "reused_baseline_intervals": 0,
+        "slot_trace": [
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 0
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 1
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 2
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 3
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 4
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 5
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 6
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 7
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 8
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 9
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 10
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 11
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 12
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 13
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 14
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 15
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 16
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 17
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 18
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 19
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 20
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 21
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 22
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 23
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 24
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 25
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 26
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 27
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 28
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 29
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 30
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 31
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 32
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 33
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 34
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 35
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 36
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 37
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 38
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 39
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 40
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 41
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 42
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 43
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 44
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 45
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 46
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 47
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 48
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 49
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 50
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 51
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 52
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 53
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 54
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 55
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 56
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 57
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 58
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 59
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 60
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 61
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 62
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 63
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 64
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 65
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 66
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 67
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 68
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 69
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 70
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 71
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 72
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 73
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 74
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 75
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 76
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 77
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 78
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 79
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 80
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 81
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 82
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 83
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 84
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 85
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 86
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 87
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 88
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 89
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 90
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 91
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 92
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 93
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 94
+          },
+          {
+            "converged": true,
+            "failure_class": "NONE",
+            "feasible": true,
+            "numerical_failure": false,
+            "physical_witness": false,
+            "slot": 95
+          }
+        ],
+        "transformer_loading_max": 0.7644602838080311,
+        "violation_count": 0,
+        "vmax": 1.049922084690863,
+        "vmin": 0.9927181906668245,
+        "vufmax": 1.5748829058802425
+      },
+      "baseline_schedule_sha256": "6280af04e4c13212c2ad5bfaa178151743c9628d27ec0378f333ebe9450b7dd4",
+      "baseline_status": "VALID",
+      "bus_phase_time_sha256": "ccae7f8c3f212203a1cac0a71ce685ad5038111b310d92df14731a4596e3a202",
+      "call_time": "19:00",
+      "canonical_schedule_reused": false,
+      "data_role": "development_pilot",
+      "derived_ev_invariant_errors": {
+        "max_availability_violation_kw": 0.0,
+        "max_capacity_violation_kwh": 0.0,
+        "max_charge_limit_violation_kw": 0.0,
+        "max_departure_error_kwh": 4.405364961712621e-13,
+        "max_discharge_budget_violation_kwh": 0.0,
+        "max_discharge_limit_violation_kw": 0.0,
+        "max_ev_invariant_error": 4.405364961712621e-13,
+        "max_reserve_violation_kwh": 0.0,
+        "max_schedule_identity_error_kw": 0.0,
+        "simultaneous_slots": 0
+      },
+      "direction": "dec",
+      "duration_min": 60,
+      "eligible_for_scientific_denominator": true,
+      "ev_invariant_errors": {
+        "max_availability_violation_kw": 0.0,
+        "max_capacity_violation_kwh": 0.0,
+        "max_charge_limit_violation_kw": 0.0,
+        "max_departure_error_kwh": 4.405364961712621e-13,
+        "max_discharge_budget_violation_kwh": 0.0,
+        "max_discharge_limit_violation_kw": 0.0,
+        "max_ev_invariant_error": 4.405364961712621e-13,
+        "max_reserve_violation_kwh": 0.0,
+        "max_schedule_identity_error_kw": 0.0,
+        "simultaneous_slots": 0
+      },
+      "evaluation_id": "v20_core_ieee13_1900_17__dec__60m",
+      "f_bal_kw": 392.76050958999724,
+      "feeder": "ieee13",
+      "legacy_verifier_reused": false,
+      "legacy_verifier_source_requested_duration_min": 60,
+      "max_availability_violation_kw": 0.0,
+      "max_capacity_violation_kwh": 0.0,
+      "max_charge_limit_violation_kw": 0.0,
+      "max_departure_error_kwh": 4.405364961712621e-13,
+      "max_discharge_budget_violation_kwh": 0.0,
+      "max_discharge_limit_violation_kw": 0.0,
+      "max_ev_invariant_error": 4.405364961712621e-13,
+      "max_reserve_violation_kwh": 0.0,
+      "max_schedule_identity_error_kw": 0.0,
+      "monotonic_closure_promoted": false,
+      "protocol_version": "EV-FLEX-BIAS-V2.1-PILOT",
+      "raw_schedule_failure_by_duration": {},
+      "reported_ev_invariant_errors": {
+        "max_capacity_violation_kwh": 0.0,
+        "max_departure_error_kwh": 4.405364961712621e-13,
+        "max_ev_invariant_error": 4.405364961712621e-13,
+        "max_reserve_violation_kwh": 0.0,
+        "simultaneous_slots": 0
+      },
+      "requested_duration_min": 60,
+      "reuse_source_requested_duration_min": null,
+      "scenario_id": "ieee13_1900_17",
+      "scenario_seed": 2026071616,
+      "schedule_sha256": "063a9ba3ecfdcf417363de075b36a141db3bfa43ff1d739be1072f6034254f79",
+      "scientific_status": "VALID",
+      "simultaneous_slots": 0,
+      "source_duration_min": 60,
+      "status": "SUCCESS",
+      "tie_break_detail": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "tie_break_reused": false,
+      "tie_break_source_requested_duration_min": 60,
+      "tie_break_status": "SUCCESS",
+      "tie_bus_phase_time_sha256": "5808b78f7d0cd62ee1369fe22f06de99949415ab0bf995e80fd1fbacd15846bf",
+      "tie_comparator_valid": true,
+      "tie_declared_offer_absolute_gap_kw": 3.410605131648481e-13,
+      "tie_declared_offer_identity": true,
+      "tie_max_bus_time_error_kw": 4.405364961712621e-13,
+      "tie_max_ev_invariant_error": 4.405364961712621e-13,
+      "tie_offer_relative_difference": 0.0,
+      "tie_offer_retention": 1.0,
+      "tie_original_phase_l1": 4611.294559277417,
+      "tie_original_schedule_sha256": "063a9ba3ecfdcf417363de075b36a141db3bfa43ff1d739be1072f6034254f79",
+      "tie_phase_l1": 3336.6037006034076,
+      "tie_primary_objective": 3298.735869229801,
+      "tie_primary_objective_optimum": 3298.7358692297357,
+      "tie_primary_objective_original": 3298.7358692298003,
+      "tie_primary_objective_original_relative_gap": 1.9575415063757785e-14,
+      "tie_primary_objective_relative_gap": 1.985112513507832e-14,
+      "tie_primary_objective_tied_relative_gap": 1.985112513507832e-14,
+      "tie_schedule_sha256": "12cbfdb47feccedbf8b50d113e82a15decebee95257bca9cc0630fae71f7a7f1",
+      "tie_simultaneous_slots": 0,
+      "timing_independent_schedule": true,
+      "timing_reused": false,
+      "timing_source_requested_duration_min": 60,
+      "vehicle_identity_sha256": "52c43ac705553c849953e312edab421a818526cdfa15a320f84bc1bd02b5a621",
+      "work_unit_id": "v20_work_ieee13_1900_17__dec"
+    }
+  ],
+  "protocol_version": "EV-FLEX-BIAS-V2.1-PILOT",
+  "resource_policy": {
+    "environment": {
+      "BLIS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    },
+    "numeric_threads": 1,
+    "workers": 1
+  },
+  "scenario_seed": 2026071616,
+  "status": "SUCCESS",
+  "work_unit_id": "v20_work_ieee13_1900_17__dec"
+}
