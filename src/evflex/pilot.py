@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+from decimal import Decimal, InvalidOperation
+from numbers import Number
 from pathlib import Path
 from typing import Any
 
@@ -54,7 +56,9 @@ def load_pilot_config(repo_root: str | Path) -> dict[str, Any]:
         source_design[scenario_id] = {
             "feeder": first["feeder"],
             "call_time": first["call_time"],
-            "scenario_seed": int(first["scenario_seed"]),
+            "scenario_seed": _strict_int(
+                first["scenario_seed"], f"V2 source scenario {scenario_id} seed"
+            ),
         }
         for row in group.itertuples(index=False):
             key = (row.scenario_id, row.direction)
@@ -70,7 +74,9 @@ def load_pilot_config(repo_root: str | Path) -> dict[str, Any]:
                 "feeder": row.feeder,
                 "call_time": row.call_time,
                 "direction": row.direction,
-                "scenario_seed": int(row.scenario_seed),
+                "scenario_seed": _strict_int(
+                    row.scenario_seed, f"V2 source row {key} seed"
+                ),
                 "evaluation_ids": evaluation_ids,
             }
 
@@ -95,6 +101,19 @@ def _fail(detail: str) -> None:
     raise ValueError(f"pilot design: {detail}")
 
 
+def _strict_int(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, (str, Number)):
+        _fail(f"{label} must be a finite, lossless integer")
+    try:
+        text = value.strip() if isinstance(value, str) else str(value)
+        parsed = Decimal(text)
+        if not parsed.is_finite() or parsed != parsed.to_integral_value():
+            raise ValueError("value is non-finite or fractional")
+        return int(parsed)
+    except (InvalidOperation, TypeError, ValueError, OverflowError) as exc:
+        _fail(f"{label} must be a finite, lossless integer: {exc}")
+
+
 def validate_pilot_manifest(
     frame: pd.DataFrame, config: dict[str, Any]
 ) -> dict[str, object]:
@@ -106,7 +125,9 @@ def validate_pilot_manifest(
     feeders = tuple(config["feeders"])
     call_times = tuple(config["call_times"])
     directions = tuple(config["directions"])
-    durations_expected = tuple(int(value) for value in config["durations_min"])
+    durations_expected = tuple(
+        _strict_int(value, "config duration") for value in config["durations_min"]
+    )
     expected_work_units = len(scenario_ids) * len(directions)
 
     if len(frame) != expected_work_units:
@@ -165,10 +186,9 @@ def validate_pilot_manifest(
             _fail(f"scenario {row.scenario_id} has the wrong feeder")
         if row.call_time != expected_scenario["call_time"]:
             _fail(f"scenario {row.scenario_id} has the wrong call time")
-        try:
-            observed_seed = int(row.scenario_seed)
-        except (TypeError, ValueError):
-            _fail(f"scenario {row.scenario_id} has a non-integer seed")
+        observed_seed = _strict_int(
+            row.scenario_seed, f"scenario {row.scenario_id} seed"
+        )
         if observed_seed != expected_scenario["scenario_seed"]:
             _fail(f"scenario {row.scenario_id} seed differs from the V2 manifest")
         try:
@@ -207,7 +227,7 @@ def validate_pilot_manifest(
 
     durations = sorted(
         {
-            int(match.group(1))
+            _strict_int(match.group(1), f"evaluation ID {evaluation_id} duration")
             for evaluation_id in evaluation_ids
             if (match := _DURATION_SUFFIX.search(evaluation_id))
         }

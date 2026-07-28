@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
+import shutil
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -99,6 +100,90 @@ def test_seed_that_differs_from_v2_manifest_is_rejected():
 
     with pytest.raises(ValueError, match="pilot design"):
         validate_pilot_manifest(frame, config)
+
+
+def test_fractional_pilot_seed_is_rejected_without_truncation():
+    load_pilot_config, validate_pilot_manifest = _pilot_api()
+    config = load_pilot_config(REPO_ROOT)
+    frame = _valid_frame()
+    frame["scenario_seed"] = frame["scenario_seed"].astype(object)
+    frame.loc[frame.index[0], "scenario_seed"] = 2026071616.5
+
+    with pytest.raises(ValueError, match="pilot design"):
+        validate_pilot_manifest(frame, config)
+
+
+def test_fractional_config_duration_is_rejected_without_truncation():
+    load_pilot_config, validate_pilot_manifest = _pilot_api()
+    config = load_pilot_config(REPO_ROOT)
+    config["durations_min"][0] = 15.9
+
+    with pytest.raises(ValueError, match="pilot design"):
+        validate_pilot_manifest(_valid_frame(), config)
+
+
+def test_fractional_v2_source_seed_is_rejected_without_truncation(tmp_path):
+    load_pilot_config, _ = _pilot_api()
+    (tmp_path / "config").mkdir()
+    (tmp_path / "manifests").mkdir()
+    shutil.copy2(
+        REPO_ROOT / "config" / "pilot_gate_v2_1.json",
+        tmp_path / "config" / "pilot_gate_v2_1.json",
+    )
+    source = pd.read_csv(REPO_ROOT / "manifests" / "core_work_units_v2_0.csv")
+    source["scenario_seed"] = source["scenario_seed"].astype(object)
+    source.loc[source["scenario_id"] == "ieee13_1900_17", "scenario_seed"] = (
+        2026071616.5
+    )
+    source.to_csv(
+        tmp_path / "manifests" / "core_work_units_v2_0.csv",
+        index=False,
+    )
+
+    with pytest.raises(ValueError, match="pilot design"):
+        load_pilot_config(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "seed",
+    [float("nan"), float("inf"), float("-inf"), True],
+    ids=["nan", "positive-inf", "negative-inf", "bool"],
+)
+def test_non_finite_and_boolean_pilot_seeds_are_rejected(seed):
+    load_pilot_config, validate_pilot_manifest = _pilot_api()
+    config = load_pilot_config(REPO_ROOT)
+    frame = _valid_frame()
+    frame["scenario_seed"] = frame["scenario_seed"].astype(object)
+    frame.loc[frame.index[0], "scenario_seed"] = seed
+
+    with pytest.raises(ValueError, match="pilot design"):
+        validate_pilot_manifest(frame, config)
+
+
+@pytest.mark.parametrize(
+    "duration",
+    [float("nan"), float("inf"), float("-inf"), True],
+    ids=["nan", "positive-inf", "negative-inf", "bool"],
+)
+def test_non_finite_and_boolean_config_durations_are_rejected(duration):
+    load_pilot_config, validate_pilot_manifest = _pilot_api()
+    config = load_pilot_config(REPO_ROOT)
+    config["durations_min"][0] = duration
+
+    with pytest.raises(ValueError, match="pilot design"):
+        validate_pilot_manifest(_valid_frame(), config)
+
+
+def test_lossless_integer_like_numeric_values_are_accepted():
+    load_pilot_config, validate_pilot_manifest = _pilot_api()
+    config = load_pilot_config(REPO_ROOT)
+    config["durations_min"] = ["15.0", 30.0, "60"]
+    frame = _valid_frame()
+    frame["scenario_seed"] = frame["scenario_seed"].map(lambda value: f"{value}.0")
+
+    report = validate_pilot_manifest(frame, config)
+
+    assert report["durations"] == [15, 30, 60]
 
 
 def _drop_one_direction(frame: pd.DataFrame) -> None:
