@@ -447,8 +447,8 @@ def test_phase_tie_break_preserves_dec_reserve_and_v2g_budget():
     ]
     baseline = np.zeros((3, 96), dtype=float)
     original = baseline.copy()
-    original[:, 0] = [-1.0, 0.0, 1.0]
-    original[:, 1] = [1.0, 0.0, -1.0]
+    original[:, 0] = -1.0
+    original[:, 1] = 1.0
 
     tied = phase_balanced_tie_break(
         engine,
@@ -534,6 +534,23 @@ def test_phase_tie_break_is_ev_id_canonical_and_hashes_exact_float64():
     )
 
 
+def test_schedule_hash_preserves_large_integer_ev_ids_without_float_rounding():
+    canonical_schedule_sha256, _ = _tie_break_api()
+    first_id = 2**53
+    second_id = first_id + 1
+    fleet = [_toy_ev(first_id, 1), _toy_ev(second_id, 2)]
+    schedule = np.zeros((2, 96), dtype=float)
+    schedule[0, 0] = 1.0
+    schedule[1, 0] = 2.0
+
+    first = canonical_schedule_sha256(fleet, schedule)
+    second = canonical_schedule_sha256(
+        [fleet[1], fleet[0]], schedule[[1, 0]]
+    )
+
+    assert first == second
+
+
 def test_phase_tie_break_rejects_duplicate_identity_and_nonfinite_schedule():
     _, phase_balanced_tie_break = _tie_break_api()
     from evflex.engine import load_archived_engine
@@ -554,6 +571,81 @@ def test_phase_tie_break_rejects_duplicate_identity_and_nonfinite_schedule():
         phase_balanced_tie_break(
             engine, fleet, baseline, nonfinite, direction="inc"
         )
+
+
+def test_phase_tie_break_rejects_conflicting_direction_and_mode():
+    _, phase_balanced_tie_break = _tie_break_api()
+    from evflex.engine import load_archived_engine
+
+    engine = load_archived_engine(
+        REPO_ROOT / "legacy" / "d5_v1_2" / "duration_aware_engine_v1_2.py"
+    )
+    fleet, baseline, original = _toy_phase_case()
+
+    with pytest.raises(ValueError, match="conflict"):
+        phase_balanced_tie_break(
+            engine,
+            fleet,
+            baseline,
+            original,
+            direction="inc",
+            mode="v2g",
+        )
+
+
+def test_phase_tie_break_derives_offer_and_rejects_false_declared_identity():
+    _, phase_balanced_tie_break = _tie_break_api()
+    from evflex.engine import load_archived_engine
+
+    engine = load_archived_engine(
+        REPO_ROOT / "legacy" / "d5_v1_2" / "duration_aware_engine_v1_2.py"
+    )
+    fleet, baseline, original = _toy_phase_case()
+
+    tied = phase_balanced_tie_break(
+        engine,
+        fleet,
+        baseline,
+        original,
+        direction="inc",
+        call_slots=[0],
+        offer_kw=999.0,
+    )
+
+    assert tied["success"] is True
+    assert tied["original_offer_kw"] == pytest.approx(3.0)
+    assert tied["declared_offer_kw"] == pytest.approx(999.0)
+    assert tied["declared_offer_absolute_gap_kw"] == pytest.approx(996.0)
+    assert tied["declared_offer_identity"] is False
+    assert tied["comparator_valid"] is False
+    assert tied["status"] == "COMPARATOR_INVALID"
+
+
+def test_phase_tie_break_requires_original_primary_objective_identity():
+    _, phase_balanced_tie_break = _tie_break_api()
+    from evflex.engine import load_archived_engine
+
+    engine = load_archived_engine(
+        REPO_ROOT / "legacy" / "d5_v1_2" / "duration_aware_engine_v1_2.py"
+    )
+    fleet = [
+        _toy_ev(1, 1, target=0.5),
+        _toy_ev(2, 1, target=0.5),
+    ]
+    baseline = np.zeros((2, 96), dtype=float)
+    baseline[0, :2] = [2.0, 0.0]
+    baseline[1, :2] = [0.0, 2.0]
+    original = baseline[[1, 0]].copy()
+
+    tied = phase_balanced_tie_break(
+        engine, fleet, baseline, original, direction="inc"
+    )
+
+    assert tied["success"] is True
+    assert tied["primary_objective_original_relative_gap"] > 1e-6
+    assert tied["primary_objective_tied_relative_gap"] <= 1e-6
+    assert tied["comparator_valid"] is False
+    assert tied["status"] == "COMPARATOR_INVALID"
 
 
 def test_phase_tie_break_fails_closed_for_an_invalid_original_comparator():
@@ -647,7 +739,7 @@ class _FakePilotRuntime:
         fail_durations=(),
         tie_comparator_valid=True,
     ):
-        self.fleet = [_toy_ev(1, 1)]
+        self.fleet = [_toy_ev(1, 1, departure=3)]
         self.baseline = np.zeros((1, 96), dtype=float)
         self.load_scales = np.ones(96, dtype=float)
         self.raw_calls = []
@@ -657,6 +749,7 @@ class _FakePilotRuntime:
         self.tie_calls = 0
         self.timing_calls = 0
         self.audit_events = []
+        self.retain_slot_results_calls = []
         self.baseline_feasible = baseline_feasible
         self.flex_by_duration = flex_by_duration or {
             15: 12.0,
@@ -678,6 +771,7 @@ class _FakePilotRuntime:
         schedule = self.baseline.copy()
         schedule[0, 0] = 1.0
         schedule[0, 1] = self.schedule_marker_by_duration[duration]
+        schedule[0, 2] = 1.0 - self.schedule_marker_by_duration[duration]
         return {
             "success": True,
             "duration_min": duration,
@@ -702,8 +796,10 @@ class _FakePilotRuntime:
         *,
         baseline_slot_results,
         stop_on_violation,
+        retain_slot_results=True,
     ):
         assert cache is not None
+        self.retain_slot_results_calls.append(retain_slot_results)
         alpha = float(np.asarray(schedule)[0, 0])
         baseline_call = baseline_slot_results is None
         if baseline_call:
@@ -733,6 +829,17 @@ class _FakePilotRuntime:
             "slot_results": (
                 [{"slot": slot} for slot in range(96)] if baseline_call else []
             ),
+            "slot_audit_trace": [
+                {
+                    "slot": slot,
+                    "feasible": feasible,
+                    "failure_class": "NONE" if feasible else "PHYSICAL_CONSTRAINT",
+                    "converged": True,
+                    "numerical_failure": False,
+                }
+                for slot in range(checked)
+            ],
+            "physical_violation_checks": 0 if feasible else 1,
             "vmin": 0.99,
             "vmax": 1.01,
             "vufmax": 0.2,
@@ -850,23 +957,45 @@ def test_pilot_work_unit_emits_three_compact_balanced_only_evaluations(tmp_path)
     ]
     assert runtime.cache_builds == 1
     assert runtime.baseline_calls == 1
-    assert runtime.audit_events[:5] == [
-        "baseline",
-        "timing",
-        "timing",
-        "timing",
-        "timing",
-    ]
+    assert runtime.audit_events[0] == "baseline"
+    assert runtime.audit_events[1] == "path"
+    assert runtime.retain_slot_results_calls[0] is True
+    assert all(
+        retain is False for retain in runtime.retain_slot_results_calls[1:]
+    )
     assert all(row["baseline_audit"]["checked_intervals"] == 96 for row in rows)
+    assert all(len(row["baseline_audit"]["slot_trace"]) == 96 for row in rows)
+    assert len({row["baseline_schedule_sha256"] for row in rows}) == 1
     assert all(row["alpha_transfer"] == row["alpha_prefix"] for row in rows)
     assert all(row["alpha_sup"] >= 0.68 for row in rows)
     assert all(row["alpha_nonmonotone"] is True for row in rows)
     assert all(row["alpha_legacy_verifier"] == 0.73 for row in rows)
     assert all(row["tie_comparator_valid"] is True for row in rows)
+    assert all(row["alpha_path_status"] == "VALID" for row in rows)
+    assert all(row["alpha_tie_path_status"] == "VALID" for row in rows)
+    assert all(
+        row["alpha_tie_path_audit"]["numerical_failure_audits"] == 0
+        for row in rows
+    )
     assert all(len(row["alpha1_warm_timing_s"]) == 3 for row in rows)
+    assert all(row["alpha1_timing_status"] == "SUCCESS" for row in rows)
+    assert all(
+        row["alpha1_first_replay_scope"]
+        == "FIRST_IN_PROCESS_REPLAY_NOT_COLD_START"
+        for row in rows
+    )
+    assert all("alpha1_cold_timing_s" not in row for row in rows)
     assert runtime.timing_calls == 12
     assert all(
         row["alpha1_timing_checked_intervals"] == [96, 96, 96, 96]
+        for row in rows
+    )
+    assert all(
+        row["alpha1_timing_numerical_failure_checks"] == [0, 0, 0, 0]
+        for row in rows
+    )
+    assert all(
+        row["alpha1_timing_nonconverged_checks"] == [0, 0, 0, 0]
         for row in rows
     )
     encoded = json.dumps(rows, allow_nan=False)
@@ -885,6 +1014,215 @@ def test_pilot_work_unit_emits_three_compact_balanced_only_evaluations(tmp_path)
         key in forbidden_array_keys
         for row in rows
         for key in row
+    )
+
+
+def test_optional_diagnostic_exceptions_preserve_corrected_primary_result(tmp_path):
+    evaluate_pilot_work_unit = _work_unit_api()
+
+    class FailingDiagnosticsRuntime(_FakePilotRuntime):
+        def alpha_legacy_verifier(self, schedule):
+            self.legacy_calls += 1
+            raise RuntimeError("legacy diagnostic exploded")
+
+        def audit_corrected(self, *args, **kwargs):
+            if (
+                kwargs["baseline_slot_results"] is not None
+                and not kwargs["stop_on_violation"]
+            ):
+                self.timing_calls += 1
+                self.audit_events.append("timing")
+                raise RuntimeError("timing diagnostic exploded")
+            return super().audit_corrected(*args, **kwargs)
+
+        def phase_tie_break(self, *args, **kwargs):
+            self.tie_calls += 1
+            raise RuntimeError("tie diagnostic exploded")
+
+    runtime = FailingDiagnosticsRuntime()
+
+    rows = evaluate_pilot_work_unit(
+        tmp_path,
+        _fake_work_unit(),
+        config=_fake_pilot_config(runtime),
+        perf_counter=_StepClock(),
+    )
+
+    assert len(rows) == 3
+    assert runtime.audit_events[0] == "baseline"
+    assert runtime.audit_events[1] == "path"
+    assert all(row["status"] == "SUCCESS" for row in rows)
+    assert all(row["scientific_status"] == "VALID" for row in rows)
+    assert all(row["alpha_transfer"] is not None for row in rows)
+    assert all(row["alpha_legacy_verifier"] is None for row in rows)
+    assert all(row["alpha_legacy_verifier_status"] == "ERROR" for row in rows)
+    assert all(
+        "legacy diagnostic exploded"
+        in row["alpha_legacy_verifier_detail"]
+        for row in rows
+    )
+    assert all(row["alpha1_timing_status"] == "ERROR" for row in rows)
+    assert all(row["alpha1_first_replay_timing_s"] is None for row in rows)
+    assert all(row["alpha1_warm_timing_s"] == [] for row in rows)
+    assert all("timing diagnostic exploded" in row["alpha1_timing_detail"] for row in rows)
+    assert all(row["tie_comparator_valid"] is False for row in rows)
+    assert all(row["tie_break_status"] == "ERROR" for row in rows)
+    assert all("tie diagnostic exploded" in row["tie_break_detail"] for row in rows)
+
+
+def test_numerical_candidate_invalidates_scientific_alpha_without_physical_boundary(
+    tmp_path,
+):
+    evaluate_pilot_work_unit = _work_unit_api()
+
+    class NumericalCandidateRuntime(_FakePilotRuntime):
+        def audit_corrected(self, schedule, cache, **kwargs):
+            result = super().audit_corrected(schedule, cache, **kwargs)
+            alpha = float(np.asarray(schedule)[0, 0])
+            if kwargs["stop_on_violation"] and alpha == pytest.approx(0.2):
+                result.update(
+                    {
+                        "feasible": False,
+                        "checked_intervals": 96,
+                        "coverage_ratio": 1.0,
+                        "complete_coverage": True,
+                        "converged_checks": 95,
+                        "nonconverged_checks": 1,
+                        "numerical_failure_checks": 1,
+                        "physical_violation_checks": 0,
+                        "violations": [
+                            {
+                                "slot": 17,
+                                "converged": False,
+                                "numerical_failure": True,
+                                "failure_class": "NUMERICAL_INVALID",
+                                "violations": [
+                                    {
+                                        "kind": "numerical_failure",
+                                        "reason": "nonconverged",
+                                    }
+                                ],
+                            }
+                        ],
+                        "slot_audit_trace": [
+                            {
+                                "slot": slot,
+                                "feasible": slot != 17,
+                                "failure_class": (
+                                    "NUMERICAL_INVALID" if slot == 17 else "NONE"
+                                ),
+                                "converged": slot != 17,
+                                "numerical_failure": slot == 17,
+                            }
+                            for slot in range(96)
+                        ],
+                    }
+                )
+            return result
+
+    runtime = NumericalCandidateRuntime()
+
+    rows = evaluate_pilot_work_unit(
+        tmp_path,
+        _fake_work_unit(),
+        config=_fake_pilot_config(runtime),
+        perf_counter=_StepClock(),
+    )
+
+    assert all(row["alpha_transfer"] is None for row in rows)
+    assert all(row["alpha_prefix"] is None for row in rows)
+    assert all(row["alpha_sup"] is None for row in rows)
+    assert all(row["alpha_nonmonotone"] is None for row in rows)
+    assert all(
+        row["scientific_status"] == "NUMERICAL_INVALID_ALPHA_PATH"
+        for row in rows
+    )
+    assert all(row["status"] == "ALPHA_PATH_NUMERICAL_INVALID" for row in rows)
+    trace = rows[0]["alpha_path_audit"]["alpha_trace"]
+    numerical = next(item for item in trace if item["alpha"] == pytest.approx(0.2))
+    assert numerical["failure_class"] == "NUMERICAL_INVALID"
+    assert numerical["nonconverged_checks"] == 1
+    assert numerical["checked_intervals"] == 96
+
+
+def test_timing_and_tie_paths_expose_numerical_status_without_erasing_original(
+    tmp_path,
+):
+    evaluate_pilot_work_unit = _work_unit_api()
+
+    class DiagnosticNumericalRuntime(_FakePilotRuntime):
+        def audit_corrected(self, schedule, cache, **kwargs):
+            result = super().audit_corrected(schedule, cache, **kwargs)
+            values = np.asarray(schedule, dtype=float)
+            timing = (
+                kwargs["baseline_slot_results"] is not None
+                and not kwargs["stop_on_violation"]
+            )
+            tied_path = (
+                kwargs["stop_on_violation"]
+                and values[0, 3] > 0
+                and values[0, 0] == pytest.approx(0.2)
+            )
+            if timing or tied_path:
+                result.update(
+                    {
+                        "feasible": False,
+                        "checked_intervals": 96,
+                        "coverage_ratio": 1.0,
+                        "complete_coverage": True,
+                        "converged_checks": 95,
+                        "nonconverged_checks": 1,
+                        "numerical_failure_checks": 1,
+                        "physical_violation_checks": 0,
+                        "violations": [
+                            {
+                                "slot": 21,
+                                "converged": False,
+                                "numerical_failure": True,
+                                "failure_class": "NUMERICAL_INVALID",
+                                "physical_witness": False,
+                                "violations": [
+                                    {
+                                        "kind": "numerical_failure",
+                                        "reason": "nonconverged",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                )
+            return result
+
+        def phase_tie_break(self, schedule, **kwargs):
+            result = super().phase_tie_break(schedule, **kwargs)
+            result["schedule"] = result["schedule"].copy()
+            result["schedule"][0, 3] = 0.1
+            return result
+
+    runtime = DiagnosticNumericalRuntime()
+
+    rows = evaluate_pilot_work_unit(
+        tmp_path,
+        _fake_work_unit(),
+        config=_fake_pilot_config(runtime),
+        perf_counter=_StepClock(),
+    )
+
+    assert all(row["alpha_path_status"] == "VALID" for row in rows)
+    assert all(row["alpha_transfer"] is not None for row in rows)
+    assert all(row["alpha1_timing_status"] == "NUMERICAL_INVALID" for row in rows)
+    assert all(
+        row["alpha1_timing_nonconverged_checks"] == [1, 1, 1, 1]
+        for row in rows
+    )
+    assert all(
+        row["alpha_tie_path_status"] == "NUMERICAL_INVALID"
+        for row in rows
+    )
+    assert all(row["alpha_transfer_tied"] is None for row in rows)
+    assert all(
+        row["alpha_tie_path_audit"]["numerical_failure_audits"] > 0
+        for row in rows
     )
 
 
@@ -1151,13 +1489,15 @@ def test_solver_invalid_duration_has_explicit_null_not_run_semantics(tmp_path):
     failed = next(row for row in rows if row["duration_min"] == 60)
     assert failed["status"] == "SCHEDULE_SOLVER_INVALID"
     assert failed["scientific_status"] == "INVALID_SCHEDULE"
+    assert isinstance(failed["baseline_schedule_sha256"], str)
+    assert len(failed["baseline_schedule_sha256"]) == 64
     assert failed["source_duration_min"] is None
     assert failed["alpha_transfer"] is None
     assert failed["alpha_legacy_verifier"] is None
     assert failed["alpha_transfer_tied"] is None
     assert failed["tie_comparator_valid"] is None
     assert failed["tie_break_status"] == "NOT_RUN_SCHEDULE_SOLVER_INVALID"
-    assert failed["alpha1_cold_timing_s"] is None
+    assert failed["alpha1_first_replay_timing_s"] is None
     assert failed["alpha1_warm_timing_s"] == []
     assert failed["eligible_for_scientific_denominator"] is False
     json.dumps(rows, allow_nan=False)
@@ -1183,6 +1523,63 @@ def test_invalid_tie_comparator_cannot_supply_scientific_tie_alpha(tmp_path):
     assert all(row["alpha_tie_sup"] is None for row in rows)
 
 
+def test_raw_balanced_schedule_recomputes_all_ev_invariants_without_defaults():
+    import evflex.pilot as pilot_module
+
+    fleet = [
+        _toy_ev(
+            1,
+            1,
+            initial=1.0,
+            target=1.0,
+            reserve=0.5,
+            arrival=2,
+            departure=4,
+            pch=1.0,
+            pdis=1.0,
+            v2g=False,
+            max_discharge=0.0,
+        )
+    ]
+    baseline = np.zeros((1, 96), dtype=float)
+    schedule = baseline.copy()
+    schedule[0, 0] = 3.0
+    schedule[0, 2] = -3.0
+    raw = {
+        "success": True,
+        "physical_feasible": True,
+        "flex_kw": 8.0,
+        "schedule": schedule,
+    }
+
+    result = pilot_module._normalize_raw_balanced_result(
+        raw,
+        15,
+        fleet,
+        baseline,
+        direction="dec",
+    )
+
+    assert result["physical_feasible"] is False
+    assert result["max_availability_violation_kw"] == pytest.approx(3.0)
+    assert result["max_discharge_limit_violation_kw"] == pytest.approx(3.0)
+    assert result["max_discharge_budget_violation_kwh"] == pytest.approx(0.75)
+    assert result["max_reserve_violation_kwh"] > 0
+    assert result["max_ev_invariant_error"] >= 3.0
+    assert set(result["ev_invariant_errors"]) == {
+        "max_departure_error_kwh",
+        "max_reserve_violation_kwh",
+        "max_capacity_violation_kwh",
+        "max_discharge_budget_violation_kwh",
+        "max_availability_violation_kw",
+        "max_charge_limit_violation_kw",
+        "max_discharge_limit_violation_kw",
+        "max_schedule_identity_error_kw",
+        "simultaneous_slots",
+        "max_ev_invariant_error",
+    }
+
+
 class _FakeAuditEngine:
     @staticmethod
     def group_vector(fleet, power, groups, model):
@@ -1206,6 +1603,10 @@ def _fake_formal_coverage():
         "line_thermal_in_scope": False,
         "feeder_rating_multiplier": 1.0,
         "transformer_ratings_kva": {"tx1": 100.0},
+        "transformer_raw_ratings_kva": {"tx1": 100.0},
+        "transformer_rating_multiplier": 1.0,
+        "transformer_rating_basis": "NATIVE_SYSTEM_TOTAL_KVA",
+        "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
     }
 
 
@@ -1225,7 +1626,7 @@ class _FakeAuditNetwork:
     def audit_context(self):
         return {
             "adapter_schema": "evflex.pilot.network-audit",
-            "adapter_version": 1,
+            "adapter_version": 2,
             "feeder": self.feeder,
             "model": self.model,
             "load_scale": self.load_scale,
@@ -1236,6 +1637,9 @@ class _FakeAuditNetwork:
             "feeder_loading_limit_pu": 1.0,
             "feeder_kva": self.feeder_kva,
             "line_thermal_in_scope": False,
+            "transformer_rating_multiplier": 1.0,
+            "transformer_rating_basis": "NATIVE_SYSTEM_TOTAL_KVA",
+            "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
         }
 
     def evaluate(self, power):
@@ -1525,7 +1929,15 @@ def test_full_network_check_early_stop_cannot_claim_complete_coverage():
         if call_index == 0:
             return {
                 "feasible": False,
-                "violations": [("V:test.1", 0.90, 0.95, "lo")],
+                "violations": [
+                    {
+                        "kind": "physical_constraint",
+                        "metric": "V:test.1",
+                        "value": 0.90,
+                        "limit": 0.95,
+                        "direction": "lo",
+                    }
+                ],
             }
         return {}
 
@@ -1542,6 +1954,78 @@ def test_full_network_check_early_stop_cannot_claim_complete_coverage():
     assert result["complete_coverage"] is False
     assert result["eligible_for_v01_pass"] is False
     assert result["power_flow_evaluations"] == 1
+    assert result["violations"][0]["failure_class"] == "PHYSICAL_CONSTRAINT"
+    assert result["violations"][0]["physical_witness"] is True
+
+
+def test_full_network_check_compact_mode_does_not_retain_full_metric_records():
+    full_network_check = _full_network_api()
+    network = _FakeAuditNetwork()
+    inputs = _audit_inputs(network)
+    baseline_result = full_network_check(**inputs)
+    network.calls.clear()
+
+    compact = full_network_check(
+        **inputs,
+        baseline_slot_results=baseline_result["slot_results"],
+        retain_slot_results=False,
+    )
+
+    assert compact["feasible"] is True
+    assert compact["checked_intervals"] == 96
+    assert compact["slot_results"] == []
+    assert len(compact["slot_audit_trace"]) == 96
+    assert all(
+        set(item)
+        <= {
+            "slot",
+            "feasible",
+            "converged",
+            "numerical_failure",
+            "failure_class",
+            "physical_witness",
+        }
+        for item in compact["slot_audit_trace"]
+    )
+    assert compact["coverage_counts"]["all_bus_count"] == 1
+    assert compact["reused_baseline_intervals"] == 96
+    assert network.calls == []
+
+
+def test_full_network_check_never_early_stops_on_numerical_failure():
+    full_network_check = _full_network_api()
+
+    def result_for_call(call_index):
+        if call_index == 0:
+            return {
+                "feasible": False,
+                "converged": False,
+                "numerical_failure": True,
+                "violations": [
+                    {
+                        "kind": "numerical_failure",
+                        "reason": "nonconverged",
+                        "metric": "power_flow",
+                    }
+                ],
+            }
+        return {}
+
+    network = _FakeAuditNetwork(result_for_call)
+
+    result = full_network_check(
+        **_audit_inputs(network),
+        stop_on_violation=True,
+        retain_slot_results=False,
+    )
+
+    assert result["feasible"] is False
+    assert result["checked_intervals"] == 96
+    assert result["nonconverged_checks"] == 1
+    assert result["numerical_failure_checks"] == 1
+    assert result["physical_violation_checks"] == 0
+    assert result["violations"][0]["failure_class"] == "NUMERICAL_INVALID"
+    assert result["violations"][0]["physical_witness"] is False
 
 
 class _FakeSolution:
@@ -1636,6 +2120,9 @@ class _FakeCktElement:
 
     def NumTerminals(self):
         return 2
+
+    def NumPhases(self):
+        return 1
 
 
 class _FakeLines:
@@ -1744,6 +2231,29 @@ def test_pilot_network_handles_legacy_prepare_dynamic_dispatch():
     assert coverage["line_thermal_in_scope"] is False
     assert coverage["feeder_rating_multiplier"] == 1.0
     assert coverage["transformer_ratings_kva"] == {"tx1": 100.0}
+    assert coverage["transformer_raw_ratings_kva"] == {"tx1": 100.0}
+    assert coverage["transformer_rating_basis"] == "NATIVE_SYSTEM_TOTAL_KVA"
+    assert coverage["transformer_rating_multiplier"] == 1.0
+
+
+def test_balanced_positive_sequence_transformer_rating_is_normalized_to_system_total():
+    build_pilot_network_class, _ = _network_api()
+    config = _minimal_network_config()
+    config["feeder_kva"]["ieee13"] = 5000.0
+    pilot_class = build_pilot_network_class(_DynamicDispatchNetwork, config)
+
+    network = pilot_class("ieee13", object(), "balanced", 1.0)
+    coverage = network.coverage_report()
+
+    assert network.base["transformer_loading_max"] == pytest.approx(50.0 / 300.0)
+    assert coverage["transformer_raw_ratings_kva"] == {"tx1": 100.0}
+    assert coverage["transformer_ratings_kva"] == {"tx1": 300.0}
+    assert (
+        coverage["transformer_rating_basis"]
+        == "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
+    )
+    assert coverage["transformer_power_basis"] == "SYSTEM_TOTAL_TERMINAL_POWER"
+    assert coverage["transformer_rating_multiplier"] == 3.0
 
 
 def test_pilot_network_restores_cwd_after_legacy_construction(tmp_path):
@@ -1935,6 +2445,55 @@ def test_real_three_phase_pilot_network_has_complete_formal_coverage(
         "feeder_kva"
     ][feeder]
     assert result["feeder_loading"] == pytest.approx(expected_feeder_loading)
+
+
+def test_real_ieee13_balanced_transformer_rating_basis_smoke():
+    load_pilot_config, _ = _pilot_api()
+    _, configure_pilot_core = _network_api()
+    from evflex.engine import load_archived_engine
+    from evflex.fleet import load_fleet_bundle
+    from evflex.network import configure_core, load_legacy_core
+
+    config = load_pilot_config(REPO_ROOT)
+    engine = load_archived_engine(
+        REPO_ROOT / "legacy" / "d5_v1_2" / "duration_aware_engine_v1_2.py"
+    )
+    core = load_legacy_core(
+        REPO_ROOT / "legacy" / "d5_v1_2" / "network_core_v1_2.py"
+    )
+    configure_core(core, REPO_ROOT)
+    configure_pilot_core(core, config)
+    bundle = load_fleet_bundle(
+        REPO_ROOT, "ieee13_1900_17", engine, core
+    )
+    static_fleet = engine.static_fleet_frame(bundle.fleet)
+    network = core.Network(
+        "ieee13",
+        static_fleet,
+        "balanced",
+        float(bundle.load_scales[engine.CALL_SLOTS["19:00"]]),
+    )
+    coverage = network.coverage_report()
+
+    assert network.base["converged"] is True
+    assert network.base["numerical_failure"] is False
+    assert coverage["transformer_rating_multiplier"] == 3.0
+    assert (
+        coverage["transformer_rating_basis"]
+        == "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
+    )
+    assert coverage["transformer_raw_ratings_kva"]["sub"] == pytest.approx(
+        5000.0 / 3.0
+    )
+    assert coverage["transformer_ratings_kva"]["sub"] == pytest.approx(5000.0)
+    assert coverage["transformer_ratings_kva"]["reg1"] == pytest.approx(4998.0)
+    assert coverage["transformer_ratings_kva"]["xfm1"] == pytest.approx(500.0)
+    transformer_loadings = [
+        value
+        for name, value in network.base["metrics"].items()
+        if name.startswith("S:transformer:")
+    ]
+    assert max(transformer_loadings) < 1.0
 
 
 def _drop_one_direction(frame: pd.DataFrame) -> None:

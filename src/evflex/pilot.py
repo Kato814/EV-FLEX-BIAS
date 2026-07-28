@@ -20,7 +20,7 @@ from scipy.sparse import coo_matrix, csr_matrix, hstack, issparse, vstack
 
 _DURATION_SUFFIX = re.compile(r"__(\d+)m$")
 _PILOT_ADAPTER_SCHEMA = "evflex.pilot.network-audit"
-_PILOT_ADAPTER_VERSION = 1
+_PILOT_ADAPTER_VERSION = 2
 _REQUIRED_COLUMNS = (
     "work_unit_id",
     "protocol_version",
@@ -282,6 +282,11 @@ def phase_balanced_tie_break(
         raise ValueError("mode must be 'v1g' or 'v2g'")
     if direction is not None and direction not in {"inc", "dec"}:
         raise ValueError("direction must be 'inc' or 'dec'")
+    expected_mode = {"inc": "v1g", "dec": "v2g"}.get(direction)
+    if expected_mode is not None and mode != expected_mode:
+        raise ValueError(
+            f"direction/mode conflict: {direction!r} requires {expected_mode!r}"
+        )
 
     order, identity_tokens = _canonical_fleet_order(fleet)
     sorted_fleet = [fleet[int(index)] for index in order]
@@ -329,6 +334,14 @@ def phase_balanced_tie_break(
         "bus_time_schedule": None,
         "max_bus_time_error_kw": None,
         "bus_labels": buses,
+        "declared_offer_kw": None,
+        "declared_offer_absolute_gap_kw": None,
+        "declared_offer_relative_gap": None,
+        "declared_offer_identity": None,
+        "primary_objective_original_absolute_gap": None,
+        "primary_objective_original_relative_gap": None,
+        "primary_objective_tied_absolute_gap": None,
+        "primary_objective_tied_relative_gap": None,
     }
 
     try:
@@ -418,13 +431,16 @@ def phase_balanced_tie_break(
         sorted_charge,
         sorted_discharge,
     )
-    primary_relative_gap = max(
-        0.0,
-        (tied_primary - primary_objective)
-        / max(1.0, abs(primary_objective)),
+    primary_absolute_gap = abs(tied_primary - primary_objective)
+    primary_relative_gap = (
+        primary_absolute_gap / max(1.0, abs(primary_objective))
     )
     original_primary = _schedule_primary_objective(
         lp, sorted_base, sorted_original
+    )
+    original_primary_absolute_gap = abs(original_primary - primary_objective)
+    original_primary_relative_gap = (
+        original_primary_absolute_gap / max(1.0, abs(primary_objective))
     )
     tied_phase_objective = _phase_delta_l1(
         sorted_fleet, sorted_schedule, sorted_base
@@ -451,8 +467,21 @@ def phase_balanced_tie_break(
         sorted_schedule,
         direction=direction,
         call_slots=call_slots,
-        offer_kw=offer_kw,
     )
+    if offer_kw is None:
+        declared_offer = None
+        declared_offer_absolute_gap = None
+        declared_offer_relative_gap = None
+        declared_offer_identity = True
+    else:
+        declared_offer = float(offer_kw)
+        if not math.isfinite(declared_offer) or declared_offer < 0:
+            raise ValueError("offer_kw must be finite and nonnegative")
+        declared_offer_absolute_gap = abs(declared_offer - original_offer)
+        declared_offer_relative_gap = declared_offer_absolute_gap / max(
+            1.0, abs(original_offer)
+        )
+        declared_offer_identity = bool(declared_offer_relative_gap <= 1e-6)
     offer_relative_difference = abs(tied_offer - original_offer) / max(
         abs(original_offer), 1e-12
     )
@@ -470,6 +499,8 @@ def phase_balanced_tie_break(
     )
     comparator_valid = bool(
         max_bus_time_error <= 1e-7
+        and declared_offer_identity
+        and original_primary_relative_gap <= 1e-6
         and primary_relative_gap <= 1e-6
         and offer_relative_difference <= 0.005
         and ev_invariants["max_ev_invariant_error"] <= 1e-6
@@ -502,12 +533,24 @@ def phase_balanced_tie_break(
         "max_bus_time_error_kw": max_bus_time_error,
         "original_offer_kw": float(original_offer),
         "tied_offer_kw": float(tied_offer),
+        "declared_offer_kw": declared_offer,
+        "declared_offer_absolute_gap_kw": declared_offer_absolute_gap,
+        "declared_offer_relative_gap": declared_offer_relative_gap,
+        "declared_offer_identity": declared_offer_identity,
         "offer_relative_difference": float(offer_relative_difference),
         "offer_retention": float(offer_retention),
         "primary_objective_original": float(original_primary),
         "primary_objective_optimum": primary_objective,
         "primary_objective_tied": tied_primary,
         "primary_objective_tolerance": primary_tolerance,
+        "primary_objective_original_absolute_gap": float(
+            original_primary_absolute_gap
+        ),
+        "primary_objective_original_relative_gap": float(
+            original_primary_relative_gap
+        ),
+        "primary_objective_tied_absolute_gap": float(primary_absolute_gap),
+        "primary_objective_tied_relative_gap": float(primary_relative_gap),
         "primary_objective_relative_gap": float(primary_relative_gap),
         "phase_imbalance_objective": float(tied_phase_objective),
         "phase_imbalance_improvement": float(
@@ -532,11 +575,14 @@ def _canonical_fleet_order(
         value = ev.ev_id
         if isinstance(value, (bool, np.bool_)):
             raise ValueError("ev_id values must not be boolean")
-        if isinstance(value, Number):
-            number = float(value)
-            if not math.isfinite(number) or not number.is_integer():
+        if isinstance(value, (Number, Decimal)):
+            try:
+                parsed = Decimal(str(value))
+            except (InvalidOperation, ValueError):
+                parsed = Decimal("NaN")
+            if not parsed.is_finite() or parsed != parsed.to_integral_value():
                 raise ValueError("numeric ev_id values must be finite integers")
-            token = f"number:{int(number)}"
+            token = f"number:{int(parsed)}"
         elif isinstance(value, str) and value:
             token = f"string:{value}"
         else:
@@ -985,13 +1031,7 @@ def _comparable_offers(
     *,
     direction: str | None,
     call_slots: Sequence[int] | None,
-    offer_kw: float | None,
 ) -> tuple[float, float]:
-    if offer_kw is not None:
-        value = float(offer_kw)
-        if not math.isfinite(value) or value < 0:
-            raise ValueError("offer_kw must be finite and nonnegative")
-        return value, value
     original_delta = original.sum(axis=0) - baseline.sum(axis=0)
     tied_delta = tied.sum(axis=0) - baseline.sum(axis=0)
     if call_slots is None:
@@ -1064,6 +1104,9 @@ def evaluate_pilot_work_unit(
     baseline = _validated_schedule(
         runtime.baseline, len(runtime.fleet), "runtime baseline"
     )
+    baseline_schedule_hash = canonical_schedule_sha256(
+        runtime.fleet, baseline
+    )
 
     raw_by_duration: dict[int, dict[str, Any]] = {}
     raw_failures: dict[int, str] = {}
@@ -1071,7 +1114,11 @@ def evaluate_pilot_work_unit(
         try:
             raw = runtime.generate_balanced_raw(duration, "balanced")
             normalized = _normalize_raw_balanced_result(
-                raw, duration, len(runtime.fleet)
+                raw,
+                duration,
+                runtime.fleet,
+                baseline,
+                direction=direction,
             )
         except Exception as exc:
             raw_failures[duration] = f"{type(exc).__name__}: {exc}"
@@ -1090,6 +1137,7 @@ def evaluate_pilot_work_unit(
         truth_cache,
         baseline_slot_results=None,
         stop_on_violation=False,
+        retain_slot_results=True,
     )
     baseline_summary = _compact_audit_summary(baseline_result)
     baseline_slots = baseline_result.get("slot_results")
@@ -1160,6 +1208,7 @@ def evaluate_pilot_work_unit(
             {
                 "baseline_status": baseline_status,
                 "baseline_audit": baseline_summary,
+                "baseline_schedule_sha256": baseline_schedule_hash,
                 "active_offer_threshold_kw": active_threshold,
                 "raw_schedule_failure_by_duration": dict(raw_failures),
             }
@@ -1185,7 +1234,8 @@ def evaluate_pilot_work_unit(
                         "alpha_transfer_tied": None,
                         "tie_comparator_valid": None,
                         "tie_break_status": "NOT_RUN_SCHEDULE_SOLVER_INVALID",
-                        "alpha1_cold_timing_s": None,
+                        "alpha1_first_replay_timing_s": None,
+                        "alpha1_first_replay_scope": None,
                         "alpha1_warm_timing_s": [],
                         "alpha1_warm_p95_s": None,
                         "alpha1_warm_cv": None,
@@ -1241,6 +1291,25 @@ def evaluate_pilot_work_unit(
             "max_capacity_violation_kwh": float(
                 selected["max_capacity_violation_kwh"]
             ),
+            "max_discharge_budget_violation_kwh": float(
+                selected["max_discharge_budget_violation_kwh"]
+            ),
+            "max_availability_violation_kw": float(
+                selected["max_availability_violation_kw"]
+            ),
+            "max_charge_limit_violation_kw": float(
+                selected["max_charge_limit_violation_kw"]
+            ),
+            "max_discharge_limit_violation_kw": float(
+                selected["max_discharge_limit_violation_kw"]
+            ),
+            "max_schedule_identity_error_kw": float(
+                selected["max_schedule_identity_error_kw"]
+            ),
+            "max_ev_invariant_error": float(
+                selected["max_ev_invariant_error"]
+            ),
+            "ev_invariant_errors": dict(selected["ev_invariant_errors"]),
             "simultaneous_slots": int(selected["simultaneous_slots"]),
         }
         if not baseline_valid:
@@ -1256,7 +1325,8 @@ def evaluate_pilot_work_unit(
                         "alpha_transfer_tied": None,
                         "tie_comparator_valid": None,
                         "tie_break_status": "NOT_RUN_BASELINE_INVALID",
-                        "alpha1_cold_timing_s": None,
+                        "alpha1_first_replay_timing_s": None,
+                        "alpha1_first_replay_scope": None,
                         "alpha1_warm_timing_s": [],
                         "alpha1_warm_p95_s": None,
                         "alpha1_warm_cv": None,
@@ -1279,7 +1349,8 @@ def evaluate_pilot_work_unit(
                         "alpha_transfer_tied": None,
                         "tie_comparator_valid": None,
                         "tie_break_status": "NOT_APPLICABLE_INACTIVE",
-                        "alpha1_cold_timing_s": None,
+                        "alpha1_first_replay_timing_s": None,
+                        "alpha1_first_replay_scope": None,
                         "alpha1_warm_timing_s": [],
                         "alpha1_warm_p95_s": None,
                         "alpha1_warm_cv": None,
@@ -1290,43 +1361,82 @@ def evaluate_pilot_work_unit(
             )
             continue
 
-        legacy_reused = schedule_hash in legacy_cache
-        if not legacy_reused:
-            original_cwd = os.getcwd()
-            try:
-                legacy_value = runtime.alpha_legacy_verifier(schedule)
-            finally:
-                os.chdir(original_cwd)
-            legacy_cache[schedule_hash] = _normalize_legacy_alpha(
-                legacy_value
-            )
-            legacy_owner[schedule_hash] = requested_duration
-        legacy = legacy_cache[schedule_hash]
-        if schedule_hash not in timing_cache:
-            timing_cache[schedule_hash] = _benchmark_alpha_one(
-                runtime,
-                truth_cache,
-                schedule,
-                baseline_slots,
-                perf_counter=perf_counter,
-                repeats=warm_repeats,
-            )
-            timing_owner[schedule_hash] = requested_duration
-        timing = timing_cache[schedule_hash]
         path, path_reused, path_source = corrected_path(
             schedule,
             requested_duration=requested_duration,
             role="original",
         )
 
+        legacy_reused = schedule_hash in legacy_cache
+        if not legacy_reused:
+            original_cwd = os.getcwd()
+            try:
+                legacy_value = runtime.alpha_legacy_verifier(schedule)
+                legacy_cache[schedule_hash] = _normalize_legacy_alpha(
+                    legacy_value
+                )
+            except Exception as exc:
+                legacy_cache[schedule_hash] = {
+                    "alpha": None,
+                    "status": "ERROR",
+                    "detail": f"{type(exc).__name__}: {exc}",
+                }
+            finally:
+                os.chdir(original_cwd)
+            legacy_owner[schedule_hash] = requested_duration
+        legacy = legacy_cache[schedule_hash]
+        if schedule_hash not in timing_cache:
+            try:
+                timing_cache[schedule_hash] = _benchmark_alpha_one(
+                    runtime,
+                    truth_cache,
+                    schedule,
+                    baseline_slots,
+                    perf_counter=perf_counter,
+                    repeats=warm_repeats,
+                )
+            except Exception as exc:
+                timing_cache[schedule_hash] = {
+                    "status": "ERROR",
+                    "detail": f"{type(exc).__name__}: {exc}",
+                    "first_replay_s": None,
+                    "first_replay_scope": (
+                        "FIRST_IN_PROCESS_REPLAY_NOT_COLD_START"
+                    ),
+                    "warm_s": [],
+                    "warm_p95_s": None,
+                    "warm_cv": None,
+                    "checked_intervals": [],
+                    "power_flow_evaluations": [],
+                    "feasible": [],
+                    "numerical_failure_checks": [],
+                    "nonconverged_checks": [],
+                    "physical_violation_checks": [],
+                    "failure_class": [],
+                }
+            timing_owner[schedule_hash] = requested_duration
+        timing = timing_cache[schedule_hash]
+
         tie_reused = schedule_hash in tie_cache
         if not tie_reused:
-            tie_cache[schedule_hash] = runtime.phase_tie_break(
-                schedule,
-                direction=direction,
-                call_slots=selected.get("call_slots"),
-                offer_kw=f_bal,
-            )
+            try:
+                tie_value = runtime.phase_tie_break(
+                    schedule,
+                    direction=direction,
+                    call_slots=selected.get("call_slots"),
+                    offer_kw=f_bal,
+                )
+                if not isinstance(tie_value, Mapping):
+                    raise TypeError("tie diagnostic must return a mapping")
+                tie_cache[schedule_hash] = dict(tie_value)
+            except Exception as exc:
+                tie_cache[schedule_hash] = {
+                    "success": False,
+                    "comparator_valid": False,
+                    "status": "ERROR",
+                    "detail": f"{type(exc).__name__}: {exc}",
+                    "schedule": None,
+                }
             tie_owner[schedule_hash] = requested_duration
         tie = tie_cache[schedule_hash]
         tie_valid = bool(
@@ -1337,20 +1447,32 @@ def evaluate_pilot_work_unit(
         tie_path = None
         tie_path_reused = False
         tie_path_source: tuple[int, str] | None = None
+        tie_path_error: str | None = None
         if tie_valid:
-            tied_schedule = _validated_schedule(
-                tie["schedule"], len(runtime.fleet), "tied schedule"
-            )
-            tie_path, tie_path_reused, tie_path_source = corrected_path(
-                tied_schedule,
-                requested_duration=requested_duration,
-                role="tie",
-            )
+            try:
+                tied_schedule = _validated_schedule(
+                    tie["schedule"], len(runtime.fleet), "tied schedule"
+                )
+                tie_path, tie_path_reused, tie_path_source = corrected_path(
+                    tied_schedule,
+                    requested_duration=requested_duration,
+                    role="tie",
+                )
+            except Exception as exc:
+                tie_path_error = f"{type(exc).__name__}: {exc}"
+                tie_valid = False
+                tie = {
+                    **tie,
+                    "comparator_valid": False,
+                    "status": "TIE_PATH_ERROR",
+                    "detail": tie_path_error,
+                }
 
         row.update(
             {
                 "alpha_legacy_verifier": legacy["alpha"],
                 "alpha_legacy_verifier_status": legacy["status"],
+                "alpha_legacy_verifier_detail": legacy.get("detail"),
                 "legacy_verifier_reused": legacy_reused,
                 "legacy_verifier_source_requested_duration_min": legacy_owner[
                     schedule_hash
@@ -1359,7 +1481,9 @@ def evaluate_pilot_work_unit(
                 "alpha_prefix": path["alpha_prefix"],
                 "alpha_sup": path["alpha_sup"],
                 "alpha_nonmonotone": path["nonmonotone"],
+                "alpha_path_status": path["status"],
                 "alpha_path_valid_baseline": path["valid_baseline"],
+                "alpha_path_scientific_valid": path["scientific_valid"],
                 "alpha_path_audit": path["audit_summary"],
                 "alpha_path_reused": path_reused,
                 "alpha_path_reuse_source_requested_duration_min": (
@@ -1368,7 +1492,14 @@ def evaluate_pilot_work_unit(
                 "alpha_path_reuse_source_role": (
                     path_source[1] if path_reused else None
                 ),
-                "alpha1_cold_timing_s": timing["cold_s"],
+                "alpha1_timing_status": timing["status"],
+                "alpha1_timing_detail": timing["detail"],
+                "alpha1_first_replay_timing_s": timing[
+                    "first_replay_s"
+                ],
+                "alpha1_first_replay_scope": timing[
+                    "first_replay_scope"
+                ],
                 "alpha1_warm_timing_s": timing["warm_s"],
                 "alpha1_warm_p95_s": timing["warm_p95_s"],
                 "alpha1_warm_cv": timing["warm_cv"],
@@ -1378,6 +1509,16 @@ def evaluate_pilot_work_unit(
                 "alpha1_timing_power_flow_evaluations": timing[
                     "power_flow_evaluations"
                 ],
+                "alpha1_timing_numerical_failure_checks": timing[
+                    "numerical_failure_checks"
+                ],
+                "alpha1_timing_nonconverged_checks": timing[
+                    "nonconverged_checks"
+                ],
+                "alpha1_timing_physical_violation_checks": timing[
+                    "physical_violation_checks"
+                ],
+                "alpha1_timing_failure_class": timing["failure_class"],
                 "timing_independent_schedule": (
                     timing_owner[schedule_hash] == requested_duration
                 ),
@@ -1389,6 +1530,9 @@ def evaluate_pilot_work_unit(
                 ],
                 "tie_comparator_valid": tie_valid,
                 "tie_break_status": str(tie.get("status", "INVALID")),
+                "tie_break_detail": tie.get(
+                    "detail", tie.get("message")
+                ),
                 "tie_break_reused": tie_reused,
                 "tie_break_source_requested_duration_min": tie_owner[
                     schedule_hash
@@ -1419,6 +1563,18 @@ def evaluate_pilot_work_unit(
                 "tie_primary_objective_relative_gap": tie.get(
                     "primary_objective_relative_gap"
                 ),
+                "tie_primary_objective_original_relative_gap": tie.get(
+                    "primary_objective_original_relative_gap"
+                ),
+                "tie_primary_objective_tied_relative_gap": tie.get(
+                    "primary_objective_tied_relative_gap"
+                ),
+                "tie_declared_offer_identity": tie.get(
+                    "declared_offer_identity"
+                ),
+                "tie_declared_offer_absolute_gap_kw": tie.get(
+                    "declared_offer_absolute_gap_kw"
+                ),
                 "tie_original_phase_l1": tie.get(
                     "original_phase_imbalance_objective"
                 ),
@@ -1444,6 +1600,20 @@ def evaluate_pilot_work_unit(
                     if tie_path is not None
                     else None
                 ),
+                "alpha_tie_path_status": (
+                    tie_path["status"]
+                    if tie_path is not None
+                    else (
+                        "ERROR"
+                        if tie_path_error is not None
+                        else "NOT_RUN_TIE_INVALID"
+                    )
+                ),
+                "alpha_tie_path_audit": (
+                    tie_path["audit_summary"]
+                    if tie_path is not None
+                    else None
+                ),
                 "alpha_tie_path_reused": (
                     tie_path_reused if tie_path is not None else None
                 ),
@@ -1459,15 +1629,26 @@ def evaluate_pilot_work_unit(
                 ),
                 "scientific_status": (
                     "VALID"
-                    if path["valid_baseline"]
-                    else "INVALID_ALPHA_BASELINE"
+                    if path["status"] == "VALID"
+                    else (
+                        "NUMERICAL_INVALID_ALPHA_PATH"
+                        if path["status"] == "NUMERICAL_INVALID"
+                        else "INVALID_ALPHA_BASELINE"
+                    )
                 ),
                 "status": (
                     "SUCCESS"
-                    if path["valid_baseline"]
-                    else "ALPHA_PATH_INVALID"
+                    if path["status"] == "VALID"
+                    else (
+                        "ALPHA_PATH_NUMERICAL_INVALID"
+                        if path["status"] == "NUMERICAL_INVALID"
+                        else "ALPHA_PATH_INVALID"
+                    )
                 ),
             }
+        )
+        row["eligible_for_scientific_denominator"] = bool(
+            active and baseline_valid and path["scientific_valid"]
         )
         rows.append(_strict_json_safe(row))
     return rows
@@ -1494,26 +1675,43 @@ def _pilot_evaluation_ids(
 
 
 def _normalize_raw_balanced_result(
-    raw: Any, duration: int, fleet_size: int
+    raw: Any,
+    duration: int,
+    fleet: Sequence[Any],
+    baseline: Any,
+    *,
+    direction: str,
 ) -> dict[str, Any]:
     if not isinstance(raw, Mapping):
         raise TypeError("balanced scheduler must return a mapping")
+    if direction not in {"inc", "dec"}:
+        raise ValueError("balanced schedule direction must be 'inc' or 'dec'")
     result = dict(raw)
     result["duration_min"] = int(duration)
+    _validated_schedule(baseline, len(fleet), "raw balanced baseline")
     result["schedule"] = _validated_schedule(
-        result["schedule"], fleet_size, "raw balanced schedule"
+        result["schedule"], len(fleet), "raw balanced schedule"
     )
     flex = float(result["flex_kw"])
     if not math.isfinite(flex) or flex < 0:
         raise ValueError("raw balanced flex_kw must be finite and nonnegative")
     result["flex_kw"] = flex
+    charge = np.maximum(result["schedule"], 0.0)
+    discharge = np.maximum(-result["schedule"], 0.0)
+    invariants = _trajectory_invariants(
+        fleet,
+        result["schedule"],
+        charge,
+        discharge,
+        "v1g" if direction == "inc" else "v2g",
+    )
+    result.update(invariants)
+    result["ev_invariant_errors"] = dict(invariants)
     physical = bool(
-        result.get("success", True)
-        and result.get("physical_feasible", True)
-        and _finite_below(result.get("max_departure_error_kwh", 0.0), 1e-6)
-        and _finite_below(result.get("max_reserve_violation_kwh", 0.0), 1e-6)
-        and _finite_below(result.get("max_capacity_violation_kwh", 0.0), 1e-6)
-        and result.get("simultaneous_slots", 0) == 0
+        result.get("success") is True
+        and result.get("physical_feasible") is True
+        and invariants["max_ev_invariant_error"] <= 1e-6
+        and invariants["simultaneous_slots"] == 0
     )
     result["physical_feasible"] = physical
     return result
@@ -1538,6 +1736,62 @@ def _compact_audit_summary(result: Any) -> dict[str, Any]:
         coverage_counts = (
             first.get("coverage", {}) if isinstance(first, Mapping) else {}
         )
+    violations = result.get("violations", [])
+    if not isinstance(violations, Sequence):
+        violations = []
+    physical_violation_checks = int(
+        result.get(
+            "physical_violation_checks",
+            sum(
+                bool(
+                    isinstance(item, Mapping)
+                    and item.get("physical_witness") is True
+                )
+                for item in violations
+            ),
+        )
+    )
+    numerical_failure_checks = int(
+        result.get("numerical_failure_checks", 0)
+    )
+    nonconverged_checks = int(result.get("nonconverged_checks", 0))
+    if numerical_failure_checks or nonconverged_checks:
+        failure_class = "NUMERICAL_INVALID"
+    elif physical_violation_checks:
+        failure_class = "PHYSICAL_CONSTRAINT"
+    elif violations:
+        failure_class = str(
+            result.get("failure_class", "UNCLASSIFIED_INVALID")
+        )
+    else:
+        failure_class = "NONE"
+    raw_trace = result.get("slot_audit_trace", [])
+    slot_trace = []
+    if isinstance(raw_trace, Sequence):
+        for item in raw_trace:
+            if not isinstance(item, Mapping):
+                continue
+            slot_trace.append(
+                {
+                    "slot": int(item.get("slot", -1)),
+                    "feasible": bool(item.get("feasible") is True),
+                    "converged": bool(item.get("converged") is True),
+                    "numerical_failure": bool(
+                        item.get("numerical_failure") is True
+                    ),
+                    "failure_class": str(
+                        item.get("failure_class", "UNCLASSIFIED_INVALID")
+                    ),
+                    "physical_witness": bool(
+                        item.get("physical_witness") is True
+                    ),
+                }
+            )
+    failure_slots = [
+        int(item["slot"])
+        for item in violations
+        if isinstance(item, Mapping) and _nonnegative_integer(item.get("slot")) is not None
+    ]
     return {
         "feasible": bool(result.get("feasible") is True),
         "checked_intervals": checked,
@@ -1552,11 +1806,13 @@ def _compact_audit_summary(result: Any) -> dict[str, Any]:
             result.get("reused_baseline_intervals", 0)
         ),
         "converged_checks": int(result.get("converged_checks", 0)),
-        "nonconverged_checks": int(result.get("nonconverged_checks", 0)),
-        "numerical_failure_checks": int(
-            result.get("numerical_failure_checks", 0)
-        ),
-        "violation_count": len(result.get("violations", [])),
+        "nonconverged_checks": nonconverged_checks,
+        "numerical_failure_checks": numerical_failure_checks,
+        "physical_violation_checks": physical_violation_checks,
+        "failure_class": failure_class,
+        "violation_count": len(violations),
+        "first_failure_slot": min(failure_slots, default=None),
+        "slot_trace": slot_trace,
         "vmin": _finite_or_none(result.get("vmin")),
         "vmax": _finite_or_none(result.get("vmax")),
         "vufmax": _finite_or_none(result.get("vufmax")),
@@ -1569,7 +1825,11 @@ def _compact_audit_summary(result: Any) -> dict[str, Any]:
         "coverage_counts": {
             str(key): _strict_json_safe(value)
             for key, value in coverage_counts.items()
-            if key != "transformer_ratings_kva"
+            if key
+            not in {
+                "transformer_ratings_kva",
+                "transformer_raw_ratings_kva",
+            }
         },
     }
 
@@ -1593,8 +1853,10 @@ def _evaluate_corrected_schedule_path(
             truth_cache,
             baseline_slot_results=baseline_slots,
             stop_on_violation=True,
+            retain_slot_results=False,
         )
         summary = _compact_audit_summary(raw)
+        summary["alpha"] = float(alpha)
         summaries.append(summary)
         return bool(
             summary["feasible"]
@@ -1607,11 +1869,54 @@ def _evaluate_corrected_schedule_path(
         coarse_step=coarse_step,
         refine_tolerance=refine_tolerance,
     )
+    numerical_invalid = any(
+        item["numerical_failure_checks"] > 0
+        or item["nonconverged_checks"] > 0
+        or item["failure_class"] in {
+            "NUMERICAL_INVALID",
+            "UNCLASSIFIED_INVALID",
+        }
+        for item in summaries
+    )
+    valid_baseline = bool(path["valid_baseline"])
+    scientific_valid = bool(valid_baseline and not numerical_invalid)
+    if numerical_invalid:
+        path_status = "NUMERICAL_INVALID"
+    elif valid_baseline:
+        path_status = "VALID"
+    else:
+        path_status = "INVALID_BASELINE"
+    alpha_trace = [
+        {
+            "alpha": item["alpha"],
+            "feasible": item["feasible"],
+            "checked_intervals": item["checked_intervals"],
+            "complete_coverage": item["complete_coverage"],
+            "failure_class": item["failure_class"],
+            "numerical_failure_checks": item[
+                "numerical_failure_checks"
+            ],
+            "nonconverged_checks": item["nonconverged_checks"],
+            "physical_violation_checks": item[
+                "physical_violation_checks"
+            ],
+            "first_failure_slot": item["first_failure_slot"],
+        }
+        for item in summaries
+    ]
     return {
-        "valid_baseline": bool(path["valid_baseline"]),
-        "alpha_prefix": _finite_or_none(path["alpha_prefix"]),
-        "alpha_sup": _finite_or_none(path["alpha_sup"]),
-        "nonmonotone": bool(path["nonmonotone"]),
+        "valid_baseline": valid_baseline,
+        "scientific_valid": scientific_valid,
+        "status": path_status,
+        "alpha_prefix": (
+            _finite_or_none(path["alpha_prefix"]) if scientific_valid else None
+        ),
+        "alpha_sup": (
+            _finite_or_none(path["alpha_sup"]) if scientific_valid else None
+        ),
+        "nonmonotone": (
+            bool(path["nonmonotone"]) if scientific_valid else None
+        ),
         "audit_calls": int(path["audit_calls"]),
         "prefix_resolution": _finite_or_none(path["prefix_resolution"]),
         "audit_summary": {
@@ -1628,6 +1933,15 @@ def _evaluate_corrected_schedule_path(
             "early_stopped_audits": sum(
                 not bool(item["complete_coverage"]) for item in summaries
             ),
+            "numerical_failure_audits": sum(
+                item["numerical_failure_checks"] > 0
+                or item["nonconverged_checks"] > 0
+                for item in summaries
+            ),
+            "physical_boundary_audits": sum(
+                item["physical_violation_checks"] > 0
+                for item in summaries
+            ),
             "minimum_checked_intervals": min(
                 (item["checked_intervals"] for item in summaries),
                 default=0,
@@ -1636,6 +1950,7 @@ def _evaluate_corrected_schedule_path(
                 (item["checked_intervals"] for item in summaries),
                 default=0,
             ),
+            "alpha_trace": alpha_trace,
         },
     }
 
@@ -1658,6 +1973,7 @@ def _benchmark_alpha_one(
             truth_cache,
             baseline_slot_results=baseline_slots,
             stop_on_violation=False,
+            retain_slot_results=False,
         )
         elapsed = float(perf_counter()) - started
         if not math.isfinite(elapsed) or elapsed < 0:
@@ -1674,7 +1990,26 @@ def _benchmark_alpha_one(
     mean = float(warm.mean())
     cv = float(warm.std(ddof=0) / mean) if mean > 0 else None
     return {
-        "cold_s": timings[0],
+        "status": (
+            "NUMERICAL_INVALID"
+            if any(
+                item["numerical_failure_checks"] > 0
+                or item["nonconverged_checks"] > 0
+                for item in summaries
+            )
+            else "SUCCESS"
+        ),
+        "detail": (
+            "one or more replay audits had numerical or convergence failures"
+            if any(
+                item["numerical_failure_checks"] > 0
+                or item["nonconverged_checks"] > 0
+                for item in summaries
+            )
+            else None
+        ),
+        "first_replay_s": timings[0],
+        "first_replay_scope": "FIRST_IN_PROCESS_REPLAY_NOT_COLD_START",
         "warm_s": timings[1:],
         "warm_p95_s": float(np.percentile(warm, 95, method="higher")),
         "warm_cv": cv,
@@ -1685,19 +2020,39 @@ def _benchmark_alpha_one(
             item["power_flow_evaluations"] for item in summaries
         ],
         "feasible": [item["feasible"] for item in summaries],
+        "numerical_failure_checks": [
+            item["numerical_failure_checks"] for item in summaries
+        ],
+        "nonconverged_checks": [
+            item["nonconverged_checks"] for item in summaries
+        ],
+        "physical_violation_checks": [
+            item["physical_violation_checks"] for item in summaries
+        ],
+        "failure_class": [item["failure_class"] for item in summaries],
     }
 
 
 def _normalize_legacy_alpha(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         status = str(value.get("status", "SUCCESS"))
+        detail = value.get("detail")
         value = value.get("alpha")
     else:
         status = "SUCCESS"
+        detail = None
     alpha = _finite_or_none(value)
     if alpha is None or not 0.0 <= alpha <= 1.0:
-        return {"alpha": None, "status": "INVALID"}
-    return {"alpha": alpha, "status": status}
+        return {
+            "alpha": None,
+            "status": "INVALID",
+            "detail": str(detail) if detail is not None else None,
+        }
+    return {
+        "alpha": alpha,
+        "status": status,
+        "detail": str(detail) if detail is not None else None,
+    }
 
 
 def _pilot_row_identity(
@@ -1850,6 +2205,7 @@ class _RealPilotRuntime:
             "balanced",
         )
         result = dict(raw)
+        result["success"] = bool(result.get("success", True))
         result["physical_feasible"] = bool(
             _finite_below(result.get("max_departure_error_kwh"), 1e-6)
             and _finite_below(result.get("max_reserve_violation_kwh"), 1e-6)
@@ -1878,6 +2234,7 @@ class _RealPilotRuntime:
         *,
         baseline_slot_results: Any,
         stop_on_violation: bool,
+        retain_slot_results: bool,
     ) -> dict[str, Any]:
         if cache is not self._corrected_truth_cache:
             raise ValueError("corrected audit must use the work-unit truth cache")
@@ -1892,6 +2249,7 @@ class _RealPilotRuntime:
             cache,
             baseline_slot_results=baseline_slot_results,
             stop_on_violation=stop_on_violation,
+            retain_slot_results=retain_slot_results,
         )
 
     def alpha_legacy_verifier(self, schedule: Any) -> dict[str, Any]:
@@ -2051,6 +2409,9 @@ def build_pilot_network_class(
             report["transformer_ratings_kva"] = dict(
                 report.get("transformer_ratings_kva", {})
             )
+            report["transformer_raw_ratings_kva"] = dict(
+                report.get("transformer_raw_ratings_kva", {})
+            )
             return report
 
         def audit_context(self) -> dict[str, Any]:
@@ -2069,6 +2430,15 @@ def build_pilot_network_class(
                 "feeder_loading_limit_pu": float(settings["feeder_limit"]),
                 "feeder_kva": float(self._pilot_feeder_kva),
                 "line_thermal_in_scope": False,
+                "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
+                "transformer_rating_basis": (
+                    "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
+                    if str(self.model) == "balanced"
+                    else "NATIVE_SYSTEM_TOTAL_KVA"
+                ),
+                "transformer_rating_multiplier": (
+                    3.0 if str(self.model) == "balanced" else 1.0
+                ),
             }
 
     PilotNetwork.__name__ = f"Pilot{base_class.__name__}"
@@ -2258,6 +2628,15 @@ def _evaluate_pilot_network(
 
     transformer_labels: list[str] = []
     transformer_ratings: dict[str, float] = {}
+    transformer_raw_ratings: dict[str, float] = {}
+    transformer_rating_multiplier = (
+        3.0 if str(network.model) == "balanced" else 1.0
+    )
+    transformer_rating_basis = (
+        "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
+        if transformer_rating_multiplier == 3.0
+        else "NATIVE_SYSTEM_TOTAL_KVA"
+    )
     enabled_transformers = 0
     rated_transformers = 0
     try:
@@ -2292,12 +2671,13 @@ def _evaluate_pilot_network(
         transformer_labels.append(label)
         try:
             context.Transformers.Wdg(1)
-            rating = float(context.Transformers.kVA())
+            raw_rating = float(context.Transformers.kVA())
         except (TypeError, ValueError, OverflowError) as exc:
-            rating = math.nan
+            raw_rating = math.nan
             rating_error = str(exc)
         else:
             rating_error = None
+        rating = raw_rating * transformer_rating_multiplier
         if not math.isfinite(rating) or rating <= 0:
             numerical_violations.append(
                 _numerical_network_violation(
@@ -2308,6 +2688,7 @@ def _evaluate_pilot_network(
             )
             continue
         rated_transformers += 1
+        transformer_raw_ratings[transformer_name] = raw_rating
         transformer_ratings[transformer_name] = rating
         try:
             terminal_count = int(context.CktElement.NumTerminals())
@@ -2428,6 +2809,10 @@ def _evaluate_pilot_network(
         "line_thermal_in_scope": False,
         "feeder_rating_multiplier": 1.0,
         "transformer_ratings_kva": transformer_ratings,
+        "transformer_raw_ratings_kva": transformer_raw_ratings,
+        "transformer_rating_multiplier": transformer_rating_multiplier,
+        "transformer_rating_basis": transformer_rating_basis,
+        "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
     }
     numerical_failure = bool(numerical_violations)
     violations = [*numerical_violations, *physical_violations]
@@ -2500,6 +2885,7 @@ def full_network_check(
     *,
     baseline_slot_results: Mapping[int, Any] | Sequence[Any] | None = None,
     stop_on_violation: bool = False,
+    retain_slot_results: bool = True,
 ) -> dict[str, Any]:
     schedule_array = np.asarray(schedule, dtype=float)
     baseline_array = np.asarray(baseline, dtype=float)
@@ -2522,6 +2908,8 @@ def full_network_check(
         raise ValueError("model must be '3ph' or 'balanced'")
     if not cache:
         raise ValueError("network cache must not be empty")
+    if not isinstance(retain_slot_results, (bool, np.bool_)):
+        raise TypeError("retain_slot_results must be boolean")
 
     baseline_records = _index_baseline_slot_results(baseline_slot_results)
     aggregate: dict[str, float | None] = {
@@ -2533,11 +2921,15 @@ def full_network_check(
     }
     violations = []
     slot_results = []
+    slot_audit_trace = []
+    coverage_counts: dict[str, Any] | None = None
+    checked_intervals = 0
     power_flow_evaluations = 0
     reused_baseline_intervals = 0
     converged_checks = 0
     nonconverged_checks = 0
     numerical_failure_checks = 0
+    physical_violation_checks = 0
 
     for slot in range(96):
         scale = float(scale_array[slot])
@@ -2617,24 +3009,59 @@ def full_network_check(
             numerical_failure_checks += 1
 
         _update_audit_extrema(aggregate, evaluation)
-        slot_record = {
-            "slot": slot,
-            "verified": True,
-            "baseline_exact": exact_baseline,
-            "baseline_schedule": (
-                baseline_array[:, slot].tolist() if exact_baseline else None
-            ),
-            "load_scale": scale,
-            "feeder": str(feeder),
-            "model": str(model),
-            "source": source,
-            "audit_context": _copy_audit_context(audit_context),
-            "group_power": power.tolist(),
-            "coverage": _copy_formal_coverage(evaluation["coverage"]),
-            "formal_integrity": dict(evaluation["formal_integrity"]),
-            "result": evaluation,
-        }
-        slot_results.append(slot_record)
+        checked_intervals += 1
+        if coverage_counts is None:
+            coverage_counts = _copy_formal_coverage(evaluation["coverage"])
+        physical_witness = bool(
+            not evaluation["numerical_failure"]
+            and any(
+                isinstance(item, Mapping)
+                and item.get("kind") == "physical_constraint"
+                for item in evaluation["violations"]
+            )
+        )
+        if evaluation["numerical_failure"]:
+            failure_class = "NUMERICAL_INVALID"
+        elif physical_witness:
+            failure_class = "PHYSICAL_CONSTRAINT"
+        elif evaluation["feasible"]:
+            failure_class = "NONE"
+        else:
+            failure_class = "UNCLASSIFIED_INVALID"
+        if physical_witness:
+            physical_violation_checks += 1
+        slot_audit_trace.append(
+            {
+                "slot": slot,
+                "feasible": bool(evaluation["feasible"]),
+                "converged": bool(evaluation["converged"]),
+                "numerical_failure": bool(evaluation["numerical_failure"]),
+                "failure_class": failure_class,
+                "physical_witness": physical_witness,
+            }
+        )
+        if retain_slot_results:
+            slot_results.append(
+                {
+                    "slot": slot,
+                    "verified": True,
+                    "baseline_exact": exact_baseline,
+                    "baseline_schedule": (
+                        baseline_array[:, slot].tolist()
+                        if exact_baseline
+                        else None
+                    ),
+                    "load_scale": scale,
+                    "feeder": str(feeder),
+                    "model": str(model),
+                    "source": source,
+                    "audit_context": _copy_audit_context(audit_context),
+                    "group_power": power.tolist(),
+                    "coverage": _copy_formal_coverage(evaluation["coverage"]),
+                    "formal_integrity": dict(evaluation["formal_integrity"]),
+                    "result": evaluation,
+                }
+            )
 
         if not evaluation["feasible"]:
             violations.append(
@@ -2642,15 +3069,24 @@ def full_network_check(
                     "slot": slot,
                     "converged": evaluation["converged"],
                     "numerical_failure": evaluation["numerical_failure"],
+                    "failure_class": failure_class,
+                    "physical_witness": physical_witness,
                     "violations": evaluation["violations"],
                 }
             )
-            if stop_on_violation:
+            if stop_on_violation and physical_witness:
                 break
 
-    checked_intervals = len(slot_results)
     complete_coverage = checked_intervals == 96
     feasible = bool(complete_coverage and not violations)
+    if numerical_failure_checks:
+        aggregate_failure_class = "NUMERICAL_INVALID"
+    elif physical_violation_checks:
+        aggregate_failure_class = "PHYSICAL_CONSTRAINT"
+    elif violations:
+        aggregate_failure_class = "UNCLASSIFIED_INVALID"
+    else:
+        aggregate_failure_class = "NONE"
     return {
         "feasible": feasible,
         "checked_intervals": checked_intervals,
@@ -2662,11 +3098,15 @@ def full_network_check(
         "converged_checks": converged_checks,
         "nonconverged_checks": nonconverged_checks,
         "numerical_failure_checks": numerical_failure_checks,
+        "physical_violation_checks": physical_violation_checks,
+        "failure_class": aggregate_failure_class,
         "nonconverged_slots": [
             item["slot"] for item in violations if not item["converged"]
         ],
         "violations": violations,
         "slot_results": slot_results,
+        "slot_audit_trace": slot_audit_trace,
+        "coverage_counts": coverage_counts or {},
         **aggregate,
     }
 
@@ -2776,6 +3216,7 @@ def _capture_network_audit_context(
         "transformer_loading_limit_pu",
         "feeder_loading_limit_pu",
         "feeder_kva",
+        "transformer_rating_multiplier",
     )
     if not all(_is_finite_number(declared.get(name)) for name in required_numbers):
         raise ValueError("network audit context contains non-finite constraints")
@@ -2791,6 +3232,15 @@ def _capture_network_audit_context(
         or float(declared["feeder_loading_limit_pu"]) != 1.0
         or float(declared["feeder_kva"]) <= 0
         or declared.get("line_thermal_in_scope") is not False
+        or declared.get("transformer_power_basis")
+        != "SYSTEM_TOTAL_TERMINAL_POWER"
+        or declared.get("transformer_rating_basis")
+        not in {
+            "NATIVE_SYSTEM_TOTAL_KVA",
+            "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL",
+        }
+        or float(declared["transformer_rating_multiplier"])
+        not in {1.0, 3.0}
     ):
         raise ValueError("network audit context is incompatible with the pilot schema")
     return {
@@ -2814,6 +3264,15 @@ def _capture_network_audit_context(
         ),
         "feeder_kva": float(declared["feeder_kva"]),
         "line_thermal_in_scope": False,
+        "transformer_power_basis": str(
+            declared["transformer_power_basis"]
+        ),
+        "transformer_rating_basis": str(
+            declared["transformer_rating_basis"]
+        ),
+        "transformer_rating_multiplier": float(
+            declared["transformer_rating_multiplier"]
+        ),
         "groups": [
             {
                 "type": f"{type(group).__module__}.{type(group).__qualname__}",
@@ -3002,13 +3461,21 @@ def _formal_coverage_is_complete(
         name for name in metrics if name.startswith("S:transformer:")
     ]
     ratings = coverage.get("transformer_ratings_kva")
-    if not isinstance(ratings, Mapping):
+    raw_ratings = coverage.get("transformer_raw_ratings_kva")
+    if not isinstance(ratings, Mapping) or not isinstance(raw_ratings, Mapping):
         return False
     if not all(
         isinstance(name, str)
         and _is_finite_number(rating)
         and float(rating) > 0
         for name, rating in ratings.items()
+    ):
+        return False
+    if not all(
+        isinstance(name, str)
+        and _is_finite_number(rating)
+        and float(rating) > 0
+        for name, rating in raw_ratings.items()
     ):
         return False
     transformer_metric_names = {
@@ -3021,8 +3488,34 @@ def _formal_coverage_is_complete(
             coverage["transformer_rating_coverage"]
         )
         feeder_rating_multiplier = float(coverage["feeder_rating_multiplier"])
+        transformer_rating_multiplier = float(
+            coverage["transformer_rating_multiplier"]
+        )
     except (KeyError, TypeError, ValueError, OverflowError):
         return False
+    expected_rating_basis = (
+        "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
+        if transformer_rating_multiplier == 3.0
+        else "NATIVE_SYSTEM_TOTAL_KVA"
+    )
+    rating_basis_valid = bool(
+        transformer_rating_multiplier in {1.0, 3.0}
+        and coverage.get("transformer_rating_basis")
+        == expected_rating_basis
+        and coverage.get("transformer_power_basis")
+        == "SYSTEM_TOTAL_TERMINAL_POWER"
+        and {str(name).lower() for name in raw_ratings}
+        == transformer_rating_names
+        and all(
+            math.isclose(
+                float(ratings[name]),
+                float(raw_ratings[name]) * transformer_rating_multiplier,
+                rel_tol=1e-12,
+                abs_tol=1e-12,
+            )
+            for name in ratings
+        )
+    )
     return bool(
         counts["all_bus_count"] > 0
         and counts["all_bus_count"] == counts["monitored_bus_count"]
@@ -3038,6 +3531,7 @@ def _formal_coverage_is_complete(
         == len(transformer_metrics)
         == len(ratings)
         and transformer_metric_names == transformer_rating_names
+        and rating_basis_valid
         and math.isfinite(transformer_rating_coverage)
         and transformer_rating_coverage == 1.0
         and coverage.get("line_thermal_in_scope") is False
@@ -3083,9 +3577,13 @@ def _formal_summary_matches_metrics(
 
 def _copy_formal_coverage(coverage: Mapping[str, Any]) -> dict[str, Any]:
     copied = dict(coverage)
-    ratings = copied.get("transformer_ratings_kva")
-    if isinstance(ratings, Mapping):
-        copied["transformer_ratings_kva"] = dict(ratings)
+    for field in (
+        "transformer_ratings_kva",
+        "transformer_raw_ratings_kva",
+    ):
+        ratings = copied.get(field)
+        if isinstance(ratings, Mapping):
+            copied[field] = dict(ratings)
     return copied
 
 
