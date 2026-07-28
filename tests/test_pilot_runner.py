@@ -100,6 +100,43 @@ def test_pool_is_explicit_spawn_with_one_task_per_child(monkeypatch):
     assert captured["mp_context"].get_start_method() == "spawn"
 
 
+def test_repeated_broken_pool_preserves_root_cause_in_attempt_state(
+    tmp_path, monkeypatch
+):
+    module = _load_runner(monkeypatch)
+
+    class BrokenFuture:
+        def result(self):
+            raise module.BrokenProcessPool("native child crash detail")
+
+    class BrokenExecutor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def submit(self, *args, **kwargs):
+            return BrokenFuture()
+
+    monkeypatch.setattr(module, "_new_executor", lambda: BrokenExecutor())
+
+    with pytest.raises(RuntimeError, match="native child crash detail") as caught:
+        module._execute_one(tmp_path, _unit(), resume=True)
+
+    assert isinstance(caught.value.__cause__, module.BrokenProcessPool)
+    paths = module._unit_paths(tmp_path, "wu")
+    state = json.loads(paths.attempt.read_text(encoding="utf-8"))
+    assert state["attempt_count"] == 3
+    assert len(state["errors"]) == 3
+    assert all(
+        item["exception_type"] == "BrokenProcessPool"
+        and "native child crash detail" in item["exception_repr"]
+        and item["source"] == "parent_process_pool"
+        for item in state["errors"]
+    )
+
+
 def test_resume_reclaims_only_dead_lock_and_preserves_attempt(tmp_path, monkeypatch):
     module = _load_runner(monkeypatch)
     paths = module._unit_paths(tmp_path, "wu")
@@ -164,6 +201,75 @@ def test_resume_rejects_corrupt_result_without_overwrite(tmp_path, monkeypatch):
     assert paths.result.read_text(encoding="utf-8") == "{broken"
 
 
+@pytest.mark.parametrize(
+    ("payload_text", "message"),
+    [
+        (
+            '{"status":"SUCCESS","status":"SCIENTIFIC_TERMINAL"}',
+            "duplicate",
+        ),
+        (
+            '{"work_unit_id":"wu","scenario_seed":123,'
+            '"attempt_count":NaN,"errors":[]}',
+            "non-finite",
+        ),
+    ],
+)
+def test_resume_strict_json_rejects_duplicate_keys_and_nonfinite_values(
+    tmp_path, monkeypatch, payload_text, message
+):
+    module = _load_runner(monkeypatch)
+    paths = module._unit_paths(tmp_path, "wu")
+    paths.attempt.parent.mkdir(parents=True)
+    paths.attempt.write_text(payload_text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        module._prepare_unit_artifacts(_unit(), paths, resume=True)
+
+    assert paths.attempt.read_text(encoding="utf-8") == payload_text
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("scenario_seed", 123.5, "seed"),
+        ("attempt_count", 1.5, "attempt"),
+    ],
+)
+def test_resume_rejects_fractional_completed_integer_fields(
+    tmp_path, monkeypatch, field, value, message
+):
+    module = _load_runner(monkeypatch)
+    paths = module._unit_paths(tmp_path, "wu")
+    paths.result.parent.mkdir(parents=True)
+    payload = _completed_payload()
+    payload[field] = value
+    before = json.dumps(payload).encode("utf-8")
+    paths.result.write_bytes(before)
+
+    with pytest.raises(ValueError, match=message):
+        module._prepare_unit_artifacts(_unit(), paths, resume=True)
+
+    assert paths.result.read_bytes() == before
+
+
+def test_resume_rejects_inconsistent_wrapper_and_evaluation_statuses(
+    tmp_path, monkeypatch
+):
+    module = _load_runner(monkeypatch)
+    paths = module._unit_paths(tmp_path, "wu")
+    paths.result.parent.mkdir(parents=True)
+    payload = _completed_payload()
+    payload["evaluations"][1]["status"] = "ERROR"
+    before = json.dumps(payload).encode("utf-8")
+    paths.result.write_bytes(before)
+
+    with pytest.raises(ValueError, match="status"):
+        module._prepare_unit_artifacts(_unit(), paths, resume=True)
+
+    assert paths.result.read_bytes() == before
+
+
 def test_no_resume_rejects_any_owned_runtime_artifact(tmp_path, monkeypatch):
     module = _load_runner(monkeypatch)
     paths = module._unit_paths(tmp_path, "wu")
@@ -172,6 +278,43 @@ def test_no_resume_rejects_any_owned_runtime_artifact(tmp_path, monkeypatch):
 
     with pytest.raises(FileExistsError, match="--resume"):
         module._prepare_unit_artifacts(_unit(), paths, resume=False)
+
+
+def test_no_resume_preflights_all_units_before_executing_any(
+    tmp_path, monkeypatch
+):
+    module = _load_runner(monkeypatch)
+    first = _unit()
+    second = {
+        **_unit(),
+        "work_unit_id": "wu2",
+        "scenario_seed": 456,
+        "evaluation_ids": json.dumps(
+            [
+                "scenario2__dec__15m",
+                "scenario2__dec__30m",
+                "scenario2__dec__60m",
+            ]
+        ),
+    }
+    frame = pd.DataFrame([first, second])
+    monkeypatch.setattr(
+        module, "_prepare_repository", lambda repo: ({}, frame)
+    )
+    second_paths = module._unit_paths(tmp_path, "wu2")
+    second_paths.attempt.parent.mkdir(parents=True)
+    second_paths.attempt.write_text("{}", encoding="utf-8")
+    called = []
+    monkeypatch.setattr(
+        module,
+        "_execute_one",
+        lambda *args, **kwargs: called.append((args, kwargs)),
+    )
+
+    with pytest.raises(FileExistsError, match="--resume"):
+        module.main([], repo_root=tmp_path)
+
+    assert called == []
 
 
 def test_manifest_is_fixed_and_validated(monkeypatch, tmp_path):

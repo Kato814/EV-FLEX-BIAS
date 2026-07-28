@@ -20,10 +20,14 @@ import argparse
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 import ctypes
+from datetime import datetime, timezone
 import errno
 import json
+import math
 import multiprocessing
+from numbers import Integral
 from pathlib import Path
+import traceback
 from typing import Any, Mapping, NamedTuple, Sequence
 
 import pandas as pd
@@ -33,7 +37,11 @@ from evflex.pilot import (
     load_pilot_config,
     validate_pilot_manifest,
 )
-from evflex.runner import run_work_unit, validate_completed_payload
+from evflex.runner import (
+    atomic_write_json,
+    run_work_unit,
+    validate_completed_payload,
+)
 
 
 RESULT_DIRECTORY = "results/pilot_v2_1/work_units"
@@ -68,17 +76,53 @@ def _unit_id(work_unit: Mapping[str, Any]) -> str:
 
 def _seed(work_unit: Mapping[str, Any]) -> int:
     try:
-        value = int(work_unit["scenario_seed"])
-    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        raw = work_unit["scenario_seed"]
+    except KeyError as exc:
         raise ValueError("work unit has no valid frozen seed") from exc
+    return _strict_integer(raw, "work-unit seed")
+
+
+def _strict_integer(value: Any, description: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"{description} must be an exact integer")
+    return int(value)
+
+
+def _reject_duplicate_pairs(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in payload:
+            raise ValueError(f"duplicate JSON key: {key}")
+        payload[key] = value
+    return payload
+
+
+def _parse_finite_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"non-finite JSON number: {text}")
     return value
+
+
+def _reject_nonfinite_constant(text: str) -> None:
+    raise ValueError(f"non-finite JSON constant: {text}")
 
 
 def _read_json_mapping(path: Path, description: str) -> dict[str, Any]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"{description} is unreadable: {path}") from exc
+        payload = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_float=_parse_finite_float,
+            parse_constant=_reject_nonfinite_constant,
+        )
+    except (OSError, UnicodeError, ValueError) as exc:
+        detail = str(exc)
+        raise ValueError(
+            f"{description} is unreadable ({detail}): {path}"
+        ) from exc
     if not isinstance(payload, dict):
         raise ValueError(f"{description} must contain a JSON object: {path}")
     return payload
@@ -87,10 +131,42 @@ def _read_json_mapping(path: Path, description: str) -> dict[str, Any]:
 def _validate_completed(
     payload: Mapping[str, Any], work_unit: Mapping[str, Any]
 ) -> None:
+    observed_seed = _strict_integer(
+        payload.get("scenario_seed"), "Completed result seed"
+    )
+    if observed_seed != _seed(work_unit):
+        raise ValueError("Completed result seed mismatch")
+    attempt_count = _strict_integer(
+        payload.get("attempt_count"), "Completed result attempt count"
+    )
+    if attempt_count < 1 or attempt_count > MAX_ATTEMPTS:
+        raise ValueError("Completed result attempt count is outside the allowed range")
     validate_completed_payload(payload, work_unit)
     for field in ("protocol_version", "data_role"):
         if str(payload.get(field)) != str(work_unit.get(field)):
             raise ValueError(f"Completed result {field} mismatch")
+    status = str(payload.get("status"))
+    evaluations = payload.get("evaluations")
+    assert isinstance(evaluations, list)
+    row_statuses = [str(row.get("status")) for row in evaluations]
+    if status == "SUCCESS" and not all(
+        row_status == "SUCCESS" for row_status in row_statuses
+    ):
+        raise ValueError(
+            "Completed result status is inconsistent with evaluation statuses"
+        )
+    if status == "SCIENTIFIC_TERMINAL" and all(
+        row_status == "SUCCESS" for row_status in row_statuses
+    ):
+        raise ValueError(
+            "Completed result status is inconsistent with evaluation statuses"
+        )
+    if status == "UNHANDLED_FAILURE" and not all(
+        row_status == "UNHANDLED_FAILURE" for row_status in row_statuses
+    ):
+        raise ValueError(
+            "Completed result status is inconsistent with evaluation statuses"
+        )
 
 
 def _validate_attempt(
@@ -98,11 +174,12 @@ def _validate_attempt(
 ) -> None:
     if str(payload.get("work_unit_id")) != _unit_id(work_unit):
         raise ValueError("Attempt state work-unit ID mismatch")
-    try:
-        observed_seed = int(payload.get("scenario_seed"))
-        attempt_count = int(payload.get("attempt_count"))
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError("Attempt state has an invalid seed or count") from exc
+    observed_seed = _strict_integer(
+        payload.get("scenario_seed"), "Attempt state seed"
+    )
+    attempt_count = _strict_integer(
+        payload.get("attempt_count"), "Attempt state attempt count"
+    )
     if observed_seed != _seed(work_unit):
         raise ValueError("Attempt state seed mismatch")
     if attempt_count < 0 or attempt_count > MAX_ATTEMPTS:
@@ -110,6 +187,8 @@ def _validate_attempt(
     errors = payload.get("errors")
     if not isinstance(errors, list):
         raise ValueError("Attempt state errors must be a list")
+    if any(not isinstance(item, Mapping) for item in errors):
+        raise ValueError("Attempt state errors must contain JSON objects")
 
 
 def _read_lock_pid(path: Path) -> int:
@@ -231,6 +310,51 @@ def _new_executor() -> ProcessPoolExecutor:
     )
 
 
+def _record_parent_failure(
+    work_unit: Mapping[str, Any],
+    paths: UnitPaths,
+    exc: Exception,
+    *,
+    observation_index: int,
+) -> None:
+    if paths.attempt.exists():
+        state = _read_json_mapping(paths.attempt, "Attempt state")
+        _validate_attempt(state, work_unit)
+        attempt_count = int(state["attempt_count"])
+        errors = list(state["errors"])
+    else:
+        attempt_count = 0
+        errors = []
+    attempt_count = max(
+        attempt_count,
+        min(int(observation_index), MAX_ATTEMPTS),
+        1,
+    )
+    errors.append(
+        {
+            "attempt": attempt_count,
+            "parent_observation_index": int(observation_index),
+            "observed_at_utc": datetime.now(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "exception_type": type(exc).__name__,
+            "message": str(exc),
+            "exception_repr": repr(exc),
+            "traceback": traceback.format_exc(),
+            "source": "parent_process_pool",
+        }
+    )
+    atomic_write_json(
+        paths.attempt,
+        {
+            "work_unit_id": _unit_id(work_unit),
+            "scenario_seed": _seed(work_unit),
+            "attempt_count": attempt_count,
+            "errors": errors,
+        },
+    )
+
+
 def _run_pilot_unit(
     repo_root: str,
     work_unit: Mapping[str, Any],
@@ -296,18 +420,41 @@ def _execute_one(
                     resume,
                 )
                 return future.result()
-        except BrokenProcessPool:
+        except BrokenProcessPool as exc:
             restarts += 1
-            if restarts > MAX_POOL_RESTARTS_WITHOUT_TERMINAL_RESULT:
-                raise RuntimeError(
-                    f"worker pool repeatedly failed for {_unit_id(work_unit)}"
-                )
             prepared = _prepare_unit_artifacts(
                 work_unit, paths, resume=True
             )
             if prepared is not None:
                 return prepared
+            _record_parent_failure(
+                work_unit,
+                paths,
+                exc,
+                observation_index=restarts,
+            )
+            if restarts >= MAX_POOL_RESTARTS_WITHOUT_TERMINAL_RESULT:
+                raise RuntimeError(
+                    f"worker pool failed {restarts} times for "
+                    f"{_unit_id(work_unit)}; last failure was {exc!r}"
+                ) from exc
             resume = True
+        except Exception as exc:
+            prepared = _prepare_unit_artifacts(
+                work_unit, paths, resume=True
+            )
+            if prepared is not None:
+                return prepared
+            _record_parent_failure(
+                work_unit,
+                paths,
+                exc,
+                observation_index=max(restarts + 1, 1),
+            )
+            raise RuntimeError(
+                f"worker infrastructure failed for {_unit_id(work_unit)}: "
+                f"{exc!r}"
+            ) from exc
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -336,13 +483,26 @@ def main(
     _, frame = _prepare_repository(root)
     units = _manifest_units(frame)
 
+    preflight_outcomes: dict[str, dict[str, Any]] = {}
+    for unit in units:
+        paths = _unit_paths(root, _unit_id(unit))
+        prepared = _prepare_unit_artifacts(
+            unit, paths, resume=bool(args.resume)
+        )
+        if prepared is not None:
+            preflight_outcomes[_unit_id(unit)] = prepared
+
     outcomes: list[dict[str, Any]] = []
     execution_errors: list[dict[str, str]] = []
     for index, unit in enumerate(units, start=1):
         unit_id = _unit_id(unit)
         print(f"[{index:02d}/{len(units):02d}] {unit_id}", flush=True)
         try:
-            outcome = _execute_one(root, unit, resume=bool(args.resume))
+            outcome = preflight_outcomes.get(unit_id)
+            if outcome is None:
+                outcome = _execute_one(
+                    root, unit, resume=bool(args.resume)
+                )
             outcomes.append(outcome)
             print(
                 f"  {outcome.get('status')} "
