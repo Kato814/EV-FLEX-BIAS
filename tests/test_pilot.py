@@ -340,11 +340,33 @@ def _fake_formal_coverage():
 
 
 class _FakeAuditNetwork:
-    groups = [("test", 1)]
-
-    def __init__(self, result_for_call=None):
+    def __init__(self, result_for_call=None, *, vmax=1.06):
+        self.groups = [("test", 1)]
+        self.feeder = "fake"
+        self.model = "3ph"
+        self.load_scale = 1.0
+        self.vmin = 0.95
+        self.vmax = float(vmax)
+        self.vuf = 2.0
+        self.feeder_kva = 100.0
         self.calls = []
         self._result_for_call = result_for_call
+
+    def audit_context(self):
+        return {
+            "adapter_schema": "evflex.pilot.network-audit",
+            "adapter_version": 1,
+            "feeder": self.feeder,
+            "model": self.model,
+            "load_scale": self.load_scale,
+            "vmin_pu": self.vmin,
+            "vmax_pu": self.vmax,
+            "vuf_limit_pct": self.vuf,
+            "transformer_loading_limit_pu": 1.0,
+            "feeder_loading_limit_pu": 1.0,
+            "feeder_kva": self.feeder_kva,
+            "line_thermal_in_scope": False,
+        }
 
     def evaluate(self, power):
         call_index = len(self.calls)
@@ -441,6 +463,100 @@ def test_full_network_cache_records_carry_validated_formal_integrity():
     assert record["formal_integrity"]["coverage_complete"] is True
     assert record["result"]["formal_integrity"] == record["formal_integrity"]
     assert record["result"]["coverage"] == record["coverage"]
+
+
+def test_full_network_cache_does_not_cross_stricter_network_context():
+    full_network_check = _full_network_api()
+    baseline_network = _FakeAuditNetwork(vmax=1.06)
+    inputs = _audit_inputs(baseline_network)
+    baseline_result = full_network_check(**inputs)
+    stricter_network = _FakeAuditNetwork(vmax=1.02)
+
+    result = full_network_check(
+        **{**inputs, "cache": {1.0: stricter_network}},
+        baseline_slot_results=baseline_result["slot_results"],
+    )
+
+    assert result["power_flow_evaluations"] == 96
+    assert result["reused_baseline_intervals"] == 0
+    assert len(stricter_network.calls) == 96
+
+
+def test_full_network_cache_binds_exact_current_group_power_vector():
+    full_network_check = _full_network_api()
+    network = _FakeAuditNetwork()
+    inputs = _audit_inputs(network)
+    baseline_result = full_network_check(**inputs)
+    network.calls.clear()
+
+    class OffsetAuditEngine:
+        @staticmethod
+        def group_vector(fleet, power, groups, model):
+            return np.asarray(power, dtype=float) + 0.25
+
+    result = full_network_check(
+        **{**inputs, "engine": OffsetAuditEngine},
+        baseline_slot_results=baseline_result["slot_results"],
+    )
+
+    assert result["power_flow_evaluations"] == 96
+    assert result["reused_baseline_intervals"] == 0
+    assert len(network.calls) == 96
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["feasible", "converged", "numerical_failure"],
+)
+def test_full_network_invalid_boolean_result_fails_closed(field):
+    full_network_check = _full_network_api()
+    network = _FakeAuditNetwork(
+        lambda call_index: {field: "false"}
+    )
+
+    result = full_network_check(**_audit_inputs(network))
+
+    assert result["feasible"] is False
+    assert result["power_flow_evaluations"] == 96
+    assert result["numerical_failure_checks"] == 96
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["feasible", "converged", "numerical_failure"],
+)
+def test_full_network_cache_rechecks_invalid_boolean_result(field):
+    full_network_check = _full_network_api()
+    network = _FakeAuditNetwork()
+    inputs = _audit_inputs(network)
+    baseline_result = full_network_check(**inputs)
+    baseline_result["slot_results"][31]["result"][field] = "false"
+    network.calls.clear()
+
+    result = full_network_check(
+        **inputs,
+        baseline_slot_results=baseline_result["slot_results"],
+    )
+
+    assert result["feasible"] is True
+    assert result["power_flow_evaluations"] == 1
+    assert result["reused_baseline_intervals"] == 95
+    assert len(network.calls) == 1
+
+
+def test_full_network_invalid_violations_type_is_numerical_failure():
+    full_network_check = _full_network_api()
+    network = _FakeAuditNetwork(
+        lambda call_index: {"violations": "none"}
+    )
+
+    result = full_network_check(**_audit_inputs(network))
+
+    assert result["feasible"] is False
+    assert result["numerical_failure_checks"] == 96
+    assert all(
+        item["numerical_failure"] is True for item in result["violations"]
+    )
 
 
 def test_full_network_cache_rechecks_nonfinite_metric_before_reuse():

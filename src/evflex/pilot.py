@@ -15,6 +15,8 @@ import pandas as pd
 
 
 _DURATION_SUFFIX = re.compile(r"__(\d+)m$")
+_PILOT_ADAPTER_SCHEMA = "evflex.pilot.network-audit"
+_PILOT_ADAPTER_VERSION = 1
 _REQUIRED_COLUMNS = (
     "work_unit_id",
     "protocol_version",
@@ -311,6 +313,24 @@ def build_pilot_network_class(
                 report.get("transformer_ratings_kva", {})
             )
             return report
+
+        def audit_context(self) -> dict[str, Any]:
+            return {
+                "adapter_schema": _PILOT_ADAPTER_SCHEMA,
+                "adapter_version": _PILOT_ADAPTER_VERSION,
+                "feeder": str(self.feeder),
+                "model": str(self.model),
+                "load_scale": float(self.load_scale),
+                "vmin_pu": float(self.vmin),
+                "vmax_pu": float(self.vmax),
+                "vuf_limit_pct": float(self.vuf),
+                "transformer_loading_limit_pu": float(
+                    settings["transformer_limit"]
+                ),
+                "feeder_loading_limit_pu": float(settings["feeder_limit"]),
+                "feeder_kva": float(self._pilot_feeder_kva),
+                "line_thermal_in_scope": False,
+            }
 
     PilotNetwork.__name__ = f"Pilot{base_class.__name__}"
     PilotNetwork.__qualname__ = PilotNetwork.__name__
@@ -785,6 +805,23 @@ def full_network_check(
         if scale not in cache:
             raise KeyError(f"network cache has no entry for load scale {scale}")
         network = cache[scale]
+        audit_context = _capture_network_audit_context(
+            network,
+            feeder=feeder,
+            model=model,
+            load_scale=scale,
+        )
+        power = np.asarray(
+            engine.group_vector(
+                fleet,
+                schedule_array[:, slot],
+                network.groups,
+                model,
+            ),
+            dtype=float,
+        )
+        if power.shape != (len(network.groups),) or not np.isfinite(power).all():
+            raise ValueError("group power vector must be finite and match network groups")
         exact_baseline = bool(
             np.array_equal(schedule_array[:, slot], baseline_array[:, slot])
         )
@@ -799,6 +836,8 @@ def full_network_check(
                 model=model,
                 load_scale=scale,
                 baseline_column=baseline_array[:, slot],
+                audit_context=audit_context,
+                group_power=power,
             )
         )
 
@@ -807,12 +846,6 @@ def full_network_check(
             reused_baseline_intervals += 1
             source = "baseline_reuse"
         else:
-            power = engine.group_vector(
-                fleet,
-                schedule_array[:, slot],
-                network.groups,
-                model,
-            )
             power_flow_evaluations += 1
             try:
                 raw_evaluation = network.evaluate(power)
@@ -856,6 +889,8 @@ def full_network_check(
             "feeder": str(feeder),
             "model": str(model),
             "source": source,
+            "audit_context": _copy_audit_context(audit_context),
+            "group_power": power.tolist(),
             "coverage": _copy_formal_coverage(evaluation["coverage"]),
             "formal_integrity": dict(evaluation["formal_integrity"]),
             "result": evaluation,
@@ -922,6 +957,8 @@ def _baseline_slot_is_reusable(
     model: str,
     load_scale: float,
     baseline_column: np.ndarray,
+    audit_context: Mapping[str, Any],
+    group_power: np.ndarray,
 ) -> bool:
     if record.get("verified") is not True or record.get("baseline_exact") is not True:
         return False
@@ -939,6 +976,19 @@ def _baseline_slot_is_reusable(
     if cached_baseline.shape != baseline_column.shape:
         return False
     if not np.array_equal(cached_baseline, baseline_column):
+        return False
+    cached_context = record.get("audit_context")
+    try:
+        cached_group_power = np.asarray(record["group_power"], dtype=float)
+    except (KeyError, TypeError, ValueError):
+        return False
+    if not (
+        isinstance(cached_context, Mapping)
+        and dict(cached_context) == dict(audit_context)
+        and cached_group_power.shape == group_power.shape
+        and np.isfinite(cached_group_power).all()
+        and np.array_equal(cached_group_power, group_power)
+    ):
         return False
     result = record.get("result")
     record_coverage = record.get("coverage")
@@ -966,12 +1016,100 @@ def _baseline_slot_is_reusable(
     )
 
 
+def _capture_network_audit_context(
+    network: Any,
+    *,
+    feeder: str,
+    model: str,
+    load_scale: float,
+) -> dict[str, Any]:
+    provider = getattr(network, "audit_context", None)
+    if not callable(provider):
+        raise ValueError("network must provide a versioned pilot audit context")
+    declared = provider()
+    if not isinstance(declared, Mapping):
+        raise ValueError("network audit context must be a mapping")
+    required_numbers = (
+        "load_scale",
+        "vmin_pu",
+        "vmax_pu",
+        "vuf_limit_pct",
+        "transformer_loading_limit_pu",
+        "feeder_loading_limit_pu",
+        "feeder_kva",
+    )
+    if not all(_is_finite_number(declared.get(name)) for name in required_numbers):
+        raise ValueError("network audit context contains non-finite constraints")
+    if (
+        declared.get("adapter_schema") != _PILOT_ADAPTER_SCHEMA
+        or declared.get("adapter_version") != _PILOT_ADAPTER_VERSION
+        or declared.get("feeder") != str(feeder)
+        or declared.get("model") != str(model)
+        or float(declared["load_scale"]) != float(load_scale)
+        or float(declared["vmin_pu"]) >= float(declared["vmax_pu"])
+        or float(declared["vuf_limit_pct"]) <= 0
+        or float(declared["transformer_loading_limit_pu"]) != 1.0
+        or float(declared["feeder_loading_limit_pu"]) != 1.0
+        or float(declared["feeder_kva"]) <= 0
+        or declared.get("line_thermal_in_scope") is not False
+    ):
+        raise ValueError("network audit context is incompatible with the pilot schema")
+    return {
+        "adapter_schema": _PILOT_ADAPTER_SCHEMA,
+        "adapter_version": _PILOT_ADAPTER_VERSION,
+        "network_class": (
+            f"{type(network).__module__}.{type(network).__qualname__}"
+        ),
+        "network_instance_id": id(network),
+        "feeder": str(feeder),
+        "model": str(model),
+        "load_scale": float(load_scale),
+        "vmin_pu": float(declared["vmin_pu"]),
+        "vmax_pu": float(declared["vmax_pu"]),
+        "vuf_limit_pct": float(declared["vuf_limit_pct"]),
+        "transformer_loading_limit_pu": float(
+            declared["transformer_loading_limit_pu"]
+        ),
+        "feeder_loading_limit_pu": float(
+            declared["feeder_loading_limit_pu"]
+        ),
+        "feeder_kva": float(declared["feeder_kva"]),
+        "line_thermal_in_scope": False,
+        "groups": [
+            {
+                "type": f"{type(group).__module__}.{type(group).__qualname__}",
+                "repr": repr(group),
+            }
+            for group in network.groups
+        ],
+    }
+
+
+def _copy_audit_context(context: Mapping[str, Any]) -> dict[str, Any]:
+    copied = dict(context)
+    copied["groups"] = [dict(group) for group in context["groups"]]
+    return copied
+
+
 def _normalize_slot_evaluation(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, Mapping):
         raise TypeError("network.evaluate must return a mapping")
-    violations = list(raw.get("violations", []))
-    converged = bool(raw.get("converged", False))
-    numerical_failure = bool(raw.get("numerical_failure", False)) or not converged
+    schema_errors = _result_schema_errors(raw)
+    if schema_errors:
+        violations: list[Any] = [
+            {
+                "kind": "result_schema_failure",
+                "invalid_fields": schema_errors,
+            }
+        ]
+        feasible_value = False
+        converged = False
+        numerical_failure = True
+    else:
+        violations = list(raw["violations"])
+        feasible_value = bool(raw["feasible"])
+        converged = bool(raw["converged"])
+        numerical_failure = bool(raw["numerical_failure"]) or not converged
     integrity = _assess_formal_result_integrity(raw)
     if not integrity["validated"]:
         numerical_failure = True
@@ -1009,8 +1147,9 @@ def _normalize_slot_evaluation(raw: Any) -> dict[str, Any]:
         else:
             formal_metrics[output_name] = value
 
-    feasible = bool(raw.get("feasible", False))
-    feasible = bool(feasible and converged and not numerical_failure and not violations)
+    feasible = bool(
+        feasible_value and converged and not numerical_failure and not violations
+    )
     metrics = raw.get("metrics", {})
     coverage = raw.get("coverage", {})
     return {
@@ -1030,6 +1169,7 @@ def _normalize_slot_evaluation(raw: Any) -> dict[str, Any]:
 
 
 def _assess_formal_result_integrity(raw: Mapping[str, Any]) -> dict[str, bool]:
+    result_schema_valid = not _result_schema_errors(raw)
     metrics = raw.get("metrics")
     metrics_finite = bool(
         isinstance(metrics, Mapping)
@@ -1062,16 +1202,40 @@ def _assess_formal_result_integrity(raw: Mapping[str, Any]) -> dict[str, bool]:
     )
     return {
         "validated": bool(
-            metrics_finite
+            result_schema_valid
+            and metrics_finite
             and summary_finite
             and coverage_complete
             and summary_consistent
         ),
+        "result_schema_valid": result_schema_valid,
         "metrics_finite": metrics_finite,
         "summary_finite": summary_finite,
         "coverage_complete": coverage_complete,
         "summary_consistent": summary_consistent,
     }
+
+
+def _result_schema_errors(raw: Mapping[str, Any]) -> list[str]:
+    errors = [
+        name
+        for name in ("feasible", "converged", "numerical_failure")
+        if not isinstance(raw.get(name), (bool, np.bool_))
+    ]
+    violations = raw.get("violations")
+    if not (
+        isinstance(violations, (list, tuple))
+        and all(
+            isinstance(item, Mapping)
+            or (
+                isinstance(item, (list, tuple))
+                and len(item) > 0
+            )
+            for item in violations
+        )
+    ):
+        errors.append("violations")
+    return errors
 
 
 def _formal_coverage_is_complete(
