@@ -1,0 +1,144 @@
+{
+  "protocol_version": "EV-FLEX-BIAS-V2.1-PILOT",
+  "source_protocol_version": "EV-FLEX-BIAS-V2.0",
+  "source_manifest": "manifests/core_work_units_v2_0.csv",
+  "pilot_manifest": "manifests/audit_pilot_work_units_v2_1.csv",
+  "scenario_ids": [
+    "ieee13_1900_17",
+    "ieee13_0000_09",
+    "ieee13_0200_17",
+    "ieee13_0600_24",
+    "lv906_1900_18",
+    "lv906_0000_11",
+    "lv906_0200_03",
+    "lv906_0600_02"
+  ],
+  "scenario_design": {
+    "ieee13_1900_17": {
+      "feeder": "ieee13",
+      "call_time": "19:00",
+      "scenario_seed": 2026071616
+    },
+    "ieee13_0000_09": {
+      "feeder": "ieee13",
+      "call_time": "00:00",
+      "scenario_seed": 2026071708
+    },
+    "ieee13_0200_17": {
+      "feeder": "ieee13",
+      "call_time": "02:00",
+      "scenario_seed": 2026071816
+    },
+    "ieee13_0600_24": {
+      "feeder": "ieee13",
+      "call_time": "06:00",
+      "scenario_seed": 2026071923
+    },
+    "lv906_1900_18": {
+      "feeder": "lv906",
+      "call_time": "19:00",
+      "scenario_seed": 2026072017
+    },
+    "lv906_0000_11": {
+      "feeder": "lv906",
+      "call_time": "00:00",
+      "scenario_seed": 2026072110
+    },
+    "lv906_0200_03": {
+      "feeder": "lv906",
+      "call_time": "02:00",
+      "scenario_seed": 2026072202
+    },
+    "lv906_0600_02": {
+      "feeder": "lv906",
+      "call_time": "06:00",
+      "scenario_seed": 2026072301
+    }
+  },
+  "feeders": [
+    "ieee13",
+    "lv906"
+  ],
+  "call_times": [
+    "19:00",
+    "00:00",
+    "02:00",
+    "06:00"
+  ],
+  "directions": [
+    "inc",
+    "dec"
+  ],
+  "durations_min": [
+    15,
+    30,
+    60
+  ],
+  "workers": 1,
+  "numeric_threads": 1,
+  "formal_constraints": {
+    "vmin_pu": 0.95,
+    "vmax_pu": 1.06,
+    "vuf_limit_pct": 2.0,
+    "transformer_loading_limit_pu": 1.0,
+    "feeder_loading_limit_pu": 1.0,
+    "line_thermal_in_scope": false
+  },
+  "feeder_kva": {
+    "ieee13": 5000,
+    "lv906": 800
+  },
+  "active_offer": {
+    "rule": "max(minimum_kw, feeder_fraction * feeder_kva)",
+    "minimum_kw": 7.2,
+    "feeder_fraction": 0.005
+  },
+  "alpha_search": {
+    "coarse_step": 0.02,
+    "refine_tolerance": 0.002
+  },
+  "online_latency": {
+    "budget_seconds": 5.0,
+    "direct_audit_material_threshold_seconds": 1.0
+  },
+  "scientific_gate_thresholds": {
+    "baseline": {
+      "pass_count": 8,
+      "warn_count": 7,
+      "hard_stop_max_count": 6
+    },
+    "active_offer": {
+      "pass_min_proportion": 0.75,
+      "warn_min_proportion": 0.5
+    },
+    "core_bad_alpha": {
+      "bad_if_below": 0.95,
+      "pass_min_bad_rate": 0.1,
+      "pass_min_bad_count": 4,
+      "pass_min_bad_scenarios": 3,
+      "hard_no_go_bad_rate_below": 0.05,
+      "hard_no_go_bad_count_max": 1,
+      "hard_no_go_logic": "or"
+    },
+    "dominance": {
+      "pass_max": 0.5,
+      "hard_above": 0.7
+    },
+    "material_delta": 0.05,
+    "direction_duration": {
+      "pass_min_proportion": 0.25,
+      "drop_below": 0.1
+    },
+    "tie_rescue": {
+      "pivot_min": 0.8,
+      "total_bad_max": 0.05,
+      "new_unsafe_max": 0.05,
+      "offer_retention_min": 0.995
+    },
+    "warm_timing": {
+      "repeats": 3,
+      "cv_pass_max": 0.2,
+      "cv_indeterminate_above": 0.3
+    }
+  }
+}
