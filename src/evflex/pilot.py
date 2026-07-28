@@ -43,6 +43,7 @@ def load_pilot_config(repo_root: str | Path) -> dict[str, Any]:
         _fail("V2 source manifest protocol version differs from the pilot config")
 
     source_design: dict[str, dict[str, object]] = {}
+    source_rows: dict[tuple[str, str], dict[str, object]] = {}
     for scenario_id, group in source.groupby("scenario_id", sort=False):
         if set(group["direction"]) != directions:
             _fail(f"V2 source scenario {scenario_id} does not have paired directions")
@@ -55,10 +56,28 @@ def load_pilot_config(repo_root: str | Path) -> dict[str, Any]:
             "call_time": first["call_time"],
             "scenario_seed": int(first["scenario_seed"]),
         }
+        for row in group.itertuples(index=False):
+            key = (row.scenario_id, row.direction)
+            if key in source_rows:
+                _fail(f"V2 source manifest duplicates row {key}")
+            try:
+                evaluation_ids = _evaluation_ids(row.evaluation_ids)
+            except (json.JSONDecodeError, TypeError) as exc:
+                _fail(f"invalid V2 source evaluation_ids for {key}: {exc}")
+            source_rows[key] = {
+                "work_unit_id": row.work_unit_id,
+                "scenario_id": row.scenario_id,
+                "feeder": row.feeder,
+                "call_time": row.call_time,
+                "direction": row.direction,
+                "scenario_seed": int(row.scenario_seed),
+                "evaluation_ids": evaluation_ids,
+            }
 
     if source_design != config["scenario_design"]:
         _fail("pilot config scenario design differs from the V2 source manifest")
     config["_source_scenario_design"] = source_design
+    config["_source_rows"] = source_rows
     return config
 
 
@@ -136,6 +155,9 @@ def validate_pilot_manifest(
             _fail(f"{column} must be fixed to {expected}")
 
     scenario_design = config.get("_source_scenario_design", config["scenario_design"])
+    source_rows = config.get("_source_rows")
+    if source_rows is None:
+        _fail("config must be loaded with V2 source-row identities")
     evaluation_ids: list[str] = []
     for row in frame.itertuples(index=False):
         expected_scenario = scenario_design[row.scenario_id]
@@ -153,6 +175,22 @@ def validate_pilot_manifest(
             row_evaluation_ids = _evaluation_ids(row.evaluation_ids)
         except (json.JSONDecodeError, TypeError) as exc:
             _fail(f"invalid evaluation_ids for {row.work_unit_id}: {exc}")
+        source_key = (row.scenario_id, row.direction)
+        source_row = source_rows.get(source_key)
+        if source_row is None:
+            _fail(f"work unit has no V2 source row for {source_key}")
+        observed_source_fields = {
+            "work_unit_id": row.work_unit_id,
+            "scenario_id": row.scenario_id,
+            "feeder": row.feeder,
+            "call_time": row.call_time,
+            "direction": row.direction,
+            "scenario_seed": observed_seed,
+            "evaluation_ids": row_evaluation_ids,
+        }
+        for field, observed in observed_source_fields.items():
+            if observed != source_row[field]:
+                _fail(f"{field} for {source_key} differs from the V2 source row")
         expected_evaluation_ids = [
             f"v20_core_{row.scenario_id}__{row.direction}__{duration}m"
             for duration in durations_expected

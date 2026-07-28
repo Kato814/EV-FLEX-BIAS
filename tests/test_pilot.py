@@ -67,6 +67,30 @@ def test_duplicate_work_unit_id_is_rejected():
         validate_pilot_manifest(frame, config)
 
 
+def test_unique_work_unit_id_that_differs_from_v2_source_is_rejected():
+    load_pilot_config, validate_pilot_manifest = _pilot_api()
+    config = load_pilot_config(REPO_ROOT)
+    frame = _valid_frame()
+    frame.loc[frame.index[0], "work_unit_id"] = "v20_work_unique_but_not_from_source"
+
+    with pytest.raises(ValueError, match="pilot design"):
+        validate_pilot_manifest(frame, config)
+
+
+def test_format_valid_evaluation_ids_that_differ_from_v2_source_are_rejected():
+    load_pilot_config, validate_pilot_manifest = _pilot_api()
+    config = load_pilot_config(REPO_ROOT)
+    frame = _valid_frame()
+    for index in frame.index:
+        evaluation_ids = json.loads(frame.loc[index, "evaluation_ids"])
+        evaluation_ids[0], evaluation_ids[1] = evaluation_ids[1], evaluation_ids[0]
+        frame.loc[index, "evaluation_ids"] = json.dumps(evaluation_ids)
+    config["durations_min"] = [30, 15, 60]
+
+    with pytest.raises(ValueError, match="pilot design"):
+        validate_pilot_manifest(frame, config)
+
+
 def test_seed_that_differs_from_v2_manifest_is_rejected():
     load_pilot_config, validate_pilot_manifest = _pilot_api()
     config = load_pilot_config(REPO_ROOT)
