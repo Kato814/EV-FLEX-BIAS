@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 from collections.abc import Mapping, Sequence
 from decimal import ROUND_CEILING, Decimal, InvalidOperation
@@ -261,15 +262,19 @@ def build_pilot_network_class(
             self._pilot_ready = False
             self._pilot_coverage: dict[str, Any] = {}
             self._pilot_feeder_kva = settings["feeder_kva"][feeder]
-            super().__init__(
-                feeder,
-                fleet_frame,
-                model,
-                load_scale,
-                vmin=settings["vmin"],
-                vmax=settings["vmax"],
-                vuf=settings["vuf"],
-            )
+            original_cwd = os.getcwd()
+            try:
+                super().__init__(
+                    feeder,
+                    fleet_frame,
+                    model,
+                    load_scale,
+                    vmin=settings["vmin"],
+                    vmax=settings["vmax"],
+                    vuf=settings["vuf"],
+                )
+            finally:
+                os.chdir(original_cwd)
             self.vmin = settings["vmin"]
             self.vmax = settings["vmax"]
             self.vuf = settings["vuf"]
@@ -851,6 +856,8 @@ def full_network_check(
             "feeder": str(feeder),
             "model": str(model),
             "source": source,
+            "coverage": _copy_formal_coverage(evaluation["coverage"]),
+            "formal_integrity": dict(evaluation["formal_integrity"]),
             "result": evaluation,
         }
         slot_results.append(slot_record)
@@ -933,7 +940,30 @@ def _baseline_slot_is_reusable(
         return False
     if not np.array_equal(cached_baseline, baseline_column):
         return False
-    return isinstance(record.get("result"), Mapping)
+    result = record.get("result")
+    record_coverage = record.get("coverage")
+    record_integrity = record.get("formal_integrity")
+    if not (
+        isinstance(result, Mapping)
+        and isinstance(record_coverage, Mapping)
+        and isinstance(record_integrity, Mapping)
+        and record_integrity.get("validated") is True
+    ):
+        return False
+    result_coverage = result.get("coverage")
+    result_integrity = result.get("formal_integrity")
+    if not (
+        isinstance(result_coverage, Mapping)
+        and isinstance(result_integrity, Mapping)
+        and dict(result_coverage) == dict(record_coverage)
+        and dict(result_integrity) == dict(record_integrity)
+    ):
+        return False
+    observed_integrity = _assess_formal_result_integrity(result)
+    return bool(
+        observed_integrity["validated"]
+        and observed_integrity == dict(record_integrity)
+    )
 
 
 def _normalize_slot_evaluation(raw: Any) -> dict[str, Any]:
@@ -942,6 +972,19 @@ def _normalize_slot_evaluation(raw: Any) -> dict[str, Any]:
     violations = list(raw.get("violations", []))
     converged = bool(raw.get("converged", False))
     numerical_failure = bool(raw.get("numerical_failure", False)) or not converged
+    integrity = _assess_formal_result_integrity(raw)
+    if not integrity["validated"]:
+        numerical_failure = True
+        violations.append(
+            {
+                "kind": "formal_integrity_failure",
+                "failed_checks": [
+                    name
+                    for name, passed in integrity.items()
+                    if name != "validated" and not passed
+                ],
+            }
+        )
     formal_metrics: dict[str, float | None] = {}
     for output_name, input_name in (
         ("vmin", "vmin"),
@@ -969,14 +1012,199 @@ def _normalize_slot_evaluation(raw: Any) -> dict[str, Any]:
     feasible = bool(raw.get("feasible", False))
     feasible = bool(feasible and converged and not numerical_failure and not violations)
     metrics = raw.get("metrics", {})
+    coverage = raw.get("coverage", {})
     return {
         "feasible": feasible,
         "converged": converged,
         "numerical_failure": numerical_failure,
         "violations": violations,
         "metrics": dict(metrics) if isinstance(metrics, Mapping) else {},
+        "coverage": (
+            _copy_formal_coverage(coverage)
+            if isinstance(coverage, Mapping)
+            else {}
+        ),
+        "formal_integrity": integrity,
         **formal_metrics,
     }
+
+
+def _assess_formal_result_integrity(raw: Mapping[str, Any]) -> dict[str, bool]:
+    metrics = raw.get("metrics")
+    metrics_finite = bool(
+        isinstance(metrics, Mapping)
+        and metrics
+        and all(
+            isinstance(name, str) and _is_finite_number(value)
+            for name, value in metrics.items()
+        )
+    )
+    summary_finite = all(
+        _is_finite_number(raw.get(name))
+        for name in (
+            "vmin",
+            "vmax",
+            "vufmax",
+            "transformer_loading_max",
+            "feeder_loading",
+        )
+    )
+    coverage = raw.get("coverage")
+    coverage_complete = bool(
+        metrics_finite
+        and isinstance(coverage, Mapping)
+        and _formal_coverage_is_complete(coverage, metrics)
+    )
+    summary_consistent = bool(
+        metrics_finite
+        and summary_finite
+        and _formal_summary_matches_metrics(raw, metrics)
+    )
+    return {
+        "validated": bool(
+            metrics_finite
+            and summary_finite
+            and coverage_complete
+            and summary_consistent
+        ),
+        "metrics_finite": metrics_finite,
+        "summary_finite": summary_finite,
+        "coverage_complete": coverage_complete,
+        "summary_consistent": summary_consistent,
+    }
+
+
+def _formal_coverage_is_complete(
+    coverage: Mapping[str, Any], metrics: Mapping[str, Any]
+) -> bool:
+    count_names = (
+        "all_bus_count",
+        "monitored_bus_count",
+        "energized_voltage_node_count",
+        "monitored_voltage_node_count",
+        "three_phase_bus_count",
+        "monitored_vuf_bus_count",
+        "enabled_transformer_count",
+        "rated_transformer_count",
+        "line_count",
+    )
+    counts = {
+        name: _nonnegative_integer(coverage.get(name)) for name in count_names
+    }
+    if any(value is None for value in counts.values()):
+        return False
+    voltage_metrics = [name for name in metrics if name.startswith("V:")]
+    vuf_metrics = [name for name in metrics if name.startswith("U:")]
+    transformer_metrics = [
+        name for name in metrics if name.startswith("S:transformer:")
+    ]
+    ratings = coverage.get("transformer_ratings_kva")
+    if not isinstance(ratings, Mapping):
+        return False
+    if not all(
+        isinstance(name, str)
+        and _is_finite_number(rating)
+        and float(rating) > 0
+        for name, rating in ratings.items()
+    ):
+        return False
+    transformer_metric_names = {
+        name.removeprefix("S:transformer:").lower()
+        for name in transformer_metrics
+    }
+    transformer_rating_names = {str(name).lower() for name in ratings}
+    try:
+        transformer_rating_coverage = float(
+            coverage["transformer_rating_coverage"]
+        )
+        feeder_rating_multiplier = float(coverage["feeder_rating_multiplier"])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+    return bool(
+        counts["all_bus_count"] > 0
+        and counts["all_bus_count"] == counts["monitored_bus_count"]
+        and counts["energized_voltage_node_count"] > 0
+        and counts["energized_voltage_node_count"]
+        == counts["monitored_voltage_node_count"]
+        == len(voltage_metrics)
+        and counts["three_phase_bus_count"]
+        == counts["monitored_vuf_bus_count"]
+        == len(vuf_metrics)
+        and counts["enabled_transformer_count"]
+        == counts["rated_transformer_count"]
+        == len(transformer_metrics)
+        == len(ratings)
+        and transformer_metric_names == transformer_rating_names
+        and math.isfinite(transformer_rating_coverage)
+        and transformer_rating_coverage == 1.0
+        and coverage.get("line_thermal_in_scope") is False
+        and math.isfinite(feeder_rating_multiplier)
+        and feeder_rating_multiplier == 1.0
+        and "S:feeder" in metrics
+    )
+
+
+def _formal_summary_matches_metrics(
+    raw: Mapping[str, Any], metrics: Mapping[str, Any]
+) -> bool:
+    voltage_values = [
+        float(value) for name, value in metrics.items() if name.startswith("V:")
+    ]
+    vuf_values = [
+        float(value) for name, value in metrics.items() if name.startswith("U:")
+    ]
+    transformer_values = [
+        float(value)
+        for name, value in metrics.items()
+        if name.startswith("S:transformer:")
+    ]
+    if not voltage_values or "S:feeder" not in metrics:
+        return False
+    expected = {
+        "vmin": min(voltage_values),
+        "vmax": max(voltage_values),
+        "vufmax": max(vuf_values, default=0.0),
+        "transformer_loading_max": max(transformer_values, default=0.0),
+        "feeder_loading": float(metrics["S:feeder"]),
+    }
+    return all(
+        math.isclose(
+            float(raw[name]),
+            value,
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        )
+        for name, value in expected.items()
+    )
+
+
+def _copy_formal_coverage(coverage: Mapping[str, Any]) -> dict[str, Any]:
+    copied = dict(coverage)
+    ratings = copied.get("transformer_ratings_kva")
+    if isinstance(ratings, Mapping):
+        copied["transformer_ratings_kva"] = dict(ratings)
+    return copied
+
+
+def _nonnegative_integer(value: Any) -> int | None:
+    if isinstance(value, (bool, np.bool_)):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(number) or number < 0 or not number.is_integer():
+        return None
+    return int(number)
+
+
+def _is_finite_number(value: Any) -> bool:
+    if isinstance(value, (bool, np.bool_)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return False
 
 
 def _update_audit_extrema(

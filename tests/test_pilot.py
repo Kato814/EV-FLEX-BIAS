@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -320,6 +321,24 @@ class _FakeAuditEngine:
         return np.asarray(power, dtype=float)
 
 
+def _fake_formal_coverage():
+    return {
+        "all_bus_count": 1,
+        "monitored_bus_count": 1,
+        "energized_voltage_node_count": 3,
+        "monitored_voltage_node_count": 3,
+        "three_phase_bus_count": 1,
+        "monitored_vuf_bus_count": 1,
+        "enabled_transformer_count": 1,
+        "rated_transformer_count": 1,
+        "transformer_rating_coverage": 1.0,
+        "line_count": 1,
+        "line_thermal_in_scope": False,
+        "feeder_rating_multiplier": 1.0,
+        "transformer_ratings_kva": {"tx1": 100.0},
+    }
+
+
 class _FakeAuditNetwork:
     groups = [("test", 1)]
 
@@ -335,12 +354,20 @@ class _FakeAuditNetwork:
             "converged": True,
             "numerical_failure": False,
             "violations": [],
-            "metrics": {},
+            "metrics": {
+                "V:test.1": 0.99,
+                "V:test.2": 1.01,
+                "V:test.3": 1.0,
+                "U:test": 0.2,
+                "S:transformer:tx1": 0.5,
+                "S:feeder": 0.4,
+            },
             "vmin": 0.99,
             "vmax": 1.01,
             "vufmax": 0.2,
             "transformer_loading_max": 0.5,
             "feeder_loading": 0.4,
+            "coverage": _fake_formal_coverage(),
         }
         if self._result_for_call is not None:
             result.update(self._result_for_call(call_index))
@@ -398,6 +425,64 @@ def test_full_network_check_reuses_only_exact_verified_baseline_slots():
     assert result["reused_baseline_intervals"] == 96
     assert result["converged_checks"] == 96
     assert network.calls == []
+
+
+def test_full_network_cache_records_carry_validated_formal_integrity():
+    full_network_check = _full_network_api()
+    network = _FakeAuditNetwork()
+
+    result = full_network_check(**_audit_inputs(network))
+    record = result["slot_results"][0]
+
+    assert "coverage" in record
+    assert "formal_integrity" in record
+    assert record["formal_integrity"]["validated"] is True
+    assert record["formal_integrity"]["metrics_finite"] is True
+    assert record["formal_integrity"]["coverage_complete"] is True
+    assert record["result"]["formal_integrity"] == record["formal_integrity"]
+    assert record["result"]["coverage"] == record["coverage"]
+
+
+def test_full_network_cache_rechecks_nonfinite_metric_before_reuse():
+    full_network_check = _full_network_api()
+    network = _FakeAuditNetwork()
+    inputs = _audit_inputs(network)
+    baseline_result = full_network_check(**inputs)
+    baseline_result["slot_results"][17]["result"]["metrics"]["V:test.1"] = float(
+        "nan"
+    )
+    network.calls.clear()
+
+    result = full_network_check(
+        **inputs,
+        baseline_slot_results=baseline_result["slot_results"],
+    )
+
+    assert result["feasible"] is True
+    assert result["power_flow_evaluations"] == 1
+    assert result["reused_baseline_intervals"] == 95
+    assert len(network.calls) == 1
+
+
+def test_full_network_cache_does_not_reuse_record_without_coverage():
+    full_network_check = _full_network_api()
+    network = _FakeAuditNetwork()
+    inputs = _audit_inputs(network)
+    baseline_result = full_network_check(**inputs)
+    record = baseline_result["slot_results"][23]
+    record.pop("coverage", None)
+    record["result"].pop("coverage", None)
+    network.calls.clear()
+
+    result = full_network_check(
+        **inputs,
+        baseline_slot_results=baseline_result["slot_results"],
+    )
+
+    assert result["feasible"] is True
+    assert result["power_flow_evaluations"] == 1
+    assert result["reused_baseline_intervals"] == 95
+    assert len(network.calls) == 1
 
 
 def test_full_network_check_tiny_nonzero_change_still_triggers_power_flow():
@@ -673,6 +758,51 @@ def test_pilot_network_handles_legacy_prepare_dynamic_dispatch():
     assert coverage["line_thermal_in_scope"] is False
     assert coverage["feeder_rating_multiplier"] == 1.0
     assert coverage["transformer_ratings_kva"] == {"tx1": 100.0}
+
+
+def test_pilot_network_restores_cwd_after_legacy_construction(tmp_path):
+    build_pilot_network_class, _ = _network_api()
+    original_cwd = os.getcwd()
+    changed_cwd = tmp_path / "compiled_feeder"
+    changed_cwd.mkdir()
+
+    class CwdChangingNetwork(_DynamicDispatchNetwork):
+        def __init__(self, *args, **kwargs):
+            os.chdir(changed_cwd)
+            super().__init__(*args, **kwargs)
+
+    pilot_class = build_pilot_network_class(
+        CwdChangingNetwork, _minimal_network_config()
+    )
+    try:
+        pilot_class("fake", object(), "3ph", 1.0)
+
+        assert os.getcwd() == original_cwd
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_pilot_network_restores_cwd_when_legacy_construction_raises(tmp_path):
+    build_pilot_network_class, _ = _network_api()
+    original_cwd = os.getcwd()
+    changed_cwd = tmp_path / "failed_compile"
+    changed_cwd.mkdir()
+
+    class FailingCwdNetwork:
+        def __init__(self, *args, **kwargs):
+            os.chdir(changed_cwd)
+            raise RuntimeError("compile failed")
+
+    pilot_class = build_pilot_network_class(
+        FailingCwdNetwork, _minimal_network_config()
+    )
+    try:
+        with pytest.raises(RuntimeError, match="compile failed"):
+            pilot_class("fake", object(), "3ph", 1.0)
+
+        assert os.getcwd() == original_cwd
+    finally:
+        os.chdir(original_cwd)
 
 
 def test_configure_pilot_core_replaces_only_the_in_memory_network_class():
