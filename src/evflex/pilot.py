@@ -3957,3 +3957,2335 @@ def validate_pilot_manifest(
         "directions": sorted(frame["direction"].unique().tolist()),
         "durations": durations,
     }
+
+
+_GATE_NOT_EVALUATED = "NOT_EVALUATED_VALIDITY_STOP"
+_GATE_SCIENTIFIC_STATUS_FIELDS = (
+    "baseline_status",
+    "active_offer_status",
+    "core_topic_status",
+    "scenario_dominance_status",
+    "direction_claim_status",
+    "duration_claim_status",
+    "feeder_replication_status",
+    "tie_break_route_status",
+    "screening_compute_status",
+    "v2_0_reuse_status",
+)
+_GATE_SHA256 = re.compile(r"[0-9a-f]{64}")
+_GATE_SCENARIO_DESIGN = {
+    "ieee13_1900_17": {
+        "feeder": "ieee13",
+        "call_time": "19:00",
+        "scenario_seed": 2026071616,
+    },
+    "ieee13_0000_09": {
+        "feeder": "ieee13",
+        "call_time": "00:00",
+        "scenario_seed": 2026071708,
+    },
+    "ieee13_0200_17": {
+        "feeder": "ieee13",
+        "call_time": "02:00",
+        "scenario_seed": 2026071816,
+    },
+    "ieee13_0600_24": {
+        "feeder": "ieee13",
+        "call_time": "06:00",
+        "scenario_seed": 2026071923,
+    },
+    "lv906_1900_18": {
+        "feeder": "lv906",
+        "call_time": "19:00",
+        "scenario_seed": 2026072017,
+    },
+    "lv906_0000_11": {
+        "feeder": "lv906",
+        "call_time": "00:00",
+        "scenario_seed": 2026072110,
+    },
+    "lv906_0200_03": {
+        "feeder": "lv906",
+        "call_time": "02:00",
+        "scenario_seed": 2026072202,
+    },
+    "lv906_0600_02": {
+        "feeder": "lv906",
+        "call_time": "06:00",
+        "scenario_seed": 2026072301,
+    },
+}
+
+
+def assess_pilot_gate(
+    evidence: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Assess the frozen V2.1 development pilot without starting a formal run."""
+    try:
+        context = _gate_config_context(config)
+    except Exception as exc:
+        return _gate_validity_stop(
+            [("GATE_CONFIG_INVALID", f"{type(exc).__name__}: {exc}")]
+        )
+
+    try:
+        errors, rows = _gate_validate_evidence(evidence, context)
+    except Exception as exc:
+        return _gate_validity_stop(
+            [
+                (
+                    "GATE_VALIDATION_EXCEPTION",
+                    f"{type(exc).__name__}: {exc}",
+                )
+            ]
+        )
+    if errors:
+        return _gate_validity_stop(errors)
+
+    try:
+        return _gate_scientific_decision(rows, context)
+    except Exception as exc:
+        return _gate_validity_stop(
+            [
+                (
+                    "GATE_DECISION_EXCEPTION",
+                    f"{type(exc).__name__}: {exc}",
+                )
+            ]
+        )
+
+
+def _gate_config_context(config: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(config, Mapping):
+        raise TypeError("config must be a mapping")
+    if config.get("protocol_version") != "EV-FLEX-BIAS-V2.1-PILOT":
+        raise ValueError("protocol_version is not the frozen V2.1 pilot")
+    if (
+        config.get("source_protocol_version") != "EV-FLEX-BIAS-V2.0"
+        or config.get("source_manifest") != "manifests/core_work_units_v2_0.csv"
+        or config.get("pilot_manifest")
+        != "manifests/audit_pilot_work_units_v2_1.csv"
+        or not _gate_is_int(config.get("workers"))
+        or config.get("workers") != 1
+        or not _gate_is_int(config.get("numeric_threads"))
+        or config.get("numeric_threads") != 1
+    ):
+        raise ValueError("pilot provenance or execution settings are not frozen")
+
+    scenario_ids = _gate_string_list(config.get("scenario_ids"), "scenario_ids")
+    feeders = _gate_string_list(config.get("feeders"), "feeders")
+    call_times = _gate_string_list(config.get("call_times"), "call_times")
+    directions = _gate_string_list(config.get("directions"), "directions")
+    durations = _gate_int_list(config.get("durations_min"), "durations_min")
+    if (
+        len(scenario_ids) != 8
+        or len(set(scenario_ids)) != 8
+        or len(feeders) != 2
+        or len(set(feeders)) != 2
+        or len(call_times) != 4
+        or len(set(call_times)) != 4
+        or directions != ["inc", "dec"]
+        or durations != [15, 30, 60]
+    ):
+        raise ValueError("pilot factorial design is not the frozen 8x2x3 design")
+    if (
+        scenario_ids != list(_GATE_SCENARIO_DESIGN)
+        or feeders != ["ieee13", "lv906"]
+        or call_times != ["19:00", "00:00", "02:00", "06:00"]
+    ):
+        raise ValueError("pilot design labels differ from the frozen design")
+
+    scenario_design = config.get("scenario_design")
+    if not isinstance(scenario_design, Mapping):
+        raise TypeError("scenario_design must be a mapping")
+    if set(scenario_design) != set(scenario_ids):
+        raise ValueError("scenario_design keys differ from scenario_ids")
+    normalized_design: dict[str, dict[str, Any]] = {}
+    for scenario_id in scenario_ids:
+        item = scenario_design.get(scenario_id)
+        if not isinstance(item, Mapping):
+            raise TypeError(f"scenario_design[{scenario_id}] must be a mapping")
+        feeder = item.get("feeder")
+        call_time = item.get("call_time")
+        seed = item.get("scenario_seed")
+        if (
+            not isinstance(feeder, str)
+            or feeder not in feeders
+            or not isinstance(call_time, str)
+            or call_time not in call_times
+            or not _gate_is_int(seed)
+        ):
+            raise ValueError(f"scenario_design[{scenario_id}] is invalid")
+        normalized_design[scenario_id] = {
+            "feeder": feeder,
+            "call_time": call_time,
+            "scenario_seed": seed,
+        }
+    if normalized_design != _GATE_SCENARIO_DESIGN:
+        raise ValueError("scenario_design differs from the frozen design")
+    factorial = {
+        (item["feeder"], item["call_time"])
+        for item in normalized_design.values()
+    }
+    if factorial != {
+        (feeder, call_time)
+        for feeder in feeders
+        for call_time in call_times
+    }:
+        raise ValueError("scenario_design is not the frozen feeder/time factorial")
+
+    feeder_kva = config.get("feeder_kva")
+    if not isinstance(feeder_kva, Mapping) or set(feeder_kva) != set(feeders):
+        raise ValueError("feeder_kva does not cover the exact feeder set")
+    normalized_kva = {
+        feeder: _gate_required_number(
+            feeder_kva.get(feeder), f"feeder_kva[{feeder}]"
+        )
+        for feeder in feeders
+    }
+    if any(value <= 0 for value in normalized_kva.values()):
+        raise ValueError("feeder_kva values must be positive")
+    if normalized_kva != {"ieee13": 5000.0, "lv906": 800.0}:
+        raise ValueError("feeder_kva differs from the frozen ratings")
+
+    active = _gate_mapping(config, "active_offer")
+    if active.get("rule") != "max(minimum_kw, feeder_fraction * feeder_kva)":
+        raise ValueError("active-offer rule differs from the frozen rule")
+    alpha_search = _gate_mapping(config, "alpha_search")
+    if (
+        not _gate_is_number(alpha_search.get("coarse_step"))
+        or float(alpha_search.get("coarse_step")) != 0.02
+        or not _gate_is_number(alpha_search.get("refine_tolerance"))
+        or float(alpha_search.get("refine_tolerance")) != 0.002
+    ):
+        raise ValueError("alpha search settings differ from the frozen settings")
+    formal = _gate_mapping(config, "formal_constraints")
+    expected_formal = {
+        "vmin_pu": 0.95,
+        "vmax_pu": 1.06,
+        "vuf_limit_pct": 2.0,
+        "transformer_loading_limit_pu": 1.0,
+        "feeder_loading_limit_pu": 1.0,
+        "line_thermal_in_scope": False,
+    }
+    if dict(formal) != expected_formal:
+        raise ValueError("formal constraints differ from the frozen constraints")
+    online = _gate_mapping(config, "online_latency")
+    thresholds = _gate_mapping(config, "scientific_gate_thresholds")
+    baseline = _gate_mapping(thresholds, "baseline")
+    active_gate = _gate_mapping(thresholds, "active_offer")
+    core = _gate_mapping(thresholds, "core_bad_alpha")
+    dominance = _gate_mapping(thresholds, "dominance")
+    direction_duration = _gate_mapping(thresholds, "direction_duration")
+    tie = _gate_mapping(thresholds, "tie_rescue")
+    warm = _gate_mapping(thresholds, "warm_timing")
+
+    frozen_numbers = (
+        (active, "minimum_kw", 7.2),
+        (active, "feeder_fraction", 0.005),
+        (online, "budget_seconds", 5.0),
+        (online, "direct_audit_material_threshold_seconds", 1.0),
+        (baseline, "pass_count", 8),
+        (baseline, "warn_count", 7),
+        (baseline, "hard_stop_max_count", 6),
+        (active_gate, "pass_min_proportion", 0.75),
+        (active_gate, "warn_min_proportion", 0.5),
+        (core, "bad_if_below", 0.95),
+        (core, "pass_min_bad_rate", 0.1),
+        (core, "pass_min_bad_count", 4),
+        (core, "pass_min_bad_scenarios", 3),
+        (core, "hard_no_go_bad_rate_below", 0.05),
+        (core, "hard_no_go_bad_count_max", 1),
+        (dominance, "pass_max", 0.5),
+        (dominance, "hard_above", 0.7),
+        (thresholds, "material_delta", 0.05),
+        (direction_duration, "pass_min_proportion", 0.25),
+        (direction_duration, "drop_below", 0.1),
+        (tie, "pivot_min", 0.8),
+        (tie, "total_bad_max", 0.05),
+        (tie, "new_unsafe_max", 0.05),
+        (tie, "offer_retention_min", 0.995),
+        (warm, "repeats", 3),
+        (warm, "cv_pass_max", 0.2),
+        (warm, "cv_indeterminate_above", 0.3),
+    )
+    normalized: dict[tuple[int, str], float] = {}
+    for owner, name, frozen in frozen_numbers:
+        raw_value = owner.get(name)
+        value = _gate_required_number(raw_value, name)
+        if (
+            isinstance(frozen, int)
+            and not _gate_is_int(raw_value)
+            or isinstance(frozen, float)
+            and not isinstance(raw_value, float)
+            or value != float(frozen)
+        ):
+            raise ValueError(f"{name} differs from the frozen threshold {frozen}")
+        normalized[(id(owner), name)] = value
+    if core.get("hard_no_go_logic") != "or":
+        raise ValueError("core hard no-go logic must be 'or'")
+
+    minimum_kw = normalized[(id(active), "minimum_kw")]
+    feeder_fraction = normalized[(id(active), "feeder_fraction")]
+    expected_work_units = [
+        f"v20_work_{scenario_id}__{direction}"
+        for scenario_id in scenario_ids
+        for direction in directions
+    ]
+    expected_evaluations = [
+        f"v20_core_{scenario_id}__{direction}__{duration}m"
+        for scenario_id in scenario_ids
+        for direction in directions
+        for duration in durations
+    ]
+    return {
+        "protocol_version": config["protocol_version"],
+        "scenario_ids": scenario_ids,
+        "feeders": feeders,
+        "call_times": call_times,
+        "directions": directions,
+        "durations": durations,
+        "scenario_design": normalized_design,
+        "feeder_kva": normalized_kva,
+        "active_thresholds": {
+            feeder: max(minimum_kw, feeder_fraction * normalized_kva[feeder])
+            for feeder in feeders
+        },
+        "expected_work_units": expected_work_units,
+        "expected_evaluations": expected_evaluations,
+        "baseline_pass_count": int(
+            normalized[(id(baseline), "pass_count")]
+        ),
+        "baseline_warn_count": int(
+            normalized[(id(baseline), "warn_count")]
+        ),
+        "baseline_hard_max": int(
+            normalized[(id(baseline), "hard_stop_max_count")]
+        ),
+        "active_pass": normalized[
+            (id(active_gate), "pass_min_proportion")
+        ],
+        "active_warn": normalized[
+            (id(active_gate), "warn_min_proportion")
+        ],
+        "bad_below": normalized[(id(core), "bad_if_below")],
+        "core_pass_rate": normalized[(id(core), "pass_min_bad_rate")],
+        "core_pass_count": int(
+            normalized[(id(core), "pass_min_bad_count")]
+        ),
+        "core_pass_scenarios": int(
+            normalized[(id(core), "pass_min_bad_scenarios")]
+        ),
+        "core_hard_rate": normalized[
+            (id(core), "hard_no_go_bad_rate_below")
+        ],
+        "core_hard_count": int(
+            normalized[(id(core), "hard_no_go_bad_count_max")]
+        ),
+        "dominance_pass": normalized[(id(dominance), "pass_max")],
+        "dominance_hard": normalized[(id(dominance), "hard_above")],
+        "material_delta": normalized[(id(thresholds), "material_delta")],
+        "claim_pass": normalized[
+            (id(direction_duration), "pass_min_proportion")
+        ],
+        "claim_drop": normalized[(id(direction_duration), "drop_below")],
+        "tie_pivot": normalized[(id(tie), "pivot_min")],
+        "tie_total_bad": normalized[(id(tie), "total_bad_max")],
+        "tie_new_unsafe": normalized[(id(tie), "new_unsafe_max")],
+        "tie_offer_retention": normalized[
+            (id(tie), "offer_retention_min")
+        ],
+        "timing_repeats": int(normalized[(id(warm), "repeats")]),
+        "timing_cv_pass": normalized[(id(warm), "cv_pass_max")],
+        "timing_cv_indeterminate": normalized[
+            (id(warm), "cv_indeterminate_above")
+        ],
+        "direct_material_seconds": normalized[
+            (id(online), "direct_audit_material_threshold_seconds")
+        ],
+        "direct_budget_seconds": normalized[(id(online), "budget_seconds")],
+    }
+
+
+def _gate_validate_evidence(
+    evidence: Mapping[str, Any],
+    context: Mapping[str, Any],
+) -> tuple[list[tuple[str, str]], list[Mapping[str, Any]]]:
+    errors: list[tuple[str, str]] = []
+    if not isinstance(evidence, Mapping):
+        return [("EVIDENCE_SCHEMA_INVALID", "evidence must be a mapping")], []
+
+    loader = evidence.get("loader_validation")
+    if not isinstance(loader, Mapping):
+        errors.append(
+            ("LOADER_VALIDATION_FAILED", "loader_validation must be a mapping")
+        )
+    else:
+        loader_errors = loader.get("errors")
+        if (
+            loader.get("status") != "VALID"
+            or not isinstance(loader_errors, list)
+            or any(not isinstance(item, str) for item in loader_errors)
+            or bool(loader_errors)
+        ):
+            errors.append(
+                ("LOADER_VALIDATION_FAILED", "loader did not report clean VALID")
+            )
+
+    for field, reason in (
+        ("active_lock_files", "ACTIVE_LOCK_FILES_PRESENT"),
+        ("attempt_state_files", "ATTEMPT_STATE_FILES_PRESENT"),
+        ("temporary_files", "TEMPORARY_FILES_PRESENT"),
+        ("unexpected_raw_files", "UNEXPECTED_RAW_FILES_PRESENT"),
+    ):
+        paths = evidence.get(field)
+        if field == "temporary_files" and paths is None:
+            paths = []
+        if not isinstance(paths, list) or any(
+            not isinstance(item, str) for item in paths
+        ):
+            errors.append(("EVIDENCE_SCHEMA_INVALID", f"{field} must be a string list"))
+        elif paths:
+            errors.append((reason, f"{field} is nonempty"))
+
+    expected_work_ids = _gate_validate_id_vector(
+        evidence.get("expected_work_unit_ids"),
+        "expected_work_unit_ids",
+        errors,
+    )
+    actual_work_ids = _gate_validate_id_vector(
+        evidence.get("actual_work_unit_ids"),
+        "actual_work_unit_ids",
+        errors,
+    )
+    expected_eval_ids = _gate_validate_id_vector(
+        evidence.get("expected_evaluation_ids"),
+        "expected_evaluation_ids",
+        errors,
+    )
+    actual_eval_ids = _gate_validate_id_vector(
+        evidence.get("actual_evaluation_ids"),
+        "actual_evaluation_ids",
+        errors,
+    )
+    frozen_work_ids = list(context["expected_work_units"])
+    frozen_eval_ids = list(context["expected_evaluations"])
+    if not _gate_exact_id_set(expected_work_ids, frozen_work_ids):
+        errors.append(
+            ("WORK_UNIT_ID_SET_MISMATCH", "expected work-unit IDs differ from config")
+        )
+    if not _gate_exact_id_set(actual_work_ids, frozen_work_ids):
+        errors.append(
+            ("WORK_UNIT_ID_SET_MISMATCH", "actual work-unit IDs differ from config")
+        )
+    if not _gate_exact_id_set(expected_eval_ids, frozen_eval_ids):
+        errors.append(
+            ("EVALUATION_ID_SET_MISMATCH", "expected evaluation IDs differ from config")
+        )
+    if not _gate_exact_id_set(actual_eval_ids, frozen_eval_ids):
+        errors.append(
+            ("EVALUATION_ID_SET_MISMATCH", "actual evaluation IDs differ from config")
+        )
+
+    work_units_raw = evidence.get("work_units")
+    if not isinstance(work_units_raw, list):
+        errors.append(("WORK_UNIT_SCHEMA_INVALID", "work_units must be a list"))
+        work_units_raw = []
+    if len(work_units_raw) != 16:
+        errors.append(
+            ("WORK_UNIT_COUNT_INVALID", f"expected 16 work units, got {len(work_units_raw)}")
+        )
+    evaluations_raw = evidence.get("evaluations")
+    if not isinstance(evaluations_raw, list):
+        errors.append(("EVALUATION_SCHEMA_INVALID", "evaluations must be a list"))
+        evaluations_raw = []
+    if len(evaluations_raw) != 48:
+        errors.append(
+            (
+                "EVALUATION_COUNT_INVALID",
+                f"expected 48 evaluations, got {len(evaluations_raw)}",
+            )
+        )
+
+    rows: list[Mapping[str, Any]] = []
+    flat_by_id: dict[str, Mapping[str, Any]] = {}
+    for index, raw in enumerate(evaluations_raw):
+        if not isinstance(raw, Mapping):
+            errors.append(
+                ("EVALUATION_SCHEMA_INVALID", f"evaluation {index} is not a mapping")
+            )
+            continue
+        rows.append(raw)
+        evaluation_id = raw.get("evaluation_id")
+        if not isinstance(evaluation_id, str) or not evaluation_id:
+            errors.append(
+                (
+                    "EVALUATION_SCHEMA_INVALID",
+                    f"evaluation {index} lacks a string evaluation_id",
+                )
+            )
+        elif evaluation_id in flat_by_id:
+            errors.append(
+                ("EVALUATION_ID_SET_MISMATCH", f"duplicate {evaluation_id}")
+            )
+        else:
+            flat_by_id[evaluation_id] = raw
+        _gate_validate_row_identity(raw, context, errors)
+
+    if set(flat_by_id) != set(frozen_eval_ids):
+        errors.append(
+            (
+                "EVALUATION_ID_SET_MISMATCH",
+                "flattened evaluation IDs differ from the frozen design",
+            )
+        )
+    if actual_eval_ids and set(flat_by_id) != set(actual_eval_ids):
+        errors.append(
+            (
+                "EVALUATION_ID_SET_MISMATCH",
+                "actual evaluation IDs differ from flattened rows",
+            )
+        )
+
+    wrapper_by_id: dict[str, Mapping[str, Any]] = {}
+    for index, raw in enumerate(work_units_raw):
+        if not isinstance(raw, Mapping):
+            errors.append(
+                ("WORK_UNIT_SCHEMA_INVALID", f"work unit {index} is not a mapping")
+            )
+            continue
+        work_unit_id = raw.get("work_unit_id")
+        if not isinstance(work_unit_id, str) or not work_unit_id:
+            errors.append(
+                (
+                    "WORK_UNIT_SCHEMA_INVALID",
+                    f"work unit {index} lacks a string work_unit_id",
+                )
+            )
+            continue
+        if work_unit_id in wrapper_by_id:
+            errors.append(("WORK_UNIT_ID_SET_MISMATCH", f"duplicate {work_unit_id}"))
+            continue
+        wrapper_by_id[work_unit_id] = raw
+        _gate_validate_wrapper(raw, flat_by_id, context, errors)
+
+    if set(wrapper_by_id) != set(frozen_work_ids):
+        errors.append(
+            (
+                "WORK_UNIT_ID_SET_MISMATCH",
+                "wrapper work-unit IDs differ from the frozen design",
+            )
+        )
+    if actual_work_ids and set(wrapper_by_id) != set(actual_work_ids):
+        errors.append(
+            (
+                "WORK_UNIT_ID_SET_MISMATCH",
+                "actual work-unit IDs differ from wrappers",
+            )
+        )
+
+    _gate_validate_hash_rows(
+        evidence.get("raw_hash_rows"), set(frozen_work_ids), errors
+    )
+    _gate_validate_baselines(rows, context, errors)
+    _gate_validate_scientific_rows(rows, context, errors)
+    return errors, rows
+
+
+def _gate_validate_row_identity(
+    row: Mapping[str, Any],
+    context: Mapping[str, Any],
+    errors: list[tuple[str, str]],
+) -> None:
+    evaluation_id = row.get("evaluation_id")
+    scenario_id = row.get("scenario_id")
+    direction = row.get("direction")
+    duration = row.get("duration_min")
+    label = str(evaluation_id)
+    if (
+        not isinstance(scenario_id, str)
+        or scenario_id not in context["scenario_ids"]
+        or not isinstance(direction, str)
+        or direction not in context["directions"]
+        or not _gate_is_int(duration)
+        or duration not in context["durations"]
+    ):
+        errors.append(
+            ("EVALUATION_IDENTITY_INVALID", f"{label} has invalid design coordinates")
+        )
+        return
+    expected_evaluation_id = (
+        f"v20_core_{scenario_id}__{direction}__{duration}m"
+    )
+    expected_work_unit_id = f"v20_work_{scenario_id}__{direction}"
+    design = context["scenario_design"][scenario_id]
+    if (
+        evaluation_id != expected_evaluation_id
+        or row.get("work_unit_id") != expected_work_unit_id
+        or row.get("protocol_version") != context["protocol_version"]
+        or row.get("data_role") != "development_pilot"
+        or row.get("feeder") != design["feeder"]
+        or row.get("call_time") != design["call_time"]
+        or not _gate_is_int(row.get("scenario_seed"))
+        or row.get("scenario_seed") != design["scenario_seed"]
+        or not _gate_is_int(row.get("requested_duration_min"))
+        or row.get("requested_duration_min") != duration
+    ):
+        errors.append(
+            ("EVALUATION_IDENTITY_INVALID", f"{label} differs from frozen identity")
+        )
+    source_duration = row.get("source_duration_min")
+    if not _gate_is_int(source_duration) or source_duration not in context["durations"]:
+        errors.append(
+            ("EVALUATION_SCHEMA_INVALID", f"{label} has invalid source_duration_min")
+        )
+    for path_field in ("source_result_file",):
+        if path_field in row and not _gate_relative_path(row.get(path_field)):
+            errors.append(
+                ("EVIDENCE_PATH_INVALID", f"{label} has invalid {path_field}")
+            )
+
+
+def _gate_validate_wrapper(
+    wrapper: Mapping[str, Any],
+    flat_by_id: Mapping[str, Mapping[str, Any]],
+    context: Mapping[str, Any],
+    errors: list[tuple[str, str]],
+) -> None:
+    work_unit_id = str(wrapper.get("work_unit_id"))
+    match = re.fullmatch(r"v20_work_(.+)__(inc|dec)", work_unit_id)
+    if match is None:
+        errors.append(
+            ("WORK_UNIT_SCHEMA_INVALID", f"{work_unit_id} has invalid identity")
+        )
+        return
+    scenario_id, direction = match.groups()
+    if scenario_id not in context["scenario_design"]:
+        errors.append(
+            ("WORK_UNIT_SCHEMA_INVALID", f"{work_unit_id} has unknown scenario")
+        )
+        return
+    design = context["scenario_design"][scenario_id]
+    if (
+        wrapper.get("protocol_version") != context["protocol_version"]
+        or wrapper.get("data_role") != "development_pilot"
+        or not _gate_is_int(wrapper.get("scenario_seed"))
+        or wrapper.get("scenario_seed") != design["scenario_seed"]
+        or not _gate_is_int(wrapper.get("attempt_count"))
+        or wrapper.get("attempt_count") < 1
+        or wrapper.get("attempt_count") > 3
+    ):
+        errors.append(
+            ("WORK_UNIT_SCHEMA_INVALID", f"{work_unit_id} wrapper identity is invalid")
+        )
+    status = wrapper.get("status")
+    if status not in {"SUCCESS", "SCIENTIFIC_TERMINAL"}:
+        code = (
+            "UNHANDLED_WORK_UNIT_FAILURE"
+            if status == "UNHANDLED_FAILURE"
+            else "WORK_UNIT_SCHEMA_INVALID"
+        )
+        errors.append((code, f"{work_unit_id} has terminal status {status!r}"))
+    evaluations = wrapper.get("evaluations")
+    if not isinstance(evaluations, list) or len(evaluations) != 3:
+        errors.append(
+            ("WORK_UNIT_SCHEMA_INVALID", f"{work_unit_id} must contain 3 evaluations")
+        )
+        return
+    expected_ids = {
+        f"v20_core_{scenario_id}__{direction}__{duration}m"
+        for duration in context["durations"]
+    }
+    wrapper_ids: list[str] = []
+    row_statuses: list[Any] = []
+    for wrapped in evaluations:
+        if not isinstance(wrapped, Mapping):
+            errors.append(
+                ("WORK_UNIT_SCHEMA_INVALID", f"{work_unit_id} contains a non-mapping row")
+            )
+            continue
+        evaluation_id = wrapped.get("evaluation_id")
+        if not isinstance(evaluation_id, str):
+            errors.append(
+                ("WORK_UNIT_SCHEMA_INVALID", f"{work_unit_id} row lacks evaluation_id")
+            )
+            continue
+        wrapper_ids.append(evaluation_id)
+        row_statuses.append(wrapped.get("status"))
+        flat = flat_by_id.get(evaluation_id)
+        if flat is None:
+            errors.append(
+                (
+                    "WORK_UNIT_EVALUATION_LINK_INVALID",
+                    f"{evaluation_id} is absent from flattened evaluations",
+                )
+            )
+            continue
+        for key, value in wrapped.items():
+            if key not in flat or flat[key] != value:
+                errors.append(
+                    (
+                        "WORK_UNIT_EVALUATION_LINK_INVALID",
+                        f"{evaluation_id} differs between wrapper and flattened row",
+                    )
+                )
+                break
+        if flat.get("work_unit_id") != work_unit_id:
+            errors.append(
+                (
+                    "WORK_UNIT_EVALUATION_LINK_INVALID",
+                    f"{evaluation_id} links to the wrong work unit",
+                )
+            )
+        if "work_unit_status" in flat and flat.get("work_unit_status") != status:
+            errors.append(
+                (
+                    "WORK_UNIT_EVALUATION_LINK_INVALID",
+                    f"{evaluation_id} has inconsistent work_unit_status",
+                )
+            )
+    if len(wrapper_ids) != len(set(wrapper_ids)) or set(wrapper_ids) != expected_ids:
+        errors.append(
+            (
+                "WORK_UNIT_EVALUATION_LINK_INVALID",
+                f"{work_unit_id} evaluation IDs differ from the frozen triplet",
+            )
+        )
+    expected_status = (
+        "SUCCESS"
+        if len(row_statuses) == 3
+        and all(item == "SUCCESS" for item in row_statuses)
+        else "SCIENTIFIC_TERMINAL"
+    )
+    if status in {"SUCCESS", "SCIENTIFIC_TERMINAL"} and status != expected_status:
+        errors.append(
+            (
+                "WORK_UNIT_STATUS_INCONSISTENT",
+                f"{work_unit_id} status differs from its evaluation statuses",
+            )
+        )
+
+
+def _gate_validate_hash_rows(
+    raw_hash_rows: Any,
+    expected_work_ids: set[str],
+    errors: list[tuple[str, str]],
+) -> None:
+    if not isinstance(raw_hash_rows, list):
+        errors.append(("RAW_HASH_ROWS_INVALID", "raw_hash_rows must be a list"))
+        return
+    if len(raw_hash_rows) != len(expected_work_ids):
+        errors.append(
+            (
+                "RAW_HASH_ROWS_INVALID",
+                f"expected {len(expected_work_ids)} hash rows, got {len(raw_hash_rows)}",
+            )
+        )
+    observed: set[str] = set()
+    observed_hashes: set[str] = set()
+    observed_paths: set[str] = set()
+    for index, item in enumerate(raw_hash_rows):
+        if not isinstance(item, Mapping):
+            errors.append(
+                ("RAW_HASH_ROWS_INVALID", f"hash row {index} is not a mapping")
+            )
+            continue
+        work_unit_id = item.get("work_unit_id")
+        if (
+            not isinstance(work_unit_id, str)
+            or work_unit_id not in expected_work_ids
+            or work_unit_id in observed
+        ):
+            errors.append(
+                ("RAW_HASH_ROWS_INVALID", f"hash row {index} has invalid work_unit_id")
+            )
+        else:
+            observed.add(work_unit_id)
+        hash_value = next(
+            (
+                item.get(name)
+                for name in (
+                    "sha256",
+                    "raw_sha256",
+                    "result_sha256",
+                    "file_sha256",
+                )
+                if name in item
+            ),
+            None,
+        )
+        if (
+            not isinstance(hash_value, str)
+            or _GATE_SHA256.fullmatch(hash_value) is None
+            or hash_value in observed_hashes
+        ):
+            errors.append(
+                ("RAW_HASH_ROWS_INVALID", f"hash row {index} has invalid SHA-256")
+            )
+        else:
+            observed_hashes.add(hash_value)
+        for name in ("source_result_file", "path", "relative_path"):
+            if name in item:
+                path_value = item.get(name)
+                if not _gate_relative_path(path_value):
+                    errors.append(
+                        ("EVIDENCE_PATH_INVALID", f"hash row {index} has invalid {name}")
+                    )
+                elif path_value in observed_paths:
+                    errors.append(
+                        ("RAW_HASH_ROWS_INVALID", f"hash row {index} duplicates a path")
+                    )
+                else:
+                    observed_paths.add(path_value)
+    if observed != expected_work_ids:
+        errors.append(
+            (
+                "RAW_HASH_ROWS_INVALID",
+                "hash-row work-unit IDs do not close the frozen 16-unit set",
+            )
+        )
+
+
+def _gate_validate_baselines(
+    rows: Sequence[Mapping[str, Any]],
+    context: Mapping[str, Any],
+    errors: list[tuple[str, str]],
+) -> None:
+    by_scenario: dict[str, list[Mapping[str, Any]]] = {
+        scenario_id: [] for scenario_id in context["scenario_ids"]
+    }
+    for row in rows:
+        scenario_id = row.get("scenario_id")
+        if scenario_id in by_scenario:
+            by_scenario[scenario_id].append(row)
+    for scenario_id, scenario_rows in by_scenario.items():
+        if len(scenario_rows) != 6:
+            errors.append(
+                (
+                    "BASELINE_IDENTITY_INVALID",
+                    f"{scenario_id} does not have six baseline-linked rows",
+                )
+            )
+            continue
+        statuses = {row.get("baseline_status") for row in scenario_rows}
+        hashes = {row.get("baseline_schedule_sha256") for row in scenario_rows}
+        if len(statuses) != 1 or len(hashes) != 1:
+            errors.append(
+                (
+                    "BASELINE_IDENTITY_INVALID",
+                    f"{scenario_id} has inconsistent paired baseline evidence",
+                )
+            )
+        baseline_hash = next(iter(hashes), None)
+        if (
+            not isinstance(baseline_hash, str)
+            or _GATE_SHA256.fullmatch(baseline_hash) is None
+        ):
+            errors.append(
+                ("BASELINE_IDENTITY_INVALID", f"{scenario_id} has invalid baseline hash")
+            )
+        signatures = set()
+        for row in scenario_rows:
+            status = row.get("baseline_status")
+            audit = row.get("baseline_audit")
+            signature = _gate_baseline_signature(status, audit)
+            if signature is None:
+                code = (
+                    "BASELINE_NUMERICAL_EVIDENCE_INVALID"
+                    if status == "BASELINE_NUMERICAL_INVALID"
+                    else "BASELINE_EVIDENCE_INVALID"
+                )
+                errors.append((code, f"{row.get('evaluation_id')} baseline is invalid"))
+            else:
+                signatures.add(signature)
+        if len(signatures) > 1:
+            errors.append(
+                (
+                    "BASELINE_IDENTITY_INVALID",
+                    f"{scenario_id} baseline audit summaries disagree",
+                )
+            )
+
+
+def _gate_baseline_signature(status: Any, audit: Any) -> tuple[Any, ...] | None:
+    if status not in {"VALID", "BASELINE_PHYSICAL_INVALID"}:
+        return None
+    if not isinstance(audit, Mapping):
+        return None
+    required_ints = (
+        "checked_intervals",
+        "power_flow_evaluations",
+        "reused_baseline_intervals",
+        "converged_checks",
+        "nonconverged_checks",
+        "numerical_failure_checks",
+        "physical_violation_checks",
+        "violation_count",
+    )
+    if any(not _gate_is_int(audit.get(name)) for name in required_ints):
+        return None
+    if (
+        not isinstance(audit.get("feasible"), bool)
+        or not isinstance(audit.get("complete_coverage"), bool)
+        or not isinstance(audit.get("explicit_physical_witness"), bool)
+        or not _gate_is_number(audit.get("coverage_ratio"))
+        or audit.get("checked_intervals") != 96
+        or audit.get("complete_coverage") is not True
+        or not math.isclose(
+            float(audit.get("coverage_ratio")), 1.0, rel_tol=0.0, abs_tol=1e-12
+        )
+        or audit.get("nonconverged_checks") != 0
+        or audit.get("numerical_failure_checks") != 0
+        or audit.get("power_flow_evaluations") != 96
+        or audit.get("reused_baseline_intervals") != 0
+        or audit.get("converged_checks") != 96
+        or not _gate_baseline_slot_trace_valid(status, audit)
+        or not _gate_compact_coverage_valid(audit.get("coverage_counts"))
+        or any(
+            not _gate_is_number(audit.get(name))
+            for name in (
+                "vmin",
+                "vmax",
+                "vufmax",
+                "transformer_loading_max",
+                "feeder_loading_max",
+            )
+        )
+        or not _gate_baseline_extrema_valid(status, audit)
+    ):
+        return None
+    if status == "VALID":
+        if (
+            audit.get("feasible") is not True
+            or audit.get("failure_class") != "NONE"
+            or audit.get("physical_violation_checks") != 0
+            or audit.get("explicit_physical_witness") is not False
+        ):
+            return None
+    else:
+        if (
+            audit.get("feasible") is not False
+            or audit.get("failure_class") != "PHYSICAL_CONSTRAINT"
+            or audit.get("physical_violation_checks") < 1
+            or audit.get("explicit_physical_witness") is not True
+        ):
+            return None
+    return (
+        status,
+        audit.get("feasible"),
+        audit.get("checked_intervals"),
+        audit.get("complete_coverage"),
+        audit.get("nonconverged_checks"),
+        audit.get("numerical_failure_checks"),
+        audit.get("physical_violation_checks"),
+        audit.get("failure_class"),
+        audit.get("explicit_physical_witness"),
+    )
+
+
+def _gate_baseline_extrema_valid(
+    status: str,
+    audit: Mapping[str, Any],
+) -> bool:
+    vmin = float(audit["vmin"])
+    vmax = float(audit["vmax"])
+    vuf = float(audit["vufmax"])
+    transformer = float(audit["transformer_loading_max"])
+    feeder = float(audit["feeder_loading_max"])
+    if (
+        vmin > vmax
+        or vuf < 0
+        or transformer < 0
+        or feeder < 0
+    ):
+        return False
+    within_limits = bool(
+        vmin >= 0.95
+        and vmax <= 1.06
+        and vuf <= 2.0
+        and transformer <= 1.0
+        and feeder <= 1.0
+    )
+    return within_limits if status == "VALID" else not within_limits
+
+
+def _gate_baseline_slot_trace_valid(
+    status: str,
+    audit: Mapping[str, Any],
+) -> bool:
+    trace = audit.get("slot_trace")
+    if not isinstance(trace, list) or len(trace) != 96:
+        return False
+    witnessed_slots: list[int] = []
+    for expected_slot, item in enumerate(trace):
+        if not isinstance(item, Mapping):
+            return False
+        if (
+            not _gate_is_int(item.get("slot"))
+            or item.get("slot") != expected_slot
+            or not isinstance(item.get("feasible"), bool)
+            or item.get("converged") is not True
+            or item.get("numerical_failure") is not False
+            or not isinstance(item.get("physical_witness"), bool)
+            or item.get("failure_class")
+            not in {"NONE", "PHYSICAL_CONSTRAINT"}
+        ):
+            return False
+        if item.get("physical_witness") is True:
+            if (
+                item.get("feasible") is not False
+                or item.get("failure_class") != "PHYSICAL_CONSTRAINT"
+            ):
+                return False
+            witnessed_slots.append(expected_slot)
+        elif (
+            item.get("feasible") is not True
+            or item.get("failure_class") != "NONE"
+        ):
+            return False
+    if status == "VALID":
+        return bool(
+            not witnessed_slots
+            and audit.get("physical_violation_checks") == 0
+            and audit.get("violation_count") == 0
+            and audit.get("first_failure_slot") is None
+        )
+    return bool(
+        witnessed_slots
+        and len(witnessed_slots) == audit.get("physical_violation_checks")
+        == audit.get("violation_count")
+        and audit.get("first_failure_slot") == min(witnessed_slots)
+    )
+
+
+def _gate_compact_coverage_valid(value: Any) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    count_names = (
+        "all_bus_count",
+        "monitored_bus_count",
+        "energized_voltage_node_count",
+        "monitored_voltage_node_count",
+        "three_phase_bus_count",
+        "monitored_vuf_bus_count",
+        "enabled_transformer_count",
+        "rated_transformer_count",
+        "line_count",
+    )
+    if any(
+        not _gate_is_int(value.get(name)) or value.get(name) < 0
+        for name in count_names
+    ):
+        return False
+    multiplier = value.get("transformer_rating_multiplier")
+    expected_basis = (
+        "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
+        if multiplier == 3.0
+        else "NATIVE_SYSTEM_TOTAL_KVA"
+    )
+    return bool(
+        value.get("all_bus_count") > 0
+        and value.get("all_bus_count") == value.get("monitored_bus_count")
+        and value.get("energized_voltage_node_count") > 0
+        and value.get("energized_voltage_node_count")
+        == value.get("monitored_voltage_node_count")
+        and value.get("three_phase_bus_count")
+        == value.get("monitored_vuf_bus_count")
+        and value.get("enabled_transformer_count")
+        == value.get("rated_transformer_count")
+        and _gate_is_number(value.get("transformer_rating_coverage"))
+        and math.isclose(
+            float(value.get("transformer_rating_coverage")),
+            1.0,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+        and value.get("line_thermal_in_scope") is False
+        and _gate_is_number(value.get("feeder_rating_multiplier"))
+        and math.isclose(
+            float(value.get("feeder_rating_multiplier")),
+            1.0,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+        and multiplier in {1.0, 3.0}
+        and value.get("transformer_rating_basis") == expected_basis
+        and value.get("transformer_power_basis")
+        == "SYSTEM_TOTAL_TERMINAL_POWER"
+    )
+
+
+def _gate_validate_scientific_rows(
+    rows: Sequence[Mapping[str, Any]],
+    context: Mapping[str, Any],
+    errors: list[tuple[str, str]],
+) -> None:
+    for row in rows:
+        label = str(row.get("evaluation_id"))
+        feeder = row.get("feeder")
+        threshold = context["active_thresholds"].get(feeder)
+        f_bal = row.get("f_bal_kw")
+        declared_threshold = row.get("active_offer_threshold_kw")
+        active = row.get("active_offer")
+        if (
+            threshold is None
+            or not _gate_is_number(f_bal)
+            or float(f_bal) < 0
+            or not _gate_is_number(declared_threshold)
+            or not math.isclose(
+                float(declared_threshold),
+                float(threshold),
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+            or not isinstance(active, bool)
+            or active is not bool(float(f_bal) >= float(threshold))
+        ):
+            errors.append(
+                ("ACTIVE_OFFER_EVIDENCE_INVALID", f"{label} active offer is invalid")
+            )
+            continue
+        schedule_hash = row.get("schedule_sha256")
+        bus_phase_hash = row.get("bus_phase_time_sha256")
+        if (
+            not isinstance(schedule_hash, str)
+            or _GATE_SHA256.fullmatch(schedule_hash) is None
+            or not isinstance(bus_phase_hash, str)
+            or _GATE_SHA256.fullmatch(bus_phase_hash) is None
+        ):
+            errors.append(
+                ("SCHEDULE_HASH_INVALID", f"{label} schedule hashes are invalid")
+            )
+        if not _gate_schedule_invariants_valid(row):
+            errors.append(
+                (
+                    "SCHEDULE_INVARIANT_INVALID",
+                    f"{label} selected schedule invariants are invalid",
+                )
+            )
+
+        baseline_valid = row.get("baseline_status") == "VALID"
+        if not baseline_valid or not active:
+            if not _gate_non_denominator_row_valid(
+                row, baseline_valid=baseline_valid, active=active
+            ):
+                errors.append(
+                    (
+                        "NULL_SEMANTICS_INVALID",
+                        f"{label} non-denominator fields are inconsistent",
+                    )
+                )
+            continue
+
+        if row.get("status") in {
+            "ALPHA_PATH_NUMERICAL_INVALID",
+            "BASELINE_NUMERICAL_INVALID",
+        }:
+            errors.append(
+                (
+                    "CORE_NUMERICAL_EVIDENCE_INVALID",
+                    f"{label} reports numerical invalidity",
+                )
+            )
+            continue
+        if row.get("status") != "SUCCESS":
+            errors.append(
+                (
+                    "CORE_PATH_EVIDENCE_INVALID",
+                    f"{label} has invalid core status {row.get('status')!r}",
+                )
+            )
+            continue
+        if (
+            row.get("scientific_status") != "VALID"
+            or row.get("eligible_for_scientific_denominator") is not True
+            or row.get("alpha_path_status") != "VALID"
+            or row.get("alpha_path_valid_baseline") is not True
+            or row.get("alpha_path_scientific_valid") is not True
+            or not isinstance(row.get("alpha_nonmonotone"), bool)
+        ):
+            errors.append(
+                ("CORE_PATH_EVIDENCE_INVALID", f"{label} path flags are invalid")
+            )
+            continue
+        alpha = row.get("alpha_transfer")
+        prefix = row.get("alpha_prefix")
+        alpha_sup = row.get("alpha_sup")
+        if (
+            not _gate_unit_interval(alpha)
+            or not _gate_unit_interval(prefix)
+            or not _gate_unit_interval(alpha_sup)
+            or not math.isclose(
+                float(alpha), float(prefix), rel_tol=0.0, abs_tol=1e-12
+            )
+            or float(alpha_sup) + 1e-12 < float(alpha)
+        ):
+            errors.append(
+                (
+                    "CORE_NUMERICAL_EVIDENCE_INVALID",
+                    f"{label} corrected alpha is invalid",
+                )
+            )
+            continue
+        path_valid, path_numerical = _gate_path_evidence_valid(
+            row.get("alpha_path_audit"),
+            float(alpha),
+            float(alpha_sup),
+            bool(row.get("alpha_nonmonotone")),
+        )
+        if not path_valid:
+            errors.append(
+                (
+                    (
+                        "CORE_NUMERICAL_EVIDENCE_INVALID"
+                        if path_numerical
+                        else "CORE_PATH_EVIDENCE_INVALID"
+                    ),
+                    f"{label} corrected alpha path audit is invalid",
+                )
+            )
+
+
+def _gate_schedule_invariants_valid(row: Mapping[str, Any]) -> bool:
+    component_names = (
+        "max_departure_error_kwh",
+        "max_reserve_violation_kwh",
+        "max_capacity_violation_kwh",
+        "max_discharge_budget_violation_kwh",
+        "max_availability_violation_kw",
+        "max_charge_limit_violation_kw",
+        "max_discharge_limit_violation_kw",
+        "max_schedule_identity_error_kw",
+    )
+    error_names = (*component_names, "max_ev_invariant_error")
+    if (
+        any(
+            not _gate_is_number(row.get(name))
+            or float(row.get(name)) < 0
+            or float(row.get(name)) > 1e-6
+            for name in error_names
+        )
+        or not _gate_is_int(row.get("simultaneous_slots"))
+        or row.get("simultaneous_slots") != 0
+        or not isinstance(row.get("monotonic_closure_promoted"), bool)
+        or not isinstance(row.get("canonical_schedule_reused"), bool)
+    ):
+        return False
+    combined = row.get("ev_invariant_errors")
+    reported = row.get("reported_ev_invariant_errors")
+    derived = row.get("derived_ev_invariant_errors")
+    full_keys = {*component_names, "max_ev_invariant_error", "simultaneous_slots"}
+    reported_keys = {
+        "max_departure_error_kwh",
+        "max_reserve_violation_kwh",
+        "max_capacity_violation_kwh",
+        "max_ev_invariant_error",
+        "simultaneous_slots",
+    }
+    if (
+        not isinstance(combined, Mapping)
+        or set(combined) != full_keys
+        or not isinstance(derived, Mapping)
+        or set(derived) != full_keys
+        or not isinstance(reported, Mapping)
+        or set(reported) != reported_keys
+    ):
+        return False
+    for values, names in (
+        (combined, error_names),
+        (derived, error_names),
+        (
+            reported,
+            (
+                "max_departure_error_kwh",
+                "max_reserve_violation_kwh",
+                "max_capacity_violation_kwh",
+                "max_ev_invariant_error",
+            ),
+        ),
+    ):
+        if any(
+            not _gate_is_number(values.get(name))
+            or float(values.get(name)) < 0
+            or float(values.get(name)) > 1e-6
+            for name in names
+        ):
+            return False
+        if (
+            not _gate_is_int(values.get("simultaneous_slots"))
+            or values.get("simultaneous_slots") != 0
+        ):
+            return False
+    reported_components = (
+        "max_departure_error_kwh",
+        "max_reserve_violation_kwh",
+        "max_capacity_violation_kwh",
+    )
+    if float(reported["max_ev_invariant_error"]) != max(
+        float(reported[name]) for name in reported_components
+    ):
+        return False
+    if float(derived["max_ev_invariant_error"]) != max(
+        float(derived[name]) for name in component_names
+    ):
+        return False
+    for name in component_names:
+        expected = float(derived[name])
+        if name in reported_components:
+            expected = max(expected, float(reported[name]))
+        if (
+            float(combined[name]) != expected
+            or float(row[name]) != expected
+        ):
+            return False
+    expected_maximum = max(float(combined[name]) for name in component_names)
+    return bool(
+        float(combined["max_ev_invariant_error"]) == expected_maximum
+        and float(row["max_ev_invariant_error"]) == expected_maximum
+    )
+
+
+def _gate_non_denominator_row_valid(
+    row: Mapping[str, Any],
+    *,
+    baseline_valid: bool,
+    active: bool,
+) -> bool:
+    expected_status = (
+        "INACTIVE_OFFER" if baseline_valid and not active else "BASELINE_PHYSICAL_INVALID"
+    )
+    expected_scientific_status = (
+        "NOT_APPLICABLE_INACTIVE"
+        if baseline_valid and not active
+        else "INVALID_BASELINE"
+    )
+    expected_tie_status = (
+        "NOT_APPLICABLE_INACTIVE"
+        if baseline_valid and not active
+        else "NOT_RUN_BASELINE_INVALID"
+    )
+    if (
+        row.get("status") != expected_status
+        or row.get("scientific_status") != expected_scientific_status
+        or row.get("tie_break_status") != expected_tie_status
+        or row.get("eligible_for_scientific_denominator") is not False
+    ):
+        return False
+    null_fields = (
+        "alpha_legacy_verifier",
+        "alpha_transfer",
+        "alpha_prefix",
+        "alpha_sup",
+        "alpha_nonmonotone",
+        "alpha_transfer_tied",
+        "tie_comparator_valid",
+        "alpha1_cold_timing_s",
+        "alpha1_first_replay_timing_s",
+        "alpha1_warm_p95_s",
+        "alpha1_warm_cv",
+        "alpha1_cold_timing_scope",
+        "alpha1_first_replay_scope",
+        "alpha_legacy_verifier_status",
+        "alpha_legacy_verifier_detail",
+        "alpha_path_status",
+        "alpha_path_valid_baseline",
+        "alpha_path_scientific_valid",
+        "alpha_path_audit",
+        "alpha1_timing_status",
+        "alpha1_timing_detail",
+        "alpha1_timing_checked_intervals",
+        "alpha1_timing_power_flow_evaluations",
+        "alpha1_timing_numerical_failure_checks",
+        "alpha1_timing_nonconverged_checks",
+        "alpha1_timing_physical_violation_checks",
+        "alpha1_timing_failure_class",
+        "tie_original_schedule_sha256",
+        "tie_schedule_sha256",
+        "tie_offer_retention",
+        "alpha_tie_prefix",
+        "alpha_tie_sup",
+        "alpha_tie_nonmonotone",
+        "alpha_tie_path_status",
+        "alpha_tie_path_audit",
+    )
+    if any(row.get(name) is not None for name in null_fields):
+        return False
+    return row.get("alpha1_warm_timing_s") == []
+
+
+def _gate_path_evidence_valid(
+    audit: Any,
+    alpha_prefix: float,
+    alpha_sup: float,
+    declared_nonmonotone: bool,
+) -> tuple[bool, bool]:
+    if not isinstance(audit, Mapping):
+        return False, False
+    trace = audit.get("alpha_trace")
+    audit_calls = audit.get("audit_calls")
+    if (
+        not isinstance(trace, list)
+        or not trace
+        or not _gate_is_int(audit_calls)
+        or audit_calls != len(trace)
+        or not _gate_is_int(audit.get("power_flow_evaluations"))
+        or audit.get("power_flow_evaluations") < 0
+        or not _gate_is_int(audit.get("reused_baseline_intervals"))
+        or audit.get("reused_baseline_intervals") < 0
+    ):
+        return False, False
+    normalized: list[tuple[float, bool, int, bool]] = []
+    numerical = False
+    seen_alpha: dict[float, bool] = {}
+    for item in trace:
+        if not isinstance(item, Mapping):
+            return False, numerical
+        value = item.get("alpha")
+        feasible = item.get("feasible")
+        checked = item.get("checked_intervals")
+        complete = item.get("complete_coverage")
+        numerical_checks = item.get("numerical_failure_checks")
+        nonconverged = item.get("nonconverged_checks")
+        physical = item.get("physical_violation_checks")
+        failure_class = item.get("failure_class")
+        first_failure_slot = item.get("first_failure_slot")
+        if (
+            not _gate_unit_interval(value)
+            or not isinstance(feasible, bool)
+            or not _gate_is_int(checked)
+            or checked < 1
+            or checked > 96
+            or not isinstance(complete, bool)
+            or complete is not (checked == 96)
+            or not _gate_is_int(numerical_checks)
+            or numerical_checks < 0
+            or not _gate_is_int(nonconverged)
+            or nonconverged < 0
+            or not _gate_is_int(physical)
+            or physical < 0
+            or not isinstance(failure_class, str)
+        ):
+            return False, numerical
+        if (
+            numerical_checks > 0
+            or nonconverged > 0
+            or failure_class in {"NUMERICAL_INVALID", "UNCLASSIFIED_INVALID"}
+        ):
+            numerical = True
+        if feasible:
+            if (
+                checked != 96
+                or complete is not True
+                or failure_class != "NONE"
+                or physical != 0
+                or first_failure_slot is not None
+            ):
+                return False, numerical
+        elif (
+            failure_class != "PHYSICAL_CONSTRAINT"
+            or physical < 1
+            or not _gate_is_int(first_failure_slot)
+            or first_failure_slot < 0
+            or first_failure_slot >= checked
+        ):
+            return False, numerical
+        numeric_alpha = float(value)
+        if numeric_alpha in seen_alpha:
+            return False, numerical
+        seen_alpha[numeric_alpha] = feasible
+        normalized.append((numeric_alpha, feasible, checked, complete))
+    if numerical:
+        return False, True
+    ordered = sorted(normalized, key=lambda item: item[0])
+    if (
+        not math.isclose(ordered[0][0], 0.0, rel_tol=0.0, abs_tol=1e-12)
+        or ordered[0][1] is not True
+        or ordered[0][2] != 96
+    ):
+        return False, False
+    prefix = None
+    failure_seen = False
+    nonmonotone = False
+    feasible_values: list[float] = []
+    for value, feasible, _, _ in ordered:
+        if feasible:
+            feasible_values.append(value)
+            if failure_seen:
+                nonmonotone = True
+            else:
+                prefix = value
+        else:
+            failure_seen = True
+    if prefix is None or not feasible_values:
+        return False, False
+    if (
+        not math.isclose(prefix, alpha_prefix, rel_tol=0.0, abs_tol=1e-12)
+        or not math.isclose(
+            max(feasible_values), alpha_sup, rel_tol=0.0, abs_tol=1e-12
+        )
+        or nonmonotone is not declared_nonmonotone
+    ):
+        return False, False
+    required_counts = (
+        "complete_audits",
+        "early_stopped_audits",
+        "numerical_failure_audits",
+        "physical_boundary_audits",
+        "minimum_checked_intervals",
+        "maximum_checked_intervals",
+    )
+    if any(not _gate_is_int(audit.get(name)) for name in required_counts):
+        return False, False
+    if (
+        audit.get("power_flow_evaluations")
+        + audit.get("reused_baseline_intervals")
+        != sum(item[2] for item in normalized)
+        or
+        audit.get("complete_audits") != sum(item[3] for item in normalized)
+        or audit.get("early_stopped_audits")
+        != sum(not item[3] for item in normalized)
+        or audit.get("numerical_failure_audits") != 0
+        or audit.get("physical_boundary_audits")
+        != sum(
+            isinstance(item, Mapping)
+            and _gate_is_int(item.get("physical_violation_checks"))
+            and item.get("physical_violation_checks") > 0
+            for item in trace
+        )
+        or audit.get("minimum_checked_intervals")
+        != min(item[2] for item in normalized)
+        or audit.get("maximum_checked_intervals")
+        != max(item[2] for item in normalized)
+    ):
+        return False, False
+    return True, False
+
+
+def _gate_scientific_decision(
+    rows: Sequence[Mapping[str, Any]],
+    context: Mapping[str, Any],
+) -> dict[str, Any]:
+    reasons: set[str] = set()
+    actions: set[str] = set()
+    metrics: dict[str, Any] = {}
+
+    scenario_baseline_valid = {
+        scenario_id: all(
+            row.get("baseline_status") == "VALID"
+            for row in rows
+            if row.get("scenario_id") == scenario_id
+        )
+        for scenario_id in context["scenario_ids"]
+    }
+    baseline_count = sum(scenario_baseline_valid.values())
+    metrics["baseline_coverage"] = _gate_ratio_metric(
+        baseline_count, len(context["scenario_ids"])
+    )
+    if baseline_count >= context["baseline_pass_count"]:
+        baseline_status = "PASS_ALL_BASELINES"
+    elif baseline_count >= context["baseline_warn_count"]:
+        baseline_status = "WARN_REPEAT_BASELINE_COVERAGE"
+        reasons.add("BASELINE_COVERAGE_WARNING")
+    else:
+        baseline_status = "HARD_STOP_BASELINE_COVERAGE"
+        reasons.add("BASELINE_COVERAGE_HARD_STOP")
+
+    active_rows = [row for row in rows if row.get("active_offer") is True]
+    active_metric = _gate_ratio_metric(len(active_rows), len(rows))
+    metrics["active_offer_coverage"] = active_metric
+    if active_metric["rate"] >= context["active_pass"]:
+        active_status = "PASS_ACTIVE_COVERAGE"
+    elif active_metric["rate"] >= context["active_warn"]:
+        active_status = "WARN_REPEAT_ACTIVE_COVERAGE"
+        reasons.add("ACTIVE_OFFER_COVERAGE_WARNING")
+    else:
+        active_status = "NO_GO_LOW_ACTIVE_COVERAGE"
+        reasons.add("ACTIVE_OFFER_COVERAGE_NO_GO")
+
+    q_rows = [
+        row
+        for row in rows
+        if row.get("active_offer") is True
+        and row.get("baseline_status") == "VALID"
+        and row.get("eligible_for_scientific_denominator") is True
+    ]
+    bad_rows = [
+        row
+        for row in q_rows
+        if float(row["alpha_transfer"]) < context["bad_below"]
+    ]
+    bad_scenarios = {row["scenario_id"] for row in bad_rows}
+    core_metric = _gate_ratio_metric(len(bad_rows), len(q_rows))
+    core_metric["unique_bad_scenarios"] = len(bad_scenarios)
+    metrics["core_bad_alpha"] = core_metric
+    hard_core = bool(
+        len(q_rows) == 0
+        or core_metric["rate"] < context["core_hard_rate"]
+        or len(bad_rows) <= context["core_hard_count"]
+    )
+    raw_core_go = bool(
+        len(q_rows) > 0
+        and core_metric["rate"] >= context["core_pass_rate"]
+        and len(bad_rows) >= context["core_pass_count"]
+        and len(bad_scenarios) >= context["core_pass_scenarios"]
+    )
+    if hard_core:
+        raw_core_status = "NO_GO"
+        reasons.add(
+            "CORE_DENOMINATOR_EMPTY"
+            if not q_rows
+            else "CORE_BAD_ALPHA_SIGNAL_NO_GO"
+        )
+    elif raw_core_go:
+        raw_core_status = "GO"
+        reasons.add("CORE_BAD_ALPHA_SIGNAL_PRESENT")
+    else:
+        raw_core_status = "REPEAT_PILOT"
+        reasons.add("CORE_BAD_ALPHA_SIGNAL_INDETERMINATE")
+
+    scenario_counts = {
+        scenario_id: sum(
+            row.get("scenario_id") == scenario_id for row in bad_rows
+        )
+        for scenario_id in context["scenario_ids"]
+    }
+    scenario_numerator = max(scenario_counts.values(), default=0)
+    scenario_metric = _gate_ratio_metric(scenario_numerator, len(bad_rows))
+    scenario_metric["by_scenario"] = scenario_counts
+    metrics["scenario_dominance"] = scenario_metric
+    if not bad_rows:
+        scenario_status = "NOT_APPLICABLE_NO_BAD_ALPHA"
+    elif scenario_metric["rate"] <= context["dominance_pass"]:
+        scenario_status = "DISTRIBUTED"
+    elif scenario_metric["rate"] > context["dominance_hard"]:
+        scenario_status = "NO_GO_SCENARIO_DOMINATED"
+        reasons.add("BAD_ALPHA_SCENARIO_DOMINATED_NO_GO")
+    else:
+        scenario_status = "DOMINANCE_REPEAT"
+        reasons.add("BAD_ALPHA_SCENARIO_DOMINANCE_REPEAT")
+
+    if raw_core_status == "NO_GO" or scenario_status == "NO_GO_SCENARIO_DOMINATED":
+        core_status = "NO_GO"
+    elif raw_core_status == "GO" and scenario_status == "DISTRIBUTED":
+        core_status = "GO"
+    else:
+        core_status = "REPEAT_PILOT"
+
+    direction_status, direction_metric = _gate_claim_status(
+        _gate_direction_deltas(q_rows, context),
+        context,
+    )
+    metrics["direction_materiality"] = direction_metric
+    if direction_status == "DROP_CLAIM":
+        actions.add("DROP_DIRECTION_CLAIM")
+        reasons.add("DIRECTION_CLAIM_DROPPED")
+    elif direction_status == "INDETERMINATE_REPEAT":
+        reasons.add("DIRECTION_CLAIM_INDETERMINATE")
+
+    duration_status, duration_metric = _gate_claim_status(
+        _gate_duration_deltas(q_rows, context),
+        context,
+    )
+    metrics["duration_materiality"] = duration_metric
+    if duration_status == "DROP_CLAIM":
+        actions.add("DROP_DURATION_CLAIM")
+        reasons.add("DURATION_CLAIM_DROPPED")
+    elif duration_status == "INDETERMINATE_REPEAT":
+        reasons.add("DURATION_CLAIM_INDETERMINATE")
+
+    feeder_counts = {
+        feeder: sum(row.get("feeder") == feeder for row in bad_rows)
+        for feeder in context["feeders"]
+    }
+    feeder_numerator = max(feeder_counts.values(), default=0)
+    feeder_metric = _gate_ratio_metric(feeder_numerator, len(bad_rows))
+    feeder_metric["by_feeder"] = feeder_counts
+    metrics["feeder_bad_alpha"] = feeder_metric
+    if raw_core_status != "GO" or scenario_status != "DISTRIBUTED":
+        feeder_status = "NOT_ASSESSABLE_CORE_SIGNAL"
+    elif feeder_metric["rate"] <= context["dominance_pass"]:
+        feeder_status = "REPLICATED"
+    elif feeder_metric["rate"] > context["dominance_hard"]:
+        feeder_status = "NO_GO_SINGLE_FEEDER_DOMINATED"
+        reasons.add("BAD_ALPHA_SINGLE_FEEDER_DOMINATED_NO_GO")
+    else:
+        feeder_status = "WEAK_REPLICATION_REPEAT"
+        reasons.add("BAD_ALPHA_FEEDER_REPLICATION_WEAK")
+
+    tie_status, tie_metrics, tie_reason = _gate_tie_status(
+        q_rows, bad_rows, context
+    )
+    metrics.update(tie_metrics)
+    if tie_reason is not None:
+        reasons.add(tie_reason)
+
+    screening_status, timing_metric, timing_reason = _gate_screening_status(
+        q_rows, context
+    )
+    metrics["screening_compute"] = timing_metric
+    if timing_reason is not None:
+        reasons.add(timing_reason)
+    if screening_status == "DROP_SCREENING":
+        actions.add("DROP_ONLINE_SCREENING")
+    elif screening_status == "KEEP_SCREENING_DIRECT_AUDIT_OVER_BUDGET":
+        actions.add("REPORT_DIRECT_AUDIT_OVER_BUDGET")
+
+    reuse_status, reuse_metrics, reuse_reason = _gate_reuse_status(
+        q_rows, context
+    )
+    metrics.update(reuse_metrics)
+    reasons.add(reuse_reason)
+    if reuse_status in {
+        "BLOCKED_LABEL_FLIP",
+        "BLOCKED_LEGACY_DIAGNOSTIC_FAILURE",
+    }:
+        actions.add("BLOCK_V2_0_EVIDENCE_REUSE")
+    else:
+        actions.add("REPORT_V2_0_REUSE_AS_DIAGNOSTIC_ONLY")
+
+    hard_no_go = bool(
+        baseline_status == "HARD_STOP_BASELINE_COVERAGE"
+        or active_status == "NO_GO_LOW_ACTIVE_COVERAGE"
+        or core_status == "NO_GO"
+        or scenario_status == "NO_GO_SCENARIO_DOMINATED"
+        or feeder_status == "NO_GO_SINGLE_FEEDER_DOMINATED"
+    )
+    warning_axes = {
+        name
+        for name, condition in (
+            ("baseline", baseline_status == "WARN_REPEAT_BASELINE_COVERAGE"),
+            ("active", active_status == "WARN_REPEAT_ACTIVE_COVERAGE"),
+            ("core", core_status == "REPEAT_PILOT"),
+            ("scenario", scenario_status == "DOMINANCE_REPEAT"),
+            ("direction", direction_status == "INDETERMINATE_REPEAT"),
+            ("duration", duration_status == "INDETERMINATE_REPEAT"),
+            ("feeder", feeder_status == "WEAK_REPLICATION_REPEAT"),
+            ("tie", tie_status == "INDETERMINATE_REPEAT"),
+            (
+                "timing",
+                screening_status in {"REPEAT_TIMING", "INDETERMINATE_TIMING"},
+            ),
+        )
+        if condition
+    }
+    if hard_no_go:
+        overall_action = "NO_GO_REASSESS_BROAD_TOPIC"
+        decision_class = "NO_GO"
+        repeat_scope = "NONE"
+    elif core_status == "GO" and tie_status == "PIVOT_TO_PHASE_BALANCED":
+        overall_action = "PIVOT_TO_PHASE_BALANCED_AND_REPEAT_16_WU_AUDIT"
+        decision_class = "PIVOT"
+        repeat_scope = "FULL_16_WU_PILOT"
+    elif warning_axes:
+        if warning_axes == {"timing"}:
+            overall_action = "REPEAT_TIMING_BENCHMARK_ONLY"
+            repeat_scope = "TIMING_ONLY"
+        else:
+            overall_action = "REPEAT_16_WU_PILOT"
+            repeat_scope = "FULL_16_WU_PILOT"
+        decision_class = "REPEAT_PILOT"
+    else:
+        overall_action = "GO_TO_FORMAL_V2_1_WITH_REPORTED_SCOPE"
+        decision_class = "GO"
+        repeat_scope = "NONE"
+
+    return {
+        "validator_status": "VALID",
+        "baseline_status": baseline_status,
+        "active_offer_status": active_status,
+        "core_topic_status": core_status,
+        "scenario_dominance_status": scenario_status,
+        "direction_claim_status": direction_status,
+        "duration_claim_status": duration_status,
+        "feeder_replication_status": feeder_status,
+        "tie_break_route_status": tie_status,
+        "screening_compute_status": screening_status,
+        "v2_0_reuse_status": reuse_status,
+        "overall_action": overall_action,
+        "decision_class": decision_class,
+        "formal_v2_1_run_started": False,
+        "metrics": metrics,
+        "reason_codes": sorted(reasons),
+        "mandatory_scope_actions": sorted(actions),
+        "repeat_scope": repeat_scope,
+    }
+
+
+def _gate_direction_deltas(
+    q_rows: Sequence[Mapping[str, Any]],
+    context: Mapping[str, Any],
+) -> list[float]:
+    lookup = {
+        (row["scenario_id"], row["direction"], row["duration_min"]): float(
+            row["alpha_transfer"]
+        )
+        for row in q_rows
+    }
+    deltas = []
+    for scenario_id in context["scenario_ids"]:
+        for duration in context["durations"]:
+            inc = lookup.get((scenario_id, "inc", duration))
+            dec = lookup.get((scenario_id, "dec", duration))
+            if inc is not None and dec is not None:
+                deltas.append(abs(inc - dec))
+    return deltas
+
+
+def _gate_duration_deltas(
+    q_rows: Sequence[Mapping[str, Any]],
+    context: Mapping[str, Any],
+) -> list[float]:
+    lookup = {
+        (row["scenario_id"], row["direction"], row["duration_min"]): float(
+            row["alpha_transfer"]
+        )
+        for row in q_rows
+    }
+    deltas = []
+    for scenario_id in context["scenario_ids"]:
+        for direction in context["directions"]:
+            values = [
+                lookup.get((scenario_id, direction, duration))
+                for duration in context["durations"]
+            ]
+            if all(value is not None for value in values):
+                complete = [float(value) for value in values if value is not None]
+                deltas.append(max(complete) - min(complete))
+    return deltas
+
+
+def _gate_claim_status(
+    deltas: Sequence[float],
+    context: Mapping[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    numerator = sum(value >= context["material_delta"] for value in deltas)
+    metric = _gate_ratio_metric(numerator, len(deltas))
+    if not deltas:
+        return "INDETERMINATE_REPEAT", metric
+    if metric["rate"] >= context["claim_pass"]:
+        return "KEEP_CLAIM", metric
+    if metric["rate"] < context["claim_drop"]:
+        return "DROP_CLAIM", metric
+    return "INDETERMINATE_REPEAT", metric
+
+
+def _gate_tie_status(
+    q_rows: Sequence[Mapping[str, Any]],
+    bad_rows: Sequence[Mapping[str, Any]],
+    context: Mapping[str, Any],
+) -> tuple[str, dict[str, Any], str | None]:
+    bad_ids = {row["evaluation_id"] for row in bad_rows}
+    if not bad_rows:
+        empty = _gate_ratio_metric(0, 0)
+        return (
+            "NOT_APPLICABLE_NO_BAD_ALPHA",
+            {
+                "tie_rescue": empty,
+                "tie_post_bad": empty,
+                "tie_new_unsafe": empty,
+                "tie_offer_retention": {
+                    "minimum": None,
+                    "numerator": 0,
+                    "denominator": 0,
+                    "rate": None,
+                },
+            },
+            None,
+        )
+    tied: dict[str, float] = {}
+    retentions: list[float] = []
+    valid = True
+    for row in q_rows:
+        alpha = row.get("alpha_transfer_tied")
+        alpha_sup = row.get("alpha_tie_sup")
+        nonmonotone = row.get("alpha_tie_nonmonotone")
+        if (
+            row.get("tie_comparator_valid") is not True
+            or row.get("tie_break_status") not in {"SUCCESS", "NO_OP"}
+            or row.get("alpha_tie_path_status") != "VALID"
+            or not _gate_unit_interval(alpha)
+            or not _gate_unit_interval(row.get("alpha_tie_prefix"))
+            or not _gate_unit_interval(alpha_sup)
+            or not isinstance(nonmonotone, bool)
+            or not math.isclose(
+                float(alpha),
+                float(row.get("alpha_tie_prefix")),
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+            or float(alpha_sup) + 1e-12 < float(alpha)
+            or not _gate_is_number(row.get("tie_offer_retention"))
+            or float(row.get("tie_offer_retention")) < 0
+            or row.get("tie_original_schedule_sha256")
+            != row.get("schedule_sha256")
+            or not isinstance(row.get("tie_schedule_sha256"), str)
+            or _GATE_SHA256.fullmatch(row.get("tie_schedule_sha256")) is None
+        ):
+            valid = False
+            continue
+        path_valid, _ = _gate_path_evidence_valid(
+            row.get("alpha_tie_path_audit"),
+            float(alpha),
+            float(alpha_sup),
+            bool(nonmonotone),
+        )
+        if not path_valid:
+            valid = False
+            continue
+        tie_break_status = row.get("tie_break_status")
+        if tie_break_status == "NO_OP":
+            if (
+                row.get("tie_schedule_sha256") != row.get("schedule_sha256")
+                or float(alpha) != float(row.get("alpha_transfer"))
+                or float(row.get("alpha_tie_prefix"))
+                != float(row.get("alpha_prefix"))
+                or float(alpha_sup) != float(row.get("alpha_sup"))
+                or nonmonotone is not row.get("alpha_nonmonotone")
+                or float(row.get("tie_offer_retention")) != 1.0
+                or row.get("alpha_tie_path_audit")
+                != row.get("alpha_path_audit")
+            ):
+                valid = False
+                continue
+        elif row.get("tie_schedule_sha256") == row.get("schedule_sha256"):
+            valid = False
+            continue
+        tied[row["evaluation_id"]] = float(alpha)
+        retentions.append(float(row["tie_offer_retention"]))
+
+    rescued = sum(
+        evaluation_id in tied and tied[evaluation_id] >= context["bad_below"]
+        for evaluation_id in bad_ids
+    )
+    post_bad = sum(
+        tied.get(row["evaluation_id"], -math.inf) < context["bad_below"]
+        for row in q_rows
+        if row["evaluation_id"] in tied
+    )
+    safe_rows = [
+        row for row in q_rows if row["evaluation_id"] not in bad_ids
+    ]
+    new_unsafe = sum(
+        tied.get(row["evaluation_id"], math.inf) < context["bad_below"]
+        for row in safe_rows
+        if row["evaluation_id"] in tied
+    )
+    rescue_metric = _gate_ratio_metric(rescued, len(bad_rows))
+    post_metric = _gate_ratio_metric(post_bad, len(q_rows))
+    new_metric = _gate_ratio_metric(new_unsafe, len(safe_rows))
+    if not safe_rows:
+        new_metric["rate"] = 0.0
+    retention_min = min(retentions, default=None)
+    retention_metric = {
+        "minimum": retention_min,
+        "numerator": sum(
+            value >= context["tie_offer_retention"] for value in retentions
+        ),
+        "denominator": len(q_rows),
+        "rate": (
+            sum(value >= context["tie_offer_retention"] for value in retentions)
+            / len(q_rows)
+            if q_rows
+            else None
+        ),
+    }
+    metrics = {
+        "tie_rescue": rescue_metric,
+        "tie_post_bad": post_metric,
+        "tie_new_unsafe": new_metric,
+        "tie_offer_retention": retention_metric,
+    }
+    if not valid or len(tied) != len(q_rows) or len(retentions) != len(q_rows):
+        return "INDETERMINATE_REPEAT", metrics, "TIE_BREAK_EVIDENCE_INDETERMINATE"
+    pivot = bool(
+        rescue_metric["rate"] >= context["tie_pivot"]
+        and post_metric["rate"] <= context["tie_total_bad"]
+        and new_metric["rate"] <= context["tie_new_unsafe"]
+        and retention_min is not None
+        and retention_min >= context["tie_offer_retention"]
+    )
+    if pivot:
+        return (
+            "PIVOT_TO_PHASE_BALANCED",
+            metrics,
+            "PHASE_BALANCED_TIE_BREAK_PIVOT",
+        )
+    return "KEEP_ORIGINAL_ROUTE", metrics, None
+
+
+def _gate_screening_status(
+    q_rows: Sequence[Mapping[str, Any]],
+    context: Mapping[str, Any],
+) -> tuple[str, dict[str, Any], str | None]:
+    groups: dict[tuple[str, str], Mapping[str, Any]] = {}
+    malformed = False
+    for row in q_rows:
+        key = (str(row.get("feeder")), str(row.get("schedule_sha256")))
+        existing = groups.get(key)
+        if existing is None:
+            groups[key] = row
+        elif _gate_timing_signature(existing) != _gate_timing_signature(row):
+            malformed = True
+
+    by_feeder: dict[str, dict[str, Any]] = {}
+    schedule_cvs: list[float] = []
+    for feeder in context["feeders"]:
+        feeder_rows = [
+            row for (row_feeder, _), row in groups.items() if row_feeder == feeder
+        ]
+        pooled: list[float] = []
+        feeder_schedule_cvs: list[float] = []
+        valid_schedule_count = 0
+        for row in feeder_rows:
+            timing_valid, warm = _gate_timing_evidence_valid(
+                row, context["timing_repeats"]
+            )
+            if not timing_valid:
+                malformed = True
+                continue
+            valid_schedule_count += 1
+            pooled.extend(warm)
+            mean = sum(warm) / len(warm)
+            schedule_cv = math.sqrt(
+                sum((value - mean) ** 2 for value in warm) / len(warm)
+            ) / mean
+            feeder_schedule_cvs.append(schedule_cv)
+            schedule_cvs.append(schedule_cv)
+        if not pooled:
+            malformed = True
+            p95 = None
+            cv = None
+        else:
+            p95 = _gate_higher_quantile(pooled, 0.95)
+            mean = sum(pooled) / len(pooled)
+            pooled_cv = (
+                math.sqrt(
+                    sum((value - mean) ** 2 for value in pooled) / len(pooled)
+                )
+                / mean
+                if mean > 0
+                else None
+            )
+            if pooled_cv is None:
+                malformed = True
+            cv = max(feeder_schedule_cvs, default=None)
+        by_feeder[feeder] = {
+            "unique_schedules": len(feeder_rows),
+            "valid_unique_schedules": valid_schedule_count,
+            "warm_sample_count": len(pooled),
+            "warm_p95_s": p95,
+            "warm_cv": cv,
+            "maximum_schedule_warm_cv": cv,
+            "pooled_warm_cv_diagnostic": pooled_cv if pooled else None,
+        }
+    metric = {
+        "numerator": sum(
+            item["valid_unique_schedules"] for item in by_feeder.values()
+        ),
+        "denominator": len(groups),
+        "rate": (
+            sum(item["valid_unique_schedules"] for item in by_feeder.values())
+            / len(groups)
+            if groups
+            else None
+        ),
+        "unique_schedule_count": len(groups),
+        "by_feeder": by_feeder,
+    }
+    if malformed:
+        return "INDETERMINATE_TIMING", metric, "TIMING_EVIDENCE_INDETERMINATE"
+    p95s = [float(item["warm_p95_s"]) for item in by_feeder.values()]
+    if any(
+        value > context["timing_cv_indeterminate"] for value in schedule_cvs
+    ):
+        return "INDETERMINATE_TIMING", metric, "TIMING_CV_INDETERMINATE"
+    if any(value > context["timing_cv_pass"] for value in schedule_cvs):
+        return "REPEAT_TIMING", metric, "TIMING_CV_REPEAT"
+    if all(value <= context["direct_material_seconds"] for value in p95s):
+        return "DROP_SCREENING", metric, "DIRECT_AUDIT_FAST_DROP_SCREENING"
+    if any(value > context["direct_budget_seconds"] for value in p95s):
+        return (
+            "KEEP_SCREENING_DIRECT_AUDIT_OVER_BUDGET",
+            metric,
+            "DIRECT_AUDIT_OVER_BUDGET",
+        )
+    return "KEEP_SCREENING_MATERIAL", metric, None
+
+
+def _gate_timing_evidence_valid(
+    row: Mapping[str, Any],
+    repeats: int,
+) -> tuple[bool, list[float]]:
+    warm = row.get("alpha1_warm_timing_s")
+    if (
+        row.get("alpha1_timing_status") != "SUCCESS"
+        or not isinstance(warm, list)
+        or len(warm) != repeats
+        or any(not _gate_is_number(value) or float(value) < 0 for value in warm)
+    ):
+        return False, []
+    values = [float(value) for value in warm]
+    replay_scope = (
+        "FIRST_SCHEDULE_REPLAY_AFTER_COMMON_BASELINE_WITH_PREBUILT_TRUTH_CACHE"
+    )
+    mean = sum(values) / len(values)
+    expected_cv = (
+        math.sqrt(sum((value - mean) ** 2 for value in values) / len(values))
+        / mean
+        if mean > 0
+        else None
+    )
+    expected_p95 = _gate_higher_quantile(values, 0.95)
+    if (
+        expected_cv is None
+        or not _gate_is_number(row.get("alpha1_warm_p95_s"))
+        or not _gate_is_number(row.get("alpha1_warm_cv"))
+        or not math.isclose(
+            float(row.get("alpha1_warm_p95_s")),
+            expected_p95,
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        )
+        or not math.isclose(
+            float(row.get("alpha1_warm_cv")),
+            expected_cv,
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        )
+        or not _gate_is_number(row.get("alpha1_cold_timing_s"))
+        or float(row.get("alpha1_cold_timing_s")) < 0
+        or not _gate_is_number(row.get("alpha1_first_replay_timing_s"))
+        or float(row.get("alpha1_first_replay_timing_s")) < 0
+        or not math.isclose(
+            float(row.get("alpha1_cold_timing_s")),
+            float(row.get("alpha1_first_replay_timing_s")),
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+        or row.get("alpha1_cold_timing_scope") != replay_scope
+        or row.get("alpha1_first_replay_scope") != replay_scope
+    ):
+        return False, []
+    for name, expected in (
+        ("alpha1_timing_checked_intervals", [96] * (1 + repeats)),
+        ("alpha1_timing_numerical_failure_checks", [0] * (1 + repeats)),
+        ("alpha1_timing_nonconverged_checks", [0] * (1 + repeats)),
+    ):
+        if row.get(name) != expected:
+            return False, []
+    for name in (
+        "alpha1_timing_power_flow_evaluations",
+        "alpha1_timing_physical_violation_checks",
+    ):
+        counters = row.get(name)
+        if (
+            not isinstance(counters, list)
+            or len(counters) != 1 + repeats
+            or any(
+                not _gate_is_int(value) or value < 0 or value > 96
+                for value in counters
+            )
+        ):
+            return False, []
+    failure_classes = row.get("alpha1_timing_failure_class")
+    if (
+        not isinstance(failure_classes, list)
+        or len(failure_classes) != 1 + repeats
+        or any(
+            value not in {"NONE", "PHYSICAL_CONSTRAINT"}
+            for value in failure_classes
+        )
+    ):
+        return False, []
+    physical_counts = row["alpha1_timing_physical_violation_checks"]
+    if any(
+        (count == 0 and failure_class != "NONE")
+        or (count > 0 and failure_class != "PHYSICAL_CONSTRAINT")
+        for count, failure_class in zip(
+            physical_counts, failure_classes, strict=True
+        )
+    ):
+        return False, []
+    return True, values
+
+
+def _gate_timing_signature(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    names = (
+        "alpha1_timing_status",
+        "alpha1_timing_detail",
+        "alpha1_cold_timing_s",
+        "alpha1_cold_timing_scope",
+        "alpha1_first_replay_timing_s",
+        "alpha1_first_replay_scope",
+        "alpha1_warm_timing_s",
+        "alpha1_warm_p95_s",
+        "alpha1_warm_cv",
+        "alpha1_timing_checked_intervals",
+        "alpha1_timing_power_flow_evaluations",
+        "alpha1_timing_numerical_failure_checks",
+        "alpha1_timing_nonconverged_checks",
+        "alpha1_timing_physical_violation_checks",
+        "alpha1_timing_failure_class",
+    )
+    return tuple(_gate_freeze(row.get(name)) for name in names)
+
+
+def _gate_reuse_status(
+    q_rows: Sequence[Mapping[str, Any]],
+    context: Mapping[str, Any],
+) -> tuple[str, dict[str, Any], str]:
+    flips = 0
+    failures = 0
+    for row in q_rows:
+        legacy = row.get("alpha_legacy_verifier")
+        if (
+            row.get("alpha_legacy_verifier_status") != "SUCCESS"
+            or not _gate_unit_interval(legacy)
+        ):
+            failures += 1
+            continue
+        legacy_bad = float(legacy) < context["bad_below"]
+        corrected_bad = float(row["alpha_transfer"]) < context["bad_below"]
+        flips += legacy_bad != corrected_bad
+    flip_metric = _gate_ratio_metric(flips, len(q_rows))
+    failure_metric = _gate_ratio_metric(failures, len(q_rows))
+    metrics = {
+        "v2_0_label_flip": flip_metric,
+        "v2_0_legacy_diagnostic_failure": failure_metric,
+    }
+    if flips:
+        return "BLOCKED_LABEL_FLIP", metrics, "V2_0_LABEL_FLIP_BLOCK"
+    if failures:
+        return (
+            "BLOCKED_LEGACY_DIAGNOSTIC_FAILURE",
+            metrics,
+            "V2_0_LEGACY_DIAGNOSTIC_FAILURE",
+        )
+    return (
+        "DIAGNOSTIC_ONLY_NO_FLIP",
+        metrics,
+        "V2_0_REUSE_DIAGNOSTIC_ONLY",
+    )
+
+
+def _gate_validity_stop(
+    errors: Sequence[tuple[str, str]],
+) -> dict[str, Any]:
+    result = {
+        "validator_status": "VALIDITY_STOP",
+        **{
+            field: _GATE_NOT_EVALUATED
+            for field in _GATE_SCIENTIFIC_STATUS_FIELDS
+        },
+        "overall_action": "STOP_FIX_AND_REPEAT_16_WU_AUDIT",
+        "decision_class": "VALIDITY_STOP",
+        "formal_v2_1_run_started": False,
+        "metrics": {
+            "validation": {
+                "numerator": 0,
+                "denominator": len(errors),
+                "rate": 0.0 if errors else None,
+                "error_count": len(errors),
+                "errors": [
+                    {"reason_code": code, "detail": detail}
+                    for code, detail in errors
+                ],
+            }
+        },
+        "reason_codes": sorted({code for code, _ in errors}),
+        "mandatory_scope_actions": [],
+        "repeat_scope": "FULL_16_WU_PILOT",
+    }
+    return result
+
+
+def _gate_validate_id_vector(
+    value: Any,
+    label: str,
+    errors: list[tuple[str, str]],
+) -> list[str]:
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or not item for item in value
+    ):
+        errors.append(("EVIDENCE_SCHEMA_INVALID", f"{label} must be a string list"))
+        return []
+    if len(value) != len(set(value)):
+        errors.append(("EVIDENCE_SCHEMA_INVALID", f"{label} contains duplicates"))
+    return list(value)
+
+
+def _gate_exact_id_set(observed: Sequence[str], expected: Sequence[str]) -> bool:
+    return len(observed) == len(expected) and set(observed) == set(expected)
+
+
+def _gate_ratio_metric(numerator: int, denominator: int) -> dict[str, Any]:
+    return {
+        "numerator": int(numerator),
+        "denominator": int(denominator),
+        "rate": numerator / denominator if denominator else 0.0,
+    }
+
+
+def _gate_mapping(owner: Mapping[str, Any], name: str) -> Mapping[str, Any]:
+    value = owner.get(name)
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{name} must be a mapping")
+    return value
+
+
+def _gate_string_list(value: Any, label: str) -> list[str]:
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or not item for item in value
+    ):
+        raise TypeError(f"{label} must be a nonempty-string list")
+    return list(value)
+
+
+def _gate_int_list(value: Any, label: str) -> list[int]:
+    if not isinstance(value, list) or any(not _gate_is_int(item) for item in value):
+        raise TypeError(f"{label} must be an integer list")
+    return list(value)
+
+
+def _gate_required_number(value: Any, label: str) -> float:
+    if not _gate_is_number(value):
+        raise TypeError(f"{label} must be a finite number")
+    return float(value)
+
+
+def _gate_is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _gate_is_number(value: Any) -> bool:
+    return (
+        isinstance(value, Number)
+        and not isinstance(value, (bool, np.bool_))
+        and math.isfinite(float(value))
+    )
+
+
+def _gate_unit_interval(value: Any) -> bool:
+    return _gate_is_number(value) and 0.0 <= float(value) <= 1.0
+
+
+def _gate_higher_quantile(values: Sequence[float], quantile: float) -> float:
+    ordered = sorted(float(value) for value in values)
+    index = max(0, math.ceil(quantile * (len(ordered) - 1)))
+    return ordered[index]
+
+
+def _gate_relative_path(value: Any) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    path = Path(value)
+    return not path.is_absolute() and ".." not in path.parts
+
+
+def _gate_freeze(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return tuple(sorted((str(key), _gate_freeze(item)) for key, item in value.items()))
+    if isinstance(value, list):
+        return tuple(_gate_freeze(item) for item in value)
+    return value
