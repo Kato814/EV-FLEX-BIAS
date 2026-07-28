@@ -1062,6 +1062,63 @@ def _comparable_offers(
     )
 
 
+def _tie_comparator_cache_key(
+    schedule_hash: str,
+    direction: str,
+    call_slots: Sequence[int] | None,
+    offer_kw: float,
+) -> tuple[str, str, tuple[int, ...] | None, int]:
+    if direction not in {"inc", "dec"}:
+        raise ValueError("tie comparator direction must be 'inc' or 'dec'")
+    if call_slots is None:
+        normalized_slots = None
+    else:
+        if isinstance(call_slots, (str, bytes, bytearray, Mapping)):
+            raise ValueError(
+                "tie comparator call_slots must be an integer sequence"
+            )
+        try:
+            values = tuple(call_slots)
+        except TypeError as exc:
+            raise ValueError(
+                "tie comparator call_slots must be an integer sequence"
+            ) from exc
+        if not values:
+            raise ValueError("tie comparator call_slots must not be empty")
+        slots: list[int] = []
+        for value in values:
+            if isinstance(value, (bool, np.bool_)) or not isinstance(
+                value, (int, np.integer)
+            ):
+                raise ValueError(
+                    "tie comparator call_slots must contain integer indices"
+                )
+            slot = int(value)
+            if slot < 0 or slot >= 96:
+                raise ValueError(
+                    "tie comparator call_slots must contain valid 96-slot indices"
+                )
+            slots.append(slot)
+        normalized_slots = tuple(sorted(set(slots)))
+
+    if isinstance(offer_kw, (bool, np.bool_)):
+        raise ValueError(
+            "tie comparator offer_kw must be finite and nonnegative"
+        )
+    try:
+        offer = float(offer_kw)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(
+            "tie comparator offer_kw must be finite and nonnegative"
+        ) from exc
+    if not math.isfinite(offer) or offer < 0:
+        raise ValueError(
+            "tie comparator offer_kw must be finite and nonnegative"
+        )
+    offer_identity = int(np.float64(offer).view(np.uint64))
+    return schedule_hash, direction, normalized_slots, offer_identity
+
+
 def evaluate_pilot_work_unit(
     repo_root: str | Path,
     work_unit: Mapping[str, Any],
@@ -1181,8 +1238,14 @@ def evaluate_pilot_work_unit(
     timing_owner: dict[str, int] = {}
     legacy_cache: dict[str, dict[str, Any]] = {}
     legacy_owner: dict[str, int] = {}
-    tie_cache: dict[str, dict[str, Any]] = {}
-    tie_owner: dict[str, int] = {}
+    tie_cache: dict[
+        tuple[str, str, tuple[int, ...] | None, int],
+        dict[str, Any],
+    ] = {}
+    tie_owner: dict[
+        tuple[str, str, tuple[int, ...] | None, int],
+        int,
+    ] = {}
     schedule_owner: dict[str, int] = {}
 
     def corrected_path(
@@ -1441,28 +1504,48 @@ def evaluate_pilot_work_unit(
             role="original",
         )
 
-        tie_reused = schedule_hash in tie_cache
-        if not tie_reused:
-            try:
-                tie_value = runtime.phase_tie_break(
-                    schedule,
-                    direction=direction,
-                    call_slots=selected.get("call_slots"),
-                    offer_kw=f_bal,
-                )
-                if not isinstance(tie_value, Mapping):
-                    raise TypeError("tie diagnostic must return a mapping")
-                tie_cache[schedule_hash] = dict(tie_value)
-            except Exception as exc:
-                tie_cache[schedule_hash] = {
-                    "success": False,
-                    "comparator_valid": False,
-                    "status": "ERROR",
-                    "detail": f"{type(exc).__name__}: {exc}",
-                    "schedule": None,
-                }
-            tie_owner[schedule_hash] = requested_duration
-        tie = tie_cache[schedule_hash]
+        tie_key = None
+        try:
+            tie_key = _tie_comparator_cache_key(
+                schedule_hash,
+                direction,
+                selected.get("call_slots"),
+                f_bal,
+            )
+        except Exception as exc:
+            tie_reused = False
+            tie_source = None
+            tie = {
+                "success": False,
+                "comparator_valid": False,
+                "status": "ERROR",
+                "detail": f"{type(exc).__name__}: {exc}",
+                "schedule": None,
+            }
+        else:
+            tie_reused = tie_key in tie_cache
+            if not tie_reused:
+                try:
+                    tie_value = runtime.phase_tie_break(
+                        schedule,
+                        direction=direction,
+                        call_slots=tie_key[2],
+                        offer_kw=f_bal,
+                    )
+                    if not isinstance(tie_value, Mapping):
+                        raise TypeError("tie diagnostic must return a mapping")
+                    tie_cache[tie_key] = dict(tie_value)
+                except Exception as exc:
+                    tie_cache[tie_key] = {
+                        "success": False,
+                        "comparator_valid": False,
+                        "status": "ERROR",
+                        "detail": f"{type(exc).__name__}: {exc}",
+                        "schedule": None,
+                    }
+                tie_owner[tie_key] = requested_duration
+            tie = tie_cache[tie_key]
+            tie_source = tie_owner[tie_key]
         tie_valid = bool(
             tie.get("success") is True
             and tie.get("comparator_valid") is True
@@ -1562,9 +1645,7 @@ def evaluate_pilot_work_unit(
                     "detail", tie.get("message")
                 ),
                 "tie_break_reused": tie_reused,
-                "tie_break_source_requested_duration_min": tie_owner[
-                    schedule_hash
-                ],
+                "tie_break_source_requested_duration_min": tie_source,
                 "tie_original_schedule_sha256": tie.get(
                     "original_schedule_sha256"
                 ),

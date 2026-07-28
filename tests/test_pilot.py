@@ -779,6 +779,7 @@ class _FakePilotRuntime:
         baseline_feasible=True,
         flex_by_duration=None,
         schedule_marker_by_duration=None,
+        call_slots_by_duration=None,
         fail_durations=(),
         tie_comparator_valid=True,
         baseline_audit_overrides=None,
@@ -791,6 +792,7 @@ class _FakePilotRuntime:
         self.baseline_calls = 0
         self.legacy_calls = 0
         self.tie_calls = 0
+        self.tie_contexts = []
         self.timing_calls = 0
         self.audit_events = []
         self.retain_slot_results_calls = []
@@ -804,6 +806,11 @@ class _FakePilotRuntime:
             15: 0.15,
             30: 0.30,
             60: 0.60,
+        }
+        self.call_slots_by_duration = call_slots_by_duration or {
+            15: [0],
+            30: [0],
+            60: [0],
         }
         self.fail_durations = set(fail_durations)
         self.tie_comparator_valid = tie_comparator_valid
@@ -820,7 +827,7 @@ class _FakePilotRuntime:
         return {
             "success": True,
             "duration_min": duration,
-            "call_slots": [0],
+            "call_slots": self.call_slots_by_duration[duration],
             "flex_kw": self.flex_by_duration[duration],
             "schedule": schedule,
             "physical_feasible": True,
@@ -908,6 +915,9 @@ class _FakePilotRuntime:
         from evflex.pilot import canonical_schedule_sha256
 
         self.tie_calls += 1
+        self.tie_contexts.append(
+            (direction, tuple(call_slots), float(offer_kw))
+        )
         schedule = np.asarray(schedule, dtype=float).copy()
         schedule_hash = canonical_schedule_sha256(self.fleet, schedule)
         return {
@@ -1661,6 +1671,127 @@ def test_exact_schedule_hash_deduplicates_every_expensive_operation(tmp_path):
     assert runtime.legacy_calls == 2
     assert runtime.tie_calls == 2
     assert runtime.timing_calls == 8
+
+
+def test_tie_cache_does_not_reuse_identical_schedule_for_different_comparator_context(
+    tmp_path,
+):
+    evaluate_pilot_work_unit = _work_unit_api()
+    runtime = _FakePilotRuntime(
+        flex_by_duration={15: 10.0, 30: 12.0, 60: 9.0},
+        schedule_marker_by_duration={15: 0.30, 30: 0.30, 60: 0.30},
+        call_slots_by_duration={
+            15: [0],
+            30: [0, 1],
+            60: [2, 3, 4, 5],
+        },
+    )
+
+    rows = evaluate_pilot_work_unit(
+        tmp_path,
+        _fake_work_unit(),
+        config=_fake_pilot_config(runtime),
+        perf_counter=_StepClock(),
+    )
+
+    by_duration = {row["duration_min"]: row for row in rows}
+    assert len({row["schedule_sha256"] for row in rows}) == 1
+    assert by_duration[15]["source_duration_min"] == 30
+    assert by_duration[30]["source_duration_min"] == 30
+    assert by_duration[60]["source_duration_min"] == 60
+    assert runtime.tie_contexts == [
+        ("inc", (0, 1), 12.0),
+        ("inc", (2, 3, 4, 5), 9.0),
+    ]
+    assert by_duration[15]["tie_break_reused"] is False
+    assert by_duration[15]["tie_break_source_requested_duration_min"] == 15
+    assert by_duration[30]["tie_break_reused"] is True
+    assert by_duration[30]["tie_break_source_requested_duration_min"] == 15
+    assert by_duration[60]["tie_break_reused"] is False
+    assert by_duration[60]["tie_break_source_requested_duration_min"] == 60
+    assert runtime.tie_calls == 2
+    assert runtime.legacy_calls == 1
+    assert runtime.timing_calls == 4
+
+
+def test_tie_cache_uses_exact_float64_offer_identity(tmp_path):
+    evaluate_pilot_work_unit = _work_unit_api()
+    lower_offer = np.nextafter(10.0, -np.inf)
+    runtime = _FakePilotRuntime(
+        flex_by_duration={15: 9.0, 30: 10.0, 60: lower_offer},
+        schedule_marker_by_duration={15: 0.30, 30: 0.30, 60: 0.30},
+    )
+
+    rows = evaluate_pilot_work_unit(
+        tmp_path,
+        _fake_work_unit(),
+        config=_fake_pilot_config(runtime),
+        perf_counter=_StepClock(),
+    )
+
+    by_duration = {row["duration_min"]: row for row in rows}
+    assert len({row["schedule_sha256"] for row in rows}) == 1
+    assert runtime.tie_contexts == [
+        ("inc", (0,), 10.0),
+        ("inc", (0,), lower_offer),
+    ]
+    assert by_duration[30]["tie_break_reused"] is True
+    assert by_duration[30]["tie_break_source_requested_duration_min"] == 15
+    assert by_duration[60]["tie_break_reused"] is False
+    assert by_duration[60]["tie_break_source_requested_duration_min"] == 60
+
+
+def test_tie_cache_normalizes_equivalent_call_slot_sequences(tmp_path):
+    evaluate_pilot_work_unit = _work_unit_api()
+    runtime = _FakePilotRuntime(
+        flex_by_duration={15: 9.0, 30: 10.0, 60: 10.0},
+        schedule_marker_by_duration={15: 0.30, 30: 0.30, 60: 0.30},
+        call_slots_by_duration={
+            15: [0],
+            30: [2, 1, 2],
+            60: [1, 2],
+        },
+    )
+
+    rows = evaluate_pilot_work_unit(
+        tmp_path,
+        _fake_work_unit(),
+        config=_fake_pilot_config(runtime),
+        perf_counter=_StepClock(),
+    )
+
+    by_duration = {row["duration_min"]: row for row in rows}
+    assert runtime.tie_contexts == [("inc", (1, 2), 10.0)]
+    assert by_duration[30]["tie_break_reused"] is True
+    assert by_duration[30]["tie_break_source_requested_duration_min"] == 15
+    assert by_duration[60]["tie_break_reused"] is True
+    assert by_duration[60]["tie_break_source_requested_duration_min"] == 15
+
+
+def test_tie_cache_rejects_invalid_call_slots_before_running_comparator(tmp_path):
+    evaluate_pilot_work_unit = _work_unit_api()
+    runtime = _FakePilotRuntime(
+        call_slots_by_duration={
+            15: [0],
+            30: [0],
+            60: [0.5],
+        }
+    )
+
+    rows = evaluate_pilot_work_unit(
+        tmp_path,
+        _fake_work_unit(),
+        config=_fake_pilot_config(runtime),
+        perf_counter=_StepClock(),
+    )
+
+    row = next(item for item in rows if item["duration_min"] == 60)
+    assert row["tie_comparator_valid"] is False
+    assert row["tie_break_status"] == "ERROR"
+    assert "call_slots" in row["tie_break_detail"]
+    assert row["tie_break_reused"] is False
+    assert row["tie_break_source_requested_duration_min"] is None
+    assert runtime.tie_calls == 2
 
 
 def test_nearby_but_distinct_float64_schedules_are_not_deduplicated(tmp_path):
