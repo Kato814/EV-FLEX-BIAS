@@ -103,30 +103,32 @@ Constraint families are exactly `VMIN`, `VMAX`, `VUF`, `TRANSFORMER`, and `FEEDE
 
 Every voltage object yields both a `VMIN` lower-bound row and a `VMAX` upper-bound row. VUF, transformer loading, and feeder loading are upper-bound rows. Rows are sorted by `(constraint_family_order, metric_id, direction)`, with the frozen family order `VMIN`, `VMAX`, `VUF`, `TRANSFORMER`, `FEEDER`.
 
-An infeasible audit may stop after the first physical failure slot, but it must finish all declared metrics for that slot and retain every simultaneous violation. A feasible audit must cover all 96 slots. D1 does not invent a unique primary cause; a largest-normalized-exceedance summary, if shown, is explicitly diagnostic.
+An infeasible audit may stop after the first physical failure slot, but it must finish all declared metrics for that slot and retain every simultaneous violation. Its `checked_intervals` must equal `first_failure_slot + 1`, the first failure slot must be the final retained slot, and its formal metric set and coverage must be complete for that slot. A feasible audit must cover all 96 slots. D1 does not invent a unique primary cause; a largest-normalized-exceedance summary, if shown, is explicitly diagnostic.
 
 ## Constraint-count confound diagnostic
 
 For each bad case at `BOUNDARY_INFEASIBLE`, D1 retains signed margins for all monitored voltage and VUF objects at the first failure slot. For its paired IEEE13 control, it retains the same families at the same slot and fraction.
 
-The diagnostic unit is `case x constraint family`, so a case with simultaneous VMIN and VUF violations contributes two rows. For each row, let `N` be the number of monitored LV906 objects in that family, `K` the number of violating LV906 objects, and `m` the number of monitored IEEE13 objects in the same family. If `0 < m <= N`, the exact without-replacement probability that a count-matched sample contains at least one violation is:
+Count matching applies only to `VMIN`, `VMAX`, and `VUF`. The diagnostic unit is `case x constraint family`, so a case with simultaneous VMIN and VUF violations contributes two rows. `N`, `K`, and `m` count unique object IDs. VMIN and VMAX use the same full set of monitored voltage object IDs.
+
+For each row, let `N` be the number of monitored LV906 objects in that family, `K` the number of unique LV906 objects explicitly emitted as physical violations by the original evaluator, and `m` the number of monitored IEEE13 objects in the same family. `K` is not recomputed from `signed_headroom < 0`, because the original evaluator applies a frozen `1e-7` feasibility tolerance. If `0 < m <= N`, the exact without-replacement probability that a count-matched sample contains at least one violation is:
 
 `p_detect = 1 - C(N-K, m) / C(N, m)`.
 
-The implementation uses exact integer combinations, not Monte Carlo sampling. Invalid counts are structural errors; a family absent from the control is reported as `NOT_APPLICABLE`, not assigned a probability.
+The implementation uses exact integer combinations, not Monte Carlo sampling. `C(N-K, m)` is defined as zero when `N-K < m`. It stores the exact numerator and denominator, serializes a 12-decimal `ROUND_HALF_EVEN` display value, and compares thresholds using the exact fraction rather than the rounded display. Invalid counts are structural errors; a family absent from the control is reported as `NOT_APPLICABLE`, not assigned a probability.
 
-For each candidate family, let `n_family` be the number of bad cases with that family among the first-slot violations. This is only a count-matched detection-sensitivity classification:
+For each candidate family, let `n_eligible` be the number of rows with a valid exact probability. `NOT_APPLICABLE` rows do not enter the denominator or the 80% count. This is only a count-matched detection-sensitivity classification:
 
-- `COUNT_MATCH_NOT_APPLICABLE` when `n_family < 4`;
-- `COUNT_MATCH_HIGH_DETECTION` when at least `ceil(0.8*n_family)` eligible rows have `p_detect >= 0.80`;
-- `COUNT_MATCH_LOW_DETECTION` when at least `ceil(0.8*n_family)` eligible rows have `p_detect <= 0.20`;
+- `COUNT_MATCH_NOT_APPLICABLE` when `n_eligible < 4`;
+- `COUNT_MATCH_HIGH_DETECTION` when at least `ceil(0.8*n_eligible)` eligible rows have exact `p_detect >= 4/5`;
+- `COUNT_MATCH_LOW_DETECTION` when at least `ceil(0.8*n_eligible)` eligible rows have exact `p_detect <= 1/5`;
 - `COUNT_MATCH_INDETERMINATE` otherwise.
 
 No classification proves or excludes a count effect, and it never changes an audit's physical feasibility label.
 
 ## Relative-stress confound boundary
 
-The existing frozen input does not expose a versioned definition of native-load power or a phase allocation rule from which an unambiguous EV-power/native-load ratio can be reconstructed. D1 therefore records `RELATIVE_STRESS_NOT_IN_SCOPE_NO_FROZEN_DENOMINATOR` for every pair and does not invent a post-hoc ratio.
+The existing frozen input does not expose a versioned definition of native-load power or a phase allocation rule from which an unambiguous EV-power/native-load ratio can be reconstructed. D1 therefore records `RELATIVE_STRESS_NOT_IN_SCOPE_NO_FROZEN_DENOMINATOR` for every pair, serializes global and phase ratio fields as `null`, and does not invent a post-hoc ratio or substitute `f_bal/feeder_kVA` as a proxy.
 
 This unresolved feeder-size/stress confound is mandatory in the report and prevents a common-family candidate from being described as a causal mechanism. A later confirmation protocol may add the ratio only after freezing its numerator, denominator, phase rule, units, and zero-denominator behavior prospectively.
 
@@ -140,12 +142,13 @@ All conditions are mandatory:
 2. All source IDs, hashes, schedules, seeds, and protocol fields match the frozen manifest.
 3. All 12 bad `BOUNDARY_FEASIBLE` audits are feasible with complete 96-slot coverage.
 4. All 12 bad `BOUNDARY_INFEASIBLE` audits are physically infeasible, have explicit finite witnesses, and are no more than 0.002 above the archived feasible alpha.
-5. All 12 bad cases have zero numerical failures.
-6. All 12 matched controls remain feasible with complete 96-slot coverage at both paired boundary points and at `FULL_OFFER`.
-7. Every violation value, limit, direction, signed headroom, exceedance, object ID, and slot passes strict validation.
-8. Formal metric coverage counts are valid and `line_thermal_in_scope=false` in every case. An infeasible bad audit may stop only at its explicit first physical witness after completing that slot's metrics.
-9. No unit, rating, normalization, label-set, source-provenance, or coverage-integrity error is detected.
-10. `src/evflex/pilot.py` remains byte-identical and the archived pilot report passes `--verify-existing`.
+5. All 12 bad `FULL_OFFER` audits remain physically infeasible with explicit finite witnesses; a feasible full offer contradicts the archived monotone boundary and stops implementation.
+6. All 12 bad cases have zero numerical failures.
+7. All 12 matched controls remain feasible with complete 96-slot coverage at both paired boundary points and at `FULL_OFFER`.
+8. Every violation value, limit, direction, signed headroom, exceedance, object ID, and slot passes strict validation.
+9. Formal metric coverage counts are valid and `line_thermal_in_scope=false` in every case. An infeasible bad audit may stop only at its explicit first physical witness after completing that slot's metrics, with `checked_intervals = first_failure_slot + 1`.
+10. No unit, rating, normalization, label-set, source-provenance, or coverage-integrity error is detected.
+11. `src/evflex/pilot.py` remains byte-identical and the archived pilot report passes `--verify-existing`.
 
 Failure of any condition yields `STOP_IMPLEMENTATION`. The existing pilot NO_GO remains unchanged.
 
@@ -157,7 +160,7 @@ After the structural gate passes:
 - `VALID_HETEROGENEOUS`: all 12 cases have explicit physical witnesses, but no family meets the common-candidate threshold;
 - `STOP_IMPLEMENTATION`: the structural gate failed.
 
-The four call-time/scenario groupings are scenario clusters, not independent repetitions. The 8/12 and 3/4 thresholds are prospective screening rules, not findings from the archived pilot. Multiple families may pass and all must be reported. A common-family candidate permits only the design of a small independent confirmation gate; it is not a unique or causal mechanism and does not authorize a formal V2.1 rerun.
+Only `BOUNDARY_INFEASIBLE` first-failure-slot violations enter the candidate count. A family covers a scenario cluster when it appears in at least one case from that frozen scenario ID. The four call-time/scenario groupings are scenario clusters, not independent repetitions. The 8/12 and 3/4 thresholds are prospective screening rules, not findings from the archived pilot. Multiple families may pass and all are emitted in the fixed family order; no primary mechanism is selected. A common-family candidate permits only the design of a small independent confirmation gate; it is not a unique or causal mechanism and does not authorize a formal V2.1 rerun.
 
 ## Output isolation and provenance
 
