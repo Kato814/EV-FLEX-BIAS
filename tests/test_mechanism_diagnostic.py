@@ -473,6 +473,39 @@ def _copy_protocol_files(destination: Path) -> None:
         shutil.copy2(REPO_ROOT / relative, target)
 
 
+def _rewrite_manifest_cell(
+    destination: Path, column: str, value: str, *, row_index: int = 0
+) -> None:
+    path = destination / "manifests/mechanism_diagnostic_pairs_v2_1.csv"
+    with path.open("r", encoding="utf-8", newline="") as stream:
+        reader = csv.DictReader(stream)
+        rows = list(reader)
+        assert tuple(reader.fieldnames or ()) == MANIFEST_COLUMNS
+    rows[row_index][column] = value
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=MANIFEST_COLUMNS, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _rewrite_archived_rows(destination: Path, rows: list[dict[str, str]]) -> None:
+    path = destination / "results/pilot_v2_1/pilot_evaluations_v2_1.csv"
+    with (REPO_ROOT / "results/pilot_v2_1/pilot_evaluations_v2_1.csv").open(
+        "r", encoding="utf-8", newline=""
+    ) as stream:
+        fieldnames = tuple(csv.DictReader(stream).fieldnames or ())
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _archived_rows(destination: Path) -> list[dict[str, str]]:
+    path = destination / "results/pilot_v2_1/pilot_evaluations_v2_1.csv"
+    with path.open("r", encoding="utf-8", newline="") as stream:
+        return list(csv.DictReader(stream))
+
+
 def test_load_config_requires_exact_frozen_contract(tmp_path: Path) -> None:
     config = load_mechanism_config(REPO_ROOT)
 
@@ -681,6 +714,132 @@ def test_manifest_rejects_duplicate_or_mutated_identity(
         load_pair_manifest(tmp_path)
 
 
+@pytest.mark.parametrize("value", ["15.0", "1.5e1", "+15", "1_5"])
+def test_manifest_rejects_noncanonical_ascii_integer_syntax(
+    tmp_path: Path, value: str
+) -> None:
+    _copy_protocol_files(tmp_path)
+    _rewrite_manifest_cell(tmp_path, "duration_min", value)
+
+    with pytest.raises(
+        ValueError,
+        match=r"manifest row 2 duration_min must use canonical ASCII integer syntax",
+    ):
+        load_pair_manifest(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "expected"),
+    [
+        (
+            "bad_scenario_seed",
+            "9" * 1000,
+            r"manifest row 2 bad_scenario_seed must be between 0 and 2147483647",
+        ),
+        (
+            "bad_scenario_seed",
+            "2147483648",
+            r"manifest row 2 bad_scenario_seed must be between 0 and 2147483647",
+        ),
+        (
+            "duration_min",
+            "1441",
+            r"manifest row 2 duration_min must be between 1 and 1440",
+        ),
+    ],
+)
+def test_manifest_rejects_oversized_or_out_of_range_integer(
+    tmp_path: Path, column: str, value: str, expected: str
+) -> None:
+    _copy_protocol_files(tmp_path)
+    _rewrite_manifest_cell(tmp_path, column, value)
+
+    with pytest.raises(ValueError, match=expected):
+        load_pair_manifest(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "expected"),
+    [
+        (
+            "bad_alpha_transfer",
+            "9.40e-1",
+            r"manifest row 2 bad_alpha_transfer must use exactly three decimal places in 0.ddd form",
+        ),
+        (
+            "bad_alpha_transfer",
+            "0.9400",
+            r"manifest row 2 bad_alpha_transfer must use exactly three decimal places in 0.ddd form",
+        ),
+        (
+            "bad_alpha_transfer",
+            "0." + ("0" * 400) + "1",
+            r"manifest row 2 bad_alpha_transfer must use exactly three decimal places in 0.ddd form",
+        ),
+        (
+            "control_alpha_transfer",
+            "1e0",
+            r"manifest row 2 control_alpha_transfer must be exactly 1.0",
+        ),
+        (
+            "control_alpha_transfer",
+            "1.00",
+            r"manifest row 2 control_alpha_transfer must be exactly 1.0",
+        ),
+    ],
+)
+def test_manifest_rejects_noncanonical_alpha_syntax(
+    tmp_path: Path, column: str, value: str, expected: str
+) -> None:
+    _copy_protocol_files(tmp_path)
+    _rewrite_manifest_cell(tmp_path, column, value)
+
+    with pytest.raises(ValueError, match=expected):
+        load_pair_manifest(tmp_path)
+
+
+def test_archive_alpha_is_compared_as_exact_decimal(tmp_path: Path) -> None:
+    _copy_protocol_files(tmp_path)
+    rows = _archived_rows(tmp_path)
+    target = next(
+        row
+        for row in rows
+        if row["evaluation_id"] == "v20_core_lv906_1900_18__dec__15m"
+    )
+    target["alpha_transfer"] = "0.9400000000000000000000000000000000000001"
+    _rewrite_archived_rows(tmp_path, rows)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"manifest alpha_transfer mismatch with archive for "
+            r"v20_core_lv906_1900_18__dec__15m"
+        ),
+    ):
+        load_pair_manifest(tmp_path)
+
+
+def test_archive_integer_rejects_noncanonical_syntax(tmp_path: Path) -> None:
+    _copy_protocol_files(tmp_path)
+    rows = _archived_rows(tmp_path)
+    target = next(
+        row
+        for row in rows
+        if row["evaluation_id"] == "v20_core_lv906_1900_18__dec__15m"
+    )
+    target["duration_min"] = "15.0"
+    _rewrite_archived_rows(tmp_path, rows)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"archive v20_core_lv906_1900_18__dec__15m duration_min "
+            r"must use canonical ASCII integer syntax"
+        ),
+    ):
+        load_pair_manifest(tmp_path)
+
+
 def test_source_hash_drift_is_rejected(tmp_path: Path) -> None:
     config = load_mechanism_config(REPO_ROOT)
     for source in config["frozen_sources"]:
@@ -701,7 +860,7 @@ def test_source_hash_drift_is_rejected(tmp_path: Path) -> None:
         verify_frozen_sources(tmp_path, config)
 
 
-def test_config_freezes_archived_pilot_runner_source() -> None:
+def test_source_hash_config_freezes_archived_pilot_runner_source() -> None:
     config = load_mechanism_config(REPO_ROOT)
     sources = {source["path"]: source["sha256"] for source in config["frozen_sources"]}
 
@@ -710,7 +869,9 @@ def test_config_freezes_archived_pilot_runner_source() -> None:
     )
 
 
-def test_archived_pilot_runner_hash_drift_is_rejected(tmp_path: Path) -> None:
+def test_source_hash_archived_pilot_runner_drift_is_rejected(
+    tmp_path: Path,
+) -> None:
     config = load_mechanism_config(REPO_ROOT)
     runner_source = next(
         (
@@ -742,3 +903,151 @@ def test_archived_pilot_runner_hash_drift_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="source hash drift"):
         verify_frozen_sources(tmp_path, config)
+
+
+def test_provenance_rejects_archive_schedule_hash_drift(tmp_path: Path) -> None:
+    _copy_protocol_files(tmp_path)
+    rows = _archived_rows(tmp_path)
+    evaluation_id = "v20_core_lv906_1900_18__dec__15m"
+    target = next(row for row in rows if row["evaluation_id"] == evaluation_id)
+    target["schedule_sha256"] = "0" * 64
+    _rewrite_archived_rows(tmp_path, rows)
+
+    with pytest.raises(
+        ValueError,
+        match=rf"manifest schedule_sha256 mismatch with archive for {evaluation_id}",
+    ):
+        load_pair_manifest(tmp_path)
+
+
+def test_provenance_rejects_missing_archive_evaluation_id(tmp_path: Path) -> None:
+    _copy_protocol_files(tmp_path)
+    rows = _archived_rows(tmp_path)
+    evaluation_id = "v20_core_lv906_1900_18__dec__15m"
+    rows = [row for row in rows if row["evaluation_id"] != evaluation_id]
+    _rewrite_archived_rows(tmp_path, rows)
+
+    with pytest.raises(
+        ValueError,
+        match=rf"manifest source ID is missing from archive: {evaluation_id}",
+    ):
+        load_pair_manifest(tmp_path)
+
+
+def test_provenance_rejects_duplicate_archive_evaluation_id(tmp_path: Path) -> None:
+    _copy_protocol_files(tmp_path)
+    rows = _archived_rows(tmp_path)
+    evaluation_id = "v20_core_lv906_1900_18__dec__15m"
+    target = next(row for row in rows if row["evaluation_id"] == evaluation_id)
+    rows.append(dict(target))
+    _rewrite_archived_rows(tmp_path, rows)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"results/pilot_v2_1/pilot_evaluations_v2_1.csv: "
+            rf"duplicate evaluation_id {evaluation_id}"
+        ),
+    ):
+        load_pair_manifest(tmp_path)
+
+
+def test_source_hash_provenance_rejects_direct_pilot_py_drift(
+    tmp_path: Path,
+) -> None:
+    config = load_mechanism_config(REPO_ROOT)
+    for source in config["frozen_sources"]:
+        relative = Path(source["path"])
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / relative, target)
+    pilot_relative = Path(config["pilot_py"]["path"])
+    pilot_target = tmp_path / pilot_relative
+    pilot_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(REPO_ROOT / pilot_relative, pilot_target)
+    pilot_target.write_bytes(pilot_target.read_bytes() + b"\nDRIFT")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"source hash drift: src/evflex/pilot.py expected "
+            r"37bde81640d82bb77ae9a5bee62e02274743f3a41ef8f5ab973d8e9ba1554a9b"
+        ),
+    ):
+        verify_frozen_sources(tmp_path, config)
+
+
+def test_provenance_rejects_duplicate_config_json_key(tmp_path: Path) -> None:
+    source = (REPO_ROOT / "config/mechanism_diagnostic_v2_1.json").read_text(
+        encoding="utf-8"
+    )
+    mutated = source.replace(
+        '{\n  "protocol_version":',
+        '{\n  "protocol_version": "DUPLICATE",\n  "protocol_version":',
+        1,
+    )
+    target = tmp_path / "config/mechanism_diagnostic_v2_1.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(mutated, encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"config/mechanism_diagnostic_v2_1.json: "
+            r"duplicate JSON key 'protocol_version'"
+        ),
+    ):
+        load_mechanism_config(tmp_path)
+
+
+def test_provenance_rejects_nonfinite_config_json_number(tmp_path: Path) -> None:
+    source = (REPO_ROOT / "config/mechanism_diagnostic_v2_1.json").read_text(
+        encoding="utf-8"
+    )
+    mutated = source.replace('"delta": 0.002', '"delta": NaN', 1)
+    target = tmp_path / "config/mechanism_diagnostic_v2_1.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(mutated, encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"config/mechanism_diagnostic_v2_1.json: "
+            r"non-finite JSON number NaN"
+        ),
+    ):
+        load_mechanism_config(tmp_path)
+
+
+def test_provenance_rejects_duplicate_manifest_csv_header(tmp_path: Path) -> None:
+    _copy_protocol_files(tmp_path)
+    path = tmp_path / "manifests/mechanism_diagnostic_pairs_v2_1.csv"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    lines[0] = lines[0].replace("pair_id,scenario_cluster", "pair_id,pair_id", 1)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"manifests/mechanism_diagnostic_pairs_v2_1.csv: "
+            r"duplicate CSV header pair_id"
+        ),
+    ):
+        load_pair_manifest(tmp_path)
+
+
+def test_provenance_rejects_malformed_manifest_csv_cell(tmp_path: Path) -> None:
+    _copy_protocol_files(tmp_path)
+    path = tmp_path / "manifests/mechanism_diagnostic_pairs_v2_1.csv"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    lines[1] = '"' + lines[1]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"manifests/mechanism_diagnostic_pairs_v2_1.csv: "
+            r"malformed CSV"
+        ),
+    ):
+        load_pair_manifest(tmp_path)

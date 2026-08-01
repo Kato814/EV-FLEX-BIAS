@@ -14,6 +14,11 @@ from typing import Any
 _CONFIG_RELATIVE_PATH = "config/mechanism_diagnostic_v2_1.json"
 _ARCHIVED_EVALUATIONS_PATH = "results/pilot_v2_1/pilot_evaluations_v2_1.csv"
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+_ASCII_INTEGER_RE = re.compile(r"(?:0|[1-9][0-9]*)\Z")
+_BAD_ALPHA_RE = re.compile(r"0\.[0-9]{3}\Z")
+_ARCHIVED_DECIMAL_RE = re.compile(r"(?:0|[1-9][0-9]*)\.[0-9]+\Z")
+_SCENARIO_SEED_MAX = 2_147_483_647
+_DURATION_MIN_MAX = 24 * 60
 
 _MANIFEST_COLUMNS = (
     "pair_id",
@@ -285,17 +290,21 @@ def _fail(detail: str) -> None:
     raise ValueError(f"mechanism diagnostic: {detail}")
 
 
+class _StrictDecodeError(ValueError):
+    pass
+
+
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            _fail(f"config has duplicate JSON key {key!r}")
+            raise _StrictDecodeError(f"duplicate JSON key {key!r}")
         result[key] = value
     return result
 
 
 def _reject_nonfinite_json(token: str) -> None:
-    _fail(f"config contains non-finite JSON number {token}")
+    raise _StrictDecodeError(f"non-finite JSON number {token}")
 
 
 def _validate_finite_tree(value: Any, label: str) -> None:
@@ -312,15 +321,20 @@ def _validate_finite_tree(value: Any, label: str) -> None:
 def _strict_json_file(path: Path, label: str) -> Any:
     try:
         text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        _fail(f"{label}: unreadable JSON ({type(exc).__name__})")
+    try:
         value = json.loads(
             text,
             object_pairs_hook=_reject_duplicate_keys,
             parse_constant=_reject_nonfinite_json,
         )
-    except ValueError:
-        raise
-    except (OSError, UnicodeError) as exc:
-        _fail(f"{label} is unreadable ({type(exc).__name__})")
+    except _StrictDecodeError as exc:
+        _fail(f"{label}: {exc}")
+    except json.JSONDecodeError as exc:
+        _fail(
+            f"{label}: malformed JSON at line {exc.lineno}, column {exc.colno}"
+        )
     _validate_finite_tree(value, label)
     return value
 
@@ -435,31 +449,49 @@ def _strict_text(value: Any, label: str) -> str:
     return value
 
 
-def _strict_int(value: Any, label: str) -> int:
-    if not isinstance(value, str) or not value or value != value.strip():
-        _fail(f"manifest {label} must be a finite lossless integer")
-    try:
-        parsed = Decimal(value)
-    except InvalidOperation:
-        _fail(f"manifest {label} must be a finite lossless integer")
-    if not parsed.is_finite() or parsed != parsed.to_integral_value():
-        _fail(f"manifest {label} must be a finite lossless integer")
-    return int(parsed)
+def _strict_int(
+    value: Any,
+    label: str,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    if not isinstance(value, str) or not _ASCII_INTEGER_RE.fullmatch(value):
+        _fail(f"{label} must use canonical ASCII integer syntax")
+    if len(value) > len(str(maximum)):
+        _fail(f"{label} must be between {minimum} and {maximum}")
+    parsed = int(value)
+    if not minimum <= parsed <= maximum:
+        _fail(f"{label} must be between {minimum} and {maximum}")
+    return parsed
 
 
-def _strict_float(value: Any, label: str) -> float:
-    if not isinstance(value, str) or not value or value != value.strip():
-        _fail(f"manifest {label} must be a finite float")
+def _strict_manifest_alpha(value: Any, label: str, *, role: str) -> Decimal:
+    if role == "bad":
+        if not isinstance(value, str) or not _BAD_ALPHA_RE.fullmatch(value):
+            _fail(
+                f"manifest {label} must use exactly three decimal places "
+                "in 0.ddd form"
+            )
+    elif role == "control":
+        if value != "1.0":
+            _fail(f"manifest {label} must be exactly 1.0")
+    else:
+        raise AssertionError(f"unexpected manifest role {role!r}")
+    return Decimal(value)
+
+
+def _strict_archived_decimal(value: Any, label: str) -> Decimal:
+    if (
+        not isinstance(value, str)
+        or len(value) > 128
+        or not _ARCHIVED_DECIMAL_RE.fullmatch(value)
+    ):
+        _fail(f"{label} must use canonical finite decimal syntax")
     try:
-        parsed = Decimal(value)
-    except InvalidOperation:
-        _fail(f"manifest {label} must be a finite float")
-    if not parsed.is_finite():
-        _fail(f"manifest {label} must be a finite float")
-    result = float(parsed)
-    if not math.isfinite(result):
-        _fail(f"manifest {label} must be a finite float")
-    return result
+        return Decimal(value)
+    except InvalidOperation as exc:
+        _fail(f"{label} must use canonical finite decimal syntax ({exc})")
 
 
 def _strict_sha256(value: Any, label: str) -> str:
@@ -486,7 +518,10 @@ def _parse_manifest_row(raw: Mapping[str, Any], row_number: int) -> dict[str, An
             raw["bad_scenario_id"], f"{prefix} bad_scenario_id"
         ),
         "bad_scenario_seed": _strict_int(
-            raw["bad_scenario_seed"], f"{prefix} bad_scenario_seed"
+            raw["bad_scenario_seed"],
+            f"manifest {prefix} bad_scenario_seed",
+            minimum=0,
+            maximum=_SCENARIO_SEED_MAX,
         ),
         "bad_feeder": _strict_text(raw["bad_feeder"], f"{prefix} bad_feeder"),
         "bad_call_time": _strict_text(
@@ -495,12 +530,22 @@ def _parse_manifest_row(raw: Mapping[str, Any], row_number: int) -> dict[str, An
         "bad_direction": _strict_text(
             raw["bad_direction"], f"{prefix} bad_direction"
         ),
-        "duration_min": _strict_int(raw["duration_min"], f"{prefix} duration_min"),
-        "bad_alpha_transfer": _strict_float(
-            raw["bad_alpha_transfer"], f"{prefix} bad_alpha_transfer"
+        "duration_min": _strict_int(
+            raw["duration_min"],
+            f"manifest {prefix} duration_min",
+            minimum=1,
+            maximum=_DURATION_MIN_MAX,
+        ),
+        "bad_alpha_transfer": _strict_manifest_alpha(
+            raw["bad_alpha_transfer"],
+            f"{prefix} bad_alpha_transfer",
+            role="bad",
         ),
         "bad_source_duration_min": _strict_int(
-            raw["bad_source_duration_min"], f"{prefix} bad_source_duration_min"
+            raw["bad_source_duration_min"],
+            f"manifest {prefix} bad_source_duration_min",
+            minimum=1,
+            maximum=_DURATION_MIN_MAX,
         ),
         "bad_schedule_sha256": _strict_sha256(
             raw["bad_schedule_sha256"], f"{prefix} bad_schedule_sha256"
@@ -523,7 +568,10 @@ def _parse_manifest_row(raw: Mapping[str, Any], row_number: int) -> dict[str, An
             raw["control_scenario_id"], f"{prefix} control_scenario_id"
         ),
         "control_scenario_seed": _strict_int(
-            raw["control_scenario_seed"], f"{prefix} control_scenario_seed"
+            raw["control_scenario_seed"],
+            f"manifest {prefix} control_scenario_seed",
+            minimum=0,
+            maximum=_SCENARIO_SEED_MAX,
         ),
         "control_feeder": _strict_text(
             raw["control_feeder"], f"{prefix} control_feeder"
@@ -534,12 +582,16 @@ def _parse_manifest_row(raw: Mapping[str, Any], row_number: int) -> dict[str, An
         "control_direction": _strict_text(
             raw["control_direction"], f"{prefix} control_direction"
         ),
-        "control_alpha_transfer": _strict_float(
-            raw["control_alpha_transfer"], f"{prefix} control_alpha_transfer"
+        "control_alpha_transfer": _strict_manifest_alpha(
+            raw["control_alpha_transfer"],
+            f"{prefix} control_alpha_transfer",
+            role="control",
         ),
         "control_source_duration_min": _strict_int(
             raw["control_source_duration_min"],
-            f"{prefix} control_source_duration_min",
+            f"manifest {prefix} control_source_duration_min",
+            minimum=1,
+            maximum=_DURATION_MIN_MAX,
         ),
         "control_schedule_sha256": _strict_sha256(
             raw["control_schedule_sha256"], f"{prefix} control_schedule_sha256"
@@ -615,33 +667,39 @@ def _read_archived_rows(root: Path) -> dict[str, dict[str, str]]:
     try:
         stream = path.open("r", encoding="utf-8", newline="")
     except (OSError, UnicodeError) as exc:
-        _fail(
-            f"manifest source table is unreadable ({type(exc).__name__})"
-        )
+        _fail(f"{_ARCHIVED_EVALUATIONS_PATH}: unreadable CSV ({type(exc).__name__})")
     try:
         with stream:
-            reader = csv.DictReader(stream)
+            reader = csv.DictReader(stream, strict=True)
             fieldnames = tuple(reader.fieldnames or ())
             if len(fieldnames) != len(set(fieldnames)):
-                _fail("manifest source table has duplicate CSV headers")
+                duplicate = next(
+                    name for name in fieldnames if fieldnames.count(name) > 1
+                )
+                _fail(
+                    f"{_ARCHIVED_EVALUATIONS_PATH}: duplicate CSV header {duplicate}"
+                )
             missing = sorted(required - set(fieldnames))
             if missing:
-                _fail(f"manifest source table is missing columns {missing}")
+                _fail(
+                    f"{_ARCHIVED_EVALUATIONS_PATH}: missing CSV columns {missing}"
+                )
             rows: dict[str, dict[str, str]] = {}
             for row_number, raw in enumerate(reader, start=2):
                 if None in raw or any(value is None for value in raw.values()):
                     _fail(
-                        f"manifest source table row {row_number} has extra or missing fields"
+                        f"{_ARCHIVED_EVALUATIONS_PATH}: row {row_number} "
+                        "has unexpected or missing columns"
                     )
                 evaluation_id = raw["evaluation_id"]
                 if evaluation_id in rows:
                     _fail(
-                        "manifest source table duplicates evaluation_id "
+                        f"{_ARCHIVED_EVALUATIONS_PATH}: duplicate evaluation_id "
                         f"{evaluation_id}"
                     )
                 rows[evaluation_id] = dict(raw)
     except csv.Error as exc:
-        _fail(f"manifest source table is malformed ({exc})")
+        _fail(f"{_ARCHIVED_EVALUATIONS_PATH}: malformed CSV ({exc})")
     return rows
 
 
@@ -697,9 +755,9 @@ def _validate_pair_design(
                 _fail(
                     f"manifest pair {pair['pair_id']} is not matched on {field}"
                 )
-        if not 0.0 <= bad["alpha_transfer"] < 0.95:
+        if not Decimal("0.000") <= bad["alpha_transfer"] < Decimal("0.950"):
             _fail(f"manifest pair {pair['pair_id']} bad alpha is not frozen-bad")
-        if control["alpha_transfer"] != 1.0:
+        if control["alpha_transfer"] != Decimal("1.0"):
             _fail(f"manifest pair {pair['pair_id']} control alpha is not 1.0")
 
 
@@ -743,14 +801,23 @@ def _validate_against_archive(
                         f"manifest {field} mismatch with archive for {evaluation_id}"
                     )
             for field in int_fields:
+                minimum = 0 if field == "scenario_seed" else 1
+                maximum = (
+                    _SCENARIO_SEED_MAX
+                    if field == "scenario_seed"
+                    else _DURATION_MIN_MAX
+                )
                 archived_value = _strict_int(
-                    row[field], f"archive {evaluation_id} {field}"
+                    row[field],
+                    f"archive {evaluation_id} {field}",
+                    minimum=minimum,
+                    maximum=maximum,
                 )
                 if archived_value != member[field]:
                     _fail(
                         f"manifest {field} mismatch with archive for {evaluation_id}"
                     )
-            archived_alpha = _strict_float(
+            archived_alpha = _strict_archived_decimal(
                 row["alpha_transfer"],
                 f"archive {evaluation_id} alpha_transfer",
             )
@@ -781,27 +848,33 @@ def load_pair_manifest(repo_root: str | Path) -> list[dict[str, Any]]:
     try:
         stream = path.open("r", encoding="utf-8", newline="")
     except (OSError, UnicodeError) as exc:
-        _fail(f"manifest is unreadable ({type(exc).__name__})")
+        _fail(f"{relative}: unreadable CSV ({type(exc).__name__})")
     try:
         with stream:
-            reader = csv.DictReader(stream)
+            reader = csv.DictReader(stream, strict=True)
             fieldnames = tuple(reader.fieldnames or ())
             if len(fieldnames) != len(set(fieldnames)):
-                _fail("manifest has duplicate CSV headers")
+                duplicate = next(
+                    name for name in fieldnames if fieldnames.count(name) > 1
+                )
+                _fail(f"{relative}: duplicate CSV header {duplicate}")
             if fieldnames != _MANIFEST_COLUMNS:
-                _fail("manifest columns differ from the frozen schema")
+                _fail(f"{relative}: columns differ from the frozen schema")
             pairs: list[dict[str, Any]] = []
             for row_number, raw in enumerate(reader, start=2):
                 if None in raw or any(value is None for value in raw.values()):
                     _fail(
-                        f"manifest row {row_number} has unexpected or missing columns"
+                        f"{relative}: row {row_number} has unexpected or missing columns"
                     )
                 pairs.append(_parse_manifest_row(raw, row_number))
     except csv.Error as exc:
-        _fail(f"manifest is malformed ({exc})")
+        _fail(f"{relative}: malformed CSV ({exc})")
 
     _validate_pair_design(pairs, config)
     _validate_against_archive(root, pairs, config)
+    for pair in pairs:
+        pair["bad_alpha_transfer"] = float(pair["bad_alpha_transfer"])
+        pair["control_alpha_transfer"] = float(pair["control_alpha_transfer"])
     return pairs
 
 
