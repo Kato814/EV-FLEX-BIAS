@@ -9,11 +9,16 @@ from pathlib import Path
 import pytest
 
 from evflex.mechanism_diagnostic import (
+    build_count_match_rows,
+    candidate_families,
+    classify_count_match,
     compact_targeted_audit,
     constraint_rows_from_slot,
+    exact_count_match_probability,
     load_mechanism_config,
     load_pair_manifest,
     pair_members,
+    relative_stress_evidence,
     verify_frozen_sources,
 )
 
@@ -1523,3 +1528,337 @@ def test_compactor_rejects_aggregate_coverage_extrema_or_accounting_drift() -> N
             audit_point="BOUNDARY_INFEASIBLE",
             alpha=0.942,
         )
+
+
+def _diagnostic_constraint_row(
+    family: str,
+    object_id: str,
+    *,
+    physical: bool = False,
+    signed_headroom: float | None = None,
+) -> dict[str, object]:
+    if family in {"VMIN", "VMAX"}:
+        metric_id = f"V:{object_id}"
+    elif family == "VUF":
+        metric_id = f"U:{object_id}"
+    elif family == "TRANSFORMER":
+        metric_id = f"S:transformer:{object_id}"
+    elif family == "FEEDER":
+        metric_id = "S:feeder"
+        object_id = "feeder"
+    else:
+        raise AssertionError(f"unexpected family {family}")
+    direction = "lo" if family == "VMIN" else "hi"
+    limit = 0.95 if family == "VMIN" else 1.05 if family == "VMAX" else 1.0
+    margin = (-0.01 if physical else 0.01) if signed_headroom is None else signed_headroom
+    value = limit + margin if direction == "lo" else limit - margin
+    return {
+        "slot": 5,
+        "constraint_family": family,
+        "metric_id": metric_id,
+        "object_id": object_id,
+        "value": value,
+        "limit": limit,
+        "direction": direction,
+        "signed_headroom": margin,
+        "exceedance": max(0.0, -margin),
+        "is_physical_violation": physical,
+    }
+
+
+def _diagnostic_audit(
+    audit_point: str,
+    role: str,
+    rows: list[dict[str, object]] | None,
+) -> dict[str, object]:
+    selected = None
+    if rows is not None:
+        selected = {
+            "slot": 5,
+            "constraint_rows": deepcopy(rows),
+            "simultaneous_violations": [
+                deepcopy(row)
+                for row in rows
+                if row["is_physical_violation"] is True
+            ],
+        }
+    return {
+        "audit_point": audit_point,
+        "role": role,
+        "selected_slot": selected,
+    }
+
+
+def _diagnostic_pair(
+    pair_id: str,
+    scenario_cluster: str,
+    bad_boundary_rows: list[dict[str, object]],
+    control_boundary_rows: list[dict[str, object]] | None = None,
+    *,
+    bad_full_rows: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    return {
+        "protocol_version": "EV-FLEX-BIAS-V2.1-D1-MECHANISM",
+        "status": "SUCCESS",
+        "pair_id": pair_id,
+        "scenario_cluster": scenario_cluster,
+        "relative_stress": {
+            "reason_code": "RELATIVE_STRESS_NOT_IN_SCOPE_NO_FROZEN_DENOMINATOR",
+            "global_ratio": None,
+            "phase_ratios": None,
+        },
+        "audits": [
+            _diagnostic_audit("BOUNDARY_FEASIBLE", "bad", None),
+            _diagnostic_audit("BOUNDARY_FEASIBLE", "control", None),
+            _diagnostic_audit("BOUNDARY_INFEASIBLE", "bad", bad_boundary_rows),
+            _diagnostic_audit(
+                "BOUNDARY_INFEASIBLE",
+                "control",
+                control_boundary_rows if control_boundary_rows is not None else [],
+            ),
+            _diagnostic_audit("FULL_OFFER", "bad", bad_full_rows),
+            _diagnostic_audit("FULL_OFFER", "control", None),
+        ],
+    }
+
+
+def _eligible_count_row(
+    pair_id: str,
+    family: str,
+    numerator: int,
+    denominator: int,
+    *,
+    display: str = "0.800000000000",
+) -> dict[str, object]:
+    return {
+        "pair_id": pair_id,
+        "constraint_family": family,
+        "probability_status": "ELIGIBLE",
+        "N": denominator,
+        "K": numerator,
+        "m": 1,
+        "p_detect": {
+            "numerator": numerator,
+            "denominator": denominator,
+            "display": display,
+        },
+        "not_applicable_reason": None,
+    }
+
+
+def test_exact_count_probability_preserves_fraction_and_display() -> None:
+    result = exact_count_match_probability(10, 2, 3)
+
+    assert result == {
+        "numerator": 8,
+        "denominator": 15,
+        "display": "0.533333333333",
+    }
+
+
+def test_exact_count_probability_handles_n_minus_k_below_m() -> None:
+    result = exact_count_match_probability(5, 4, 2)
+
+    assert result == {
+        "numerator": 1,
+        "denominator": 1,
+        "display": "1.000000000000",
+    }
+
+
+def test_count_match_uses_unique_explicit_violation_objects_only() -> None:
+    bad_rows = [
+        _diagnostic_constraint_row("VMIN", "a", physical=True),
+        _diagnostic_constraint_row("VMIN", "a", physical=True),
+        _diagnostic_constraint_row(
+            "VMIN", "b", physical=False, signed_headroom=-1e-8
+        ),
+        _diagnostic_constraint_row("VMIN", "c"),
+        *[
+            _diagnostic_constraint_row("VMAX", object_id)
+            for object_id in ("a", "b", "c")
+        ],
+        _diagnostic_constraint_row("VUF", "u1"),
+    ]
+    control_rows = [
+        *[
+            _diagnostic_constraint_row("VMIN", object_id)
+            for object_id in ("x", "y")
+        ],
+        *[
+            _diagnostic_constraint_row("VMAX", object_id)
+            for object_id in ("x", "y")
+        ],
+        _diagnostic_constraint_row("VUF", "u2"),
+    ]
+
+    rows = build_count_match_rows(
+        [_diagnostic_pair("01", "cluster_1", bad_rows, control_rows)]
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["constraint_family"] == "VMIN"
+    assert (rows[0]["N"], rows[0]["K"], rows[0]["m"]) == (3, 1, 2)
+    assert rows[0]["p_detect"] == {
+        "numerator": 2,
+        "denominator": 3,
+        "display": "0.666666666667",
+    }
+
+
+def test_count_match_excludes_not_applicable_rows_from_denominator() -> None:
+    bad_rows = [_diagnostic_constraint_row("VUF", "u1", physical=True)]
+    built = build_count_match_rows(
+        [_diagnostic_pair("01", "cluster_1", bad_rows, [])]
+    )
+    assert built[0]["probability_status"] == "NOT_APPLICABLE"
+    assert built[0]["p_detect"] is None
+
+    rows = [
+        built[0],
+        *[
+            _eligible_count_row(f"{index:02d}", "VUF", 4, 5)
+            for index in range(2, 6)
+        ],
+    ]
+    result = classify_count_match(rows, "VUF")
+
+    assert result["classification"] == "COUNT_MATCH_HIGH_DETECTION"
+    assert result["n_rows"] == 5
+    assert result["n_eligible"] == 4
+    assert result["n_not_applicable"] == 1
+    assert result["required_80pct_count"] == 4
+
+
+def test_count_match_thresholds_use_exact_fraction_not_display() -> None:
+    rows = [
+        _eligible_count_row("01", "VMIN", 4, 5),
+        _eligible_count_row("02", "VMIN", 4, 5),
+        _eligible_count_row("03", "VMIN", 4, 5),
+        _eligible_count_row(
+            "04",
+            "VMIN",
+            7_999_999_999_999,
+            10_000_000_000_000,
+            display="0.800000000000",
+        ),
+    ]
+
+    result = classify_count_match(rows, "VMIN")
+
+    assert result["high_detection_count"] == 3
+    assert result["classification"] == "COUNT_MATCH_INDETERMINATE"
+
+
+def test_count_match_rejects_probability_drift_from_exact_counts() -> None:
+    row = _eligible_count_row("01", "VMIN", 4, 5)
+    row["p_detect"]["numerator"] = 3
+
+    with pytest.raises(ValueError, match="differs from exact counts"):
+        classify_count_match([row], "VMIN")
+
+    not_applicable = {
+        "pair_id": "02",
+        "constraint_family": "VMIN",
+        "probability_status": "NOT_APPLICABLE",
+        "N": 5,
+        "K": 1,
+        "m": False,
+        "p_detect": None,
+        "not_applicable_reason": "CONTROL_FAMILY_ABSENT",
+    }
+    with pytest.raises(ValueError, match="m must be an integer"):
+        classify_count_match([not_applicable], "VMIN")
+
+
+def test_candidate_families_use_boundary_infeasible_and_scenario_clusters_only() -> None:
+    clusters = [
+        "c1",
+        "c2",
+        "c1",
+        "c2",
+        "c1",
+        "c2",
+        "c1",
+        "c2",
+        "c3",
+        "c3",
+        "c4",
+        "c4",
+    ]
+    vmin_indices = {*range(7), 8}
+    pairs = []
+    for index, cluster in enumerate(clusters):
+        boundary_rows = []
+        if index < 8:
+            boundary_rows.append(
+                _diagnostic_constraint_row("VMAX", f"vmax_{index}", physical=True)
+            )
+        if index in vmin_indices:
+            boundary_rows.append(
+                _diagnostic_constraint_row("VMIN", f"vmin_{index}", physical=True)
+            )
+        if not boundary_rows:
+            boundary_rows.append(
+                _diagnostic_constraint_row("FEEDER", "feeder", physical=True)
+            )
+        pairs.append(
+            _diagnostic_pair(
+                f"{index + 1:02d}",
+                cluster,
+                boundary_rows,
+                [_diagnostic_constraint_row("VUF", "control", physical=True)],
+                bad_full_rows=[
+                    _diagnostic_constraint_row("VUF", "full", physical=True)
+                ],
+            )
+        )
+
+    candidates = candidate_families(pairs)
+
+    assert [item["constraint_family"] for item in candidates] == ["VMIN"]
+    assert candidates[0]["bad_case_count"] == 8
+    assert candidates[0]["scenario_cluster_count"] == 3
+
+
+def test_candidate_families_allow_multiple_in_fixed_order() -> None:
+    clusters = ["c1", "c2", "c3", "c4"] * 3
+    pairs = []
+    for index, cluster in enumerate(clusters):
+        families = (
+            ["FEEDER", "VUF", "VMAX", "TRANSFORMER", "VMIN"]
+            if index < 8
+            else ["VMIN"]
+        )
+        rows = [
+            _diagnostic_constraint_row(
+                family,
+                "feeder" if family == "FEEDER" else f"{family.lower()}_{index}",
+                physical=True,
+            )
+            for family in families
+        ]
+        pairs.append(_diagnostic_pair(f"{index + 1:02d}", cluster, rows))
+
+    candidates = candidate_families(pairs)
+
+    assert [item["constraint_family"] for item in candidates] == [
+        "VMIN",
+        "VMAX",
+        "VUF",
+        "TRANSFORMER",
+        "FEEDER",
+    ]
+    assert all(item["bad_case_count"] >= 8 for item in candidates)
+    assert all(item["scenario_cluster_count"] >= 3 for item in candidates)
+
+
+def test_relative_stress_is_null_with_frozen_reason() -> None:
+    first = relative_stress_evidence()
+    first["global_ratio"] = 1.0
+
+    assert relative_stress_evidence() == {
+        "reason_code": "RELATIVE_STRESS_NOT_IN_SCOPE_NO_FROZEN_DENOMINATOR",
+        "global_ratio": None,
+        "phase_ratios": None,
+    }

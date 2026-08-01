@@ -216,7 +216,7 @@ git commit -m "feat: preserve D1 physical witnesses"
 - Modify: `src/evflex/mechanism_diagnostic.py`
 - Modify: `tests/test_mechanism_diagnostic.py`
 
-- [ ] **Step 1: Write failing exact-probability and classification tests**
+- [x] **Step 1: Write failing exact-probability and classification tests**
 
 Add tests named:
 
@@ -236,13 +236,13 @@ Freeze examples:
 - fewer than four eligible rows -> `COUNT_MATCH_NOT_APPLICABLE`;
 - `NOT_APPLICABLE` rows never enter `n_eligible` or the 80% count.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py -k 'count_probability or count_match or candidate_families or relative_stress' -q -p no:faulthandler
 ```
 
-- [ ] **Step 3: Implement pure diagnostics**
+- [x] **Step 3: Implement pure diagnostics**
 
 Add:
 
@@ -257,13 +257,13 @@ Use `math.comb`, integer numerator/denominator reduction, `Decimal` with `ROUND_
 
 Candidate families use only explicit bad `BOUNDARY_INFEASIBLE` first-slot violations. A family qualifies at `>=8` cases and `>=3` scenario clusters, where a cluster is covered if at least one case from that scenario ID contains the family. Emit every qualifying family in the fixed five-family order and never name a primary mechanism.
 
-- [ ] **Step 4: Confirm GREEN**
+- [x] **Step 4: Confirm GREEN**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py -k 'count_probability or count_match or candidate_families or relative_stress' -q -p no:faulthandler
 ```
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```powershell
 git add src/evflex/mechanism_diagnostic.py tests/test_mechanism_diagnostic.py

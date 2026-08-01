@@ -5,9 +5,9 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN, localcontext
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -1400,3 +1400,436 @@ def compact_targeted_audit(
         "coverage_counts": deepcopy(dict(coverage_counts)),
         **extrema,
     }
+
+
+_COUNT_MATCH_FAMILIES = ("VMIN", "VMAX", "VUF")
+_RELATIVE_STRESS_REASON = (
+    "RELATIVE_STRESS_NOT_IN_SCOPE_NO_FROZEN_DENOMINATOR"
+)
+
+
+def relative_stress_evidence() -> dict[str, Any]:
+    """Return the frozen declaration for the unresolved stress confound."""
+
+    return {
+        "reason_code": _RELATIVE_STRESS_REASON,
+        "global_ratio": None,
+        "phase_ratios": None,
+    }
+
+
+def _strict_count(value: Any, label: str, *, positive: bool = False) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        _fail(f"{label} must be an integer")
+    minimum = 1 if positive else 0
+    if value < minimum:
+        qualifier = "positive" if positive else "nonnegative"
+        _fail(f"{label} must be {qualifier}")
+    return value
+
+
+def exact_count_match_probability(N: int, K: int, m: int) -> dict[str, Any]:
+    """Compute the exact without-replacement probability of detecting a witness."""
+
+    population = _strict_count(N, "N", positive=True)
+    violations = _strict_count(K, "K")
+    sample = _strict_count(m, "m", positive=True)
+    if violations > population:
+        _fail("K must not exceed N")
+    if sample > population:
+        _fail("m must not exceed N")
+
+    denominator = math.comb(population, sample)
+    no_witness = (
+        math.comb(population - violations, sample)
+        if population - violations >= sample
+        else 0
+    )
+    numerator = denominator - no_witness
+    divisor = math.gcd(numerator, denominator)
+    reduced_numerator = numerator // divisor
+    reduced_denominator = denominator // divisor
+    precision = max(
+        50,
+        len(str(reduced_numerator)) + len(str(reduced_denominator)) + 20,
+    )
+    with localcontext() as context:
+        context.prec = precision
+        display_decimal = (
+            Decimal(reduced_numerator) / Decimal(reduced_denominator)
+        ).quantize(Decimal("0.000000000001"), rounding=ROUND_HALF_EVEN)
+    return {
+        "numerator": reduced_numerator,
+        "denominator": reduced_denominator,
+        "display": format(display_decimal, ".12f"),
+    }
+
+
+def _pair_audit(
+    pair_artifact: Mapping[str, Any],
+    *,
+    audit_point: str,
+    role: str,
+) -> Mapping[str, Any]:
+    audits = pair_artifact.get("audits")
+    if not isinstance(audits, list) or not all(
+        isinstance(item, Mapping) for item in audits
+    ):
+        _fail("pair artifact audits must be a mapping list")
+    matches = [
+        item
+        for item in audits
+        if item.get("audit_point") == audit_point and item.get("role") == role
+    ]
+    if len(matches) != 1:
+        _fail(
+            f"pair artifact must contain exactly one {audit_point}/{role} audit"
+        )
+    return matches[0]
+
+
+def _selected_constraint_rows(
+    audit: Mapping[str, Any], label: str
+) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
+    selected = _slot_mapping(audit.get("selected_slot"), f"{label} selected slot")
+    rows = selected.get("constraint_rows")
+    simultaneous = selected.get("simultaneous_violations")
+    if not isinstance(rows, list) or not all(
+        isinstance(row, Mapping) for row in rows
+    ):
+        _fail(f"{label} constraint rows must be a mapping list")
+    if not isinstance(simultaneous, list) or not all(
+        isinstance(row, Mapping) for row in simultaneous
+    ):
+        _fail(f"{label} simultaneous violations must be a mapping list")
+    expected_simultaneous = [
+        row for row in rows if row.get("is_physical_violation") is True
+    ]
+    if [dict(row) for row in simultaneous] != [
+        dict(row) for row in expected_simultaneous
+    ]:
+        _fail(f"{label} simultaneous violations differ from constraint rows")
+    return list(rows), list(simultaneous)
+
+
+def _constraint_object_sets(
+    rows: Sequence[Mapping[str, Any]], label: str
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    objects = {family: set() for family in _CONSTRAINT_FAMILY_ORDER}
+    physical = {family: set() for family in _CONSTRAINT_FAMILY_ORDER}
+    for index, row in enumerate(rows):
+        family = row.get("constraint_family")
+        object_id = row.get("object_id")
+        metric_id = row.get("metric_id")
+        marker = row.get("is_physical_violation")
+        if family not in objects:
+            _fail(f"{label} row {index} has an invalid constraint family")
+        if not isinstance(object_id, str) or not object_id:
+            _fail(f"{label} row {index} has an invalid object ID")
+        if not isinstance(metric_id, str) or not metric_id:
+            _fail(f"{label} row {index} has an invalid metric ID")
+        if not isinstance(marker, bool):
+            _fail(f"{label} row {index} has an invalid physical marker")
+        objects[family].add(object_id)
+        if marker:
+            physical[family].add(object_id)
+    if objects["VMIN"] != objects["VMAX"]:
+        _fail(f"{label} VMIN and VMAX object sets differ")
+    return objects, physical
+
+
+def _diagnostic_pair_identity(
+    pair_artifact: Mapping[str, Any], index: int
+) -> tuple[str, str]:
+    if pair_artifact.get("status") != "SUCCESS":
+        _fail(f"pair artifact {index} is not a successful terminal artifact")
+    pair_id = pair_artifact.get("pair_id")
+    scenario_cluster = pair_artifact.get("scenario_cluster")
+    if not isinstance(pair_id, str) or not pair_id:
+        _fail(f"pair artifact {index} has an invalid pair ID")
+    if not isinstance(scenario_cluster, str) or not scenario_cluster:
+        _fail(f"pair artifact {index} has an invalid scenario cluster")
+    if pair_artifact.get("relative_stress") != relative_stress_evidence():
+        _fail(f"pair artifact {pair_id} changed the relative-stress boundary")
+    return pair_id, scenario_cluster
+
+
+def build_count_match_rows(
+    pair_artifacts: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build case-by-family exact count-matching diagnostics."""
+
+    if isinstance(pair_artifacts, (str, bytes)) or not isinstance(
+        pair_artifacts, Sequence
+    ):
+        _fail("pair artifacts must be a sequence")
+    output: list[dict[str, Any]] = []
+    seen_pair_ids: set[str] = set()
+    for index, pair_artifact in enumerate(pair_artifacts):
+        if not isinstance(pair_artifact, Mapping):
+            _fail(f"pair artifact {index} must be a mapping")
+        pair_id, scenario_cluster = _diagnostic_pair_identity(
+            pair_artifact, index
+        )
+        if pair_id in seen_pair_ids:
+            _fail(f"duplicate pair artifact ID {pair_id}")
+        seen_pair_ids.add(pair_id)
+        bad_audit = _pair_audit(
+            pair_artifact,
+            audit_point="BOUNDARY_INFEASIBLE",
+            role="bad",
+        )
+        control_audit = _pair_audit(
+            pair_artifact,
+            audit_point="BOUNDARY_INFEASIBLE",
+            role="control",
+        )
+        bad_selected = _slot_mapping(
+            bad_audit.get("selected_slot"), "bad boundary selected slot"
+        )
+        control_selected = _slot_mapping(
+            control_audit.get("selected_slot"),
+            "control boundary selected slot",
+        )
+        bad_slot = _strict_nonnegative_int(
+            bad_selected.get("slot"), "bad boundary selected slot"
+        )
+        control_slot = _strict_nonnegative_int(
+            control_selected.get("slot"), "control boundary selected slot"
+        )
+        if bad_slot != control_slot:
+            _fail(f"pair {pair_id} count-match slots differ")
+        bad_rows, _ = _selected_constraint_rows(
+            bad_audit, f"pair {pair_id} bad boundary"
+        )
+        control_rows, _ = _selected_constraint_rows(
+            control_audit, f"pair {pair_id} control boundary"
+        )
+        bad_objects, bad_physical = _constraint_object_sets(
+            bad_rows, f"pair {pair_id} bad boundary"
+        )
+        control_objects, _ = _constraint_object_sets(
+            control_rows, f"pair {pair_id} control boundary"
+        )
+
+        for family in _COUNT_MATCH_FAMILIES:
+            if not bad_physical[family]:
+                continue
+            population = len(bad_objects[family])
+            violations = len(bad_physical[family])
+            sample = len(control_objects[family])
+            row: dict[str, Any] = {
+                "pair_id": pair_id,
+                "scenario_cluster": scenario_cluster,
+                "constraint_family": family,
+                "N": population,
+                "K": violations,
+                "m": sample,
+            }
+            if sample == 0:
+                row.update(
+                    {
+                        "probability_status": "NOT_APPLICABLE",
+                        "p_detect": None,
+                        "not_applicable_reason": "CONTROL_FAMILY_ABSENT",
+                    }
+                )
+            else:
+                row.update(
+                    {
+                        "probability_status": "ELIGIBLE",
+                        "p_detect": exact_count_match_probability(
+                            population, violations, sample
+                        ),
+                        "not_applicable_reason": None,
+                    }
+                )
+            output.append(row)
+    return output
+
+
+def _validated_probability_fraction(
+    row: Mapping[str, Any], label: str
+) -> tuple[int, int]:
+    probability = _slot_mapping(row.get("p_detect"), f"{label} probability")
+    numerator = _strict_count(
+        probability.get("numerator"), f"{label} probability numerator"
+    )
+    denominator = _strict_count(
+        probability.get("denominator"),
+        f"{label} probability denominator",
+        positive=True,
+    )
+    if numerator > denominator:
+        _fail(f"{label} probability must lie between zero and one")
+    return numerator, denominator
+
+
+def classify_count_match(
+    rows: Sequence[Mapping[str, Any]], family: str
+) -> dict[str, Any]:
+    """Classify exact count-match detection sensitivity for one family."""
+
+    if family not in _COUNT_MATCH_FAMILIES:
+        _fail(f"count matching is not defined for family {family!r}")
+    if isinstance(rows, (str, bytes)) or not isinstance(rows, Sequence):
+        _fail("count-match rows must be a sequence")
+    family_rows: list[Mapping[str, Any]] = []
+    seen_pair_ids: set[str] = set()
+    eligible: list[tuple[int, int]] = []
+    not_applicable = 0
+    for index, row in enumerate(rows):
+        if not isinstance(row, Mapping):
+            _fail(f"count-match row {index} must be a mapping")
+        if row.get("constraint_family") != family:
+            continue
+        pair_id = row.get("pair_id")
+        if not isinstance(pair_id, str) or not pair_id:
+            _fail(f"count-match row {index} has an invalid pair ID")
+        if pair_id in seen_pair_ids:
+            _fail(f"duplicate count-match row for pair {pair_id} and {family}")
+        seen_pair_ids.add(pair_id)
+        family_rows.append(row)
+        status = row.get("probability_status")
+        if status == "ELIGIBLE":
+            population = _strict_count(
+                row.get("N"), f"count-match row {pair_id} N", positive=True
+            )
+            violations = _strict_count(
+                row.get("K"), f"count-match row {pair_id} K", positive=True
+            )
+            sample = _strict_count(
+                row.get("m"), f"count-match row {pair_id} m", positive=True
+            )
+            observed = _validated_probability_fraction(
+                row, f"count-match row {pair_id}"
+            )
+            expected = exact_count_match_probability(
+                population, violations, sample
+            )
+            if observed != (
+                expected["numerator"],
+                expected["denominator"],
+            ):
+                _fail(
+                    f"count-match row {pair_id} probability differs from exact counts"
+                )
+            if row.get("not_applicable_reason") is not None:
+                _fail(f"count-match row {pair_id} has an invalid eligible reason")
+            eligible.append(observed)
+        elif status == "NOT_APPLICABLE":
+            population = _strict_count(
+                row.get("N"), f"count-match row {pair_id} N", positive=True
+            )
+            violations = _strict_count(
+                row.get("K"), f"count-match row {pair_id} K", positive=True
+            )
+            sample = _strict_count(
+                row.get("m"), f"count-match row {pair_id} m"
+            )
+            if (
+                violations > population
+                or sample != 0
+                or row.get("p_detect") is not None
+                or row.get("not_applicable_reason")
+                != "CONTROL_FAMILY_ABSENT"
+            ):
+                _fail(f"count-match row {pair_id} has invalid N/A evidence")
+            not_applicable += 1
+        else:
+            _fail(f"count-match row {pair_id} has an invalid probability status")
+
+    n_eligible = len(eligible)
+    required = (4 * n_eligible + 4) // 5
+    high_count = sum(
+        numerator * 5 >= denominator * 4
+        for numerator, denominator in eligible
+    )
+    low_count = sum(
+        numerator * 5 <= denominator
+        for numerator, denominator in eligible
+    )
+    if n_eligible < 4:
+        classification = "COUNT_MATCH_NOT_APPLICABLE"
+    elif high_count >= required:
+        classification = "COUNT_MATCH_HIGH_DETECTION"
+    elif low_count >= required:
+        classification = "COUNT_MATCH_LOW_DETECTION"
+    else:
+        classification = "COUNT_MATCH_INDETERMINATE"
+    return {
+        "constraint_family": family,
+        "classification": classification,
+        "n_rows": len(family_rows),
+        "n_eligible": n_eligible,
+        "n_not_applicable": not_applicable,
+        "required_80pct_count": required,
+        "high_detection_count": high_count,
+        "low_detection_count": low_count,
+    }
+
+
+def candidate_families(
+    pair_artifacts: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return every prospectively qualifying common-family candidate."""
+
+    if isinstance(pair_artifacts, (str, bytes)) or not isinstance(
+        pair_artifacts, Sequence
+    ):
+        _fail("pair artifacts must be a sequence")
+    if len(pair_artifacts) != 12:
+        _fail("candidate classification requires exactly 12 pair artifacts")
+    cases = {family: set() for family in _CONSTRAINT_FAMILY_ORDER}
+    clusters = {family: set() for family in _CONSTRAINT_FAMILY_ORDER}
+    seen_pair_ids: set[str] = set()
+    all_clusters: set[str] = set()
+    for index, pair_artifact in enumerate(pair_artifacts):
+        if not isinstance(pair_artifact, Mapping):
+            _fail(f"pair artifact {index} must be a mapping")
+        pair_id, scenario_cluster = _diagnostic_pair_identity(
+            pair_artifact, index
+        )
+        if pair_id in seen_pair_ids:
+            _fail(f"duplicate pair artifact ID {pair_id}")
+        seen_pair_ids.add(pair_id)
+        all_clusters.add(scenario_cluster)
+        boundary = _pair_audit(
+            pair_artifact,
+            audit_point="BOUNDARY_INFEASIBLE",
+            role="bad",
+        )
+        _, simultaneous = _selected_constraint_rows(
+            boundary, f"pair {pair_id} bad boundary"
+        )
+        if not simultaneous:
+            _fail(f"pair {pair_id} bad boundary lacks a physical witness")
+        present: set[str] = set()
+        for row in simultaneous:
+            family = row.get("constraint_family")
+            if family not in cases:
+                _fail(f"pair {pair_id} has an invalid candidate family")
+            if row.get("is_physical_violation") is not True:
+                _fail(f"pair {pair_id} candidate row is not an explicit witness")
+            present.add(family)
+        for family in present:
+            cases[family].add(pair_id)
+            clusters[family].add(scenario_cluster)
+    if len(all_clusters) != 4:
+        _fail("candidate classification requires exactly four scenario clusters")
+
+    output = []
+    for family in _CONSTRAINT_FAMILY_ORDER:
+        case_count = len(cases[family])
+        cluster_count = len(clusters[family])
+        if case_count >= 8 and cluster_count >= 3:
+            output.append(
+                {
+                    "constraint_family": family,
+                    "bad_case_count": case_count,
+                    "total_bad_cases": 12,
+                    "scenario_cluster_count": cluster_count,
+                    "total_scenario_clusters": 4,
+                }
+            )
+    return output
