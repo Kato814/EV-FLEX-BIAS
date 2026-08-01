@@ -190,6 +190,10 @@ _FROZEN_SOURCE_HASHES = (
         "4146541d33ad30924edab28eaaf6546de6e32e2055de3a7b56445194cdaf058a",
     ),
     (
+        "scripts/run_pilot_gate_v2_1.py",
+        "6489a712bf1a674a7995ad6f240af25647864aa4e1c2ae95db5768770a3212ba",
+    ),
+    (
         "scripts/evaluate_pilot_gate_v2_1.py",
         "51dea1efb55c093e1fc368102d391c5483afef770ec27b6ad5c81caf747cd491",
     ),

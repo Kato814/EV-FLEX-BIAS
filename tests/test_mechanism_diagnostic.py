@@ -560,6 +560,7 @@ def test_load_config_requires_exact_frozen_contract(tmp_path: Path) -> None:
         "results/pilot_v2_1/work_units/v20_work_lv906_0200_03__dec.json": "c6110985a82d02379c822b84aebf48165fad56f91e9781dab5e338a8a99f1472",
         "results/pilot_v2_1/work_units/v20_work_lv906_0600_02__dec.json": "62a2c79561b81ec504558ebd50d4c61c03d432a6f73b4d2b54dc72beac9ac6ca",
         "results/pilot_v2_1/work_units/v20_work_lv906_1900_18__dec.json": "4146541d33ad30924edab28eaaf6546de6e32e2055de3a7b56445194cdaf058a",
+        "scripts/run_pilot_gate_v2_1.py": "6489a712bf1a674a7995ad6f240af25647864aa4e1c2ae95db5768770a3212ba",
         "scripts/evaluate_pilot_gate_v2_1.py": "51dea1efb55c093e1fc368102d391c5483afef770ec27b6ad5c81caf747cd491",
     }
 
@@ -695,6 +696,49 @@ def test_source_hash_drift_is_rejected(tmp_path: Path) -> None:
     verify_frozen_sources(tmp_path, config)
     drifted = tmp_path / config["frozen_sources"][0]["path"]
     drifted.write_bytes(drifted.read_bytes() + b"\nDRIFT")
+
+    with pytest.raises(ValueError, match="source hash drift"):
+        verify_frozen_sources(tmp_path, config)
+
+
+def test_config_freezes_archived_pilot_runner_source() -> None:
+    config = load_mechanism_config(REPO_ROOT)
+    sources = {source["path"]: source["sha256"] for source in config["frozen_sources"]}
+
+    assert sources.get("scripts/run_pilot_gate_v2_1.py") == (
+        "6489a712bf1a674a7995ad6f240af25647864aa4e1c2ae95db5768770a3212ba"
+    )
+
+
+def test_archived_pilot_runner_hash_drift_is_rejected(tmp_path: Path) -> None:
+    config = load_mechanism_config(REPO_ROOT)
+    runner_source = next(
+        (
+            source
+            for source in config["frozen_sources"]
+            if source["path"] == "scripts/run_pilot_gate_v2_1.py"
+        ),
+        None,
+    )
+    assert runner_source == {
+        "path": "scripts/run_pilot_gate_v2_1.py",
+        "sha256": (
+            "6489a712bf1a674a7995ad6f240af25647864aa4e1c2ae95db5768770a3212ba"
+        ),
+    }
+
+    for source in config["frozen_sources"]:
+        relative = Path(source["path"])
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / relative, target)
+    pilot_relative = Path(config["pilot_py"]["path"])
+    pilot_target = tmp_path / pilot_relative
+    pilot_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(REPO_ROOT / pilot_relative, pilot_target)
+
+    runner_target = tmp_path / runner_source["path"]
+    runner_target.write_bytes(runner_target.read_bytes() + b"\nDRIFT")
 
     with pytest.raises(ValueError, match="source hash drift"):
         verify_frozen_sources(tmp_path, config)
