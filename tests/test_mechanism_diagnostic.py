@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import shutil
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from evflex.mechanism_diagnostic import (
@@ -15,9 +18,11 @@ from evflex.mechanism_diagnostic import (
     compact_targeted_audit,
     constraint_rows_from_slot,
     exact_count_match_probability,
+    execute_pair,
     load_mechanism_config,
     load_pair_manifest,
     pair_members,
+    reconstruct_case,
     relative_stress_evidence,
     verify_frozen_sources,
 )
@@ -1862,3 +1867,407 @@ def test_relative_stress_is_null_with_frozen_reason() -> None:
         "global_ratio": None,
         "phase_ratios": None,
     }
+
+
+def _d1_fake_ev() -> SimpleNamespace:
+    return SimpleNamespace(
+        ev_id=1,
+        capacity=10.0,
+        initial=0.0,
+        target=1.0,
+        reserve=0.0,
+        arrival=0,
+        departure=96,
+        pch=2.0,
+        pdis=0.0,
+        eta_c=1.0,
+        eta_d=1.0,
+        v2g=False,
+        max_discharge=0.0,
+        bus="bus",
+        phase=1,
+        kv_ln=0.24,
+    )
+
+
+def _d1_runtime_slot(
+    slot: int,
+    *,
+    physical: bool = False,
+    numerical: bool = False,
+) -> dict[str, object]:
+    metrics = _safe_metrics()
+    violations: list[dict[str, object]] = []
+    if physical:
+        metrics["V:bus1.1"] = 0.94
+        violations = [_physical_violation("V:bus1.1", 0.94, 0.95, "lo")]
+    record = _slot_result(
+        slot,
+        metrics=metrics,
+        violations=violations,
+        numerical_failure=numerical,
+    )
+    record["audit_context"]["vmax_pu"] = 1.06
+    return record
+
+
+class _D1FakeRuntime:
+    def __init__(self, role: str, *, failure_mode: str | None = None) -> None:
+        self.role = role
+        self.failure_mode = failure_mode
+        self.fleet = [_d1_fake_ev()]
+        self.baseline = np.zeros((1, 96), dtype=float)
+        self.schedule = self.baseline.copy()
+        self.schedule[0, :4] = 1.0
+        self.load_scales = np.ones(96, dtype=float)
+        self.generate_calls: list[tuple[int, str]] = []
+        self.cache_calls = 0
+        self.audit_calls: list[dict[str, object]] = []
+        self.forbidden_calls: list[str] = []
+        self._cache = object()
+        self._targeted_count = 0
+
+    def generate_balanced_raw(self, duration: int, model: str) -> dict[str, object]:
+        self.generate_calls.append((duration, model))
+        return {
+            "success": True,
+            "physical_feasible": True,
+            "schedule": self.schedule.copy(),
+            "flex_kw": 1.0,
+            "max_departure_error_kwh": 0.0,
+            "max_reserve_violation_kwh": 0.0,
+            "max_capacity_violation_kwh": 0.0,
+            "simultaneous_slots": 0,
+            "model_network_check": {"feasible": True},
+        }
+
+    def create_corrected_truth_cache(self) -> object:
+        self.cache_calls += 1
+        return self._cache
+
+    def audit_corrected(
+        self,
+        schedule: object,
+        cache: object,
+        *,
+        baseline_slot_results: object,
+        stop_on_violation: bool,
+        retain_slot_results: bool,
+    ) -> dict[str, object]:
+        assert cache is self._cache
+        baseline_slots = (
+            None
+            if baseline_slot_results is None
+            else len(baseline_slot_results)
+        )
+        self.audit_calls.append(
+            {
+                "schedule": np.asarray(schedule, dtype=float).copy(),
+                "baseline_slot_count": baseline_slots,
+                "stop_on_violation": stop_on_violation,
+                "retain_slot_results": retain_slot_results,
+            }
+        )
+        drift_load_scale = False
+        if baseline_slot_results is None:
+            raw = _raw_audit(
+                [_d1_runtime_slot(slot) for slot in range(96)]
+            )
+        else:
+            self._targeted_count += 1
+            if self.role == "control" or self._targeted_count == 1:
+                raw = _raw_audit(
+                    [_d1_runtime_slot(slot) for slot in range(96)]
+                )
+            elif self.failure_mode == "numerical":
+                raw = _raw_audit([_d1_runtime_slot(0, numerical=True)])
+            elif self.failure_mode == "missing_witness":
+                raw = _raw_audit(
+                    [_d1_runtime_slot(slot) for slot in range(96)]
+                )
+            else:
+                failure_slot = 5 if self._targeted_count == 2 else 7
+                raw = _raw_audit(
+                    [
+                        *[
+                            _d1_runtime_slot(slot)
+                            for slot in range(failure_slot)
+                        ],
+                        _d1_runtime_slot(failure_slot, physical=True),
+                    ]
+                )
+                drift_load_scale = bool(
+                    self._targeted_count == 2
+                    and self.failure_mode == "load_scale_drift"
+                )
+        for record in raw["slot_results"]:
+            slot = record["slot"]
+            scale = float(self.load_scales[slot])
+            feeder = "lv906" if self.role == "bad" else "ieee13"
+            record["load_scale"] = scale
+            record["feeder"] = feeder
+            record["audit_context"]["load_scale"] = scale
+            record["audit_context"]["feeder"] = feeder
+        if drift_load_scale:
+            raw["slot_results"][-1]["audit_context"]["load_scale"] = 2.0
+        return raw
+
+    def alpha_legacy_verifier(self, *_args: object, **_kwargs: object) -> None:
+        self.forbidden_calls.append("alpha_legacy_verifier")
+        raise AssertionError("legacy verifier is forbidden in D1")
+
+    def phase_tie_break(self, *_args: object, **_kwargs: object) -> None:
+        self.forbidden_calls.append("phase_tie_break")
+        raise AssertionError("tie-break is forbidden in D1")
+
+    def timing_replay(self, *_args: object, **_kwargs: object) -> None:
+        self.forbidden_calls.append("timing_replay")
+        raise AssertionError("timing is forbidden in D1")
+
+
+def _d1_fake_pair_and_factory(
+    *,
+    bad_failure_mode: str | None = None,
+) -> tuple[
+    dict[str, object],
+    dict[str, _D1FakeRuntime],
+    object,
+]:
+    from evflex import pilot
+
+    pair = deepcopy(load_pair_manifest(REPO_ROOT)[2])
+    runtimes = {
+        "bad": _D1FakeRuntime("bad", failure_mode=bad_failure_mode),
+        "control": _D1FakeRuntime("control"),
+    }
+    for role, runtime in runtimes.items():
+        pair[f"{role}_schedule_sha256"] = pilot.canonical_schedule_sha256(
+            runtime.fleet, runtime.schedule
+        )
+        pair[f"{role}_bus_phase_time_sha256"] = (
+            pilot._canonical_bus_phase_time_sha256(
+                runtime.fleet, runtime.schedule
+            )
+        )
+        pair[f"{role}_baseline_schedule_sha256"] = (
+            pilot.canonical_schedule_sha256(runtime.fleet, runtime.baseline)
+        )
+
+    def factory(
+        _repo_root: Path,
+        work_unit: dict[str, object],
+        _pilot_config: dict[str, object],
+    ) -> _D1FakeRuntime:
+        role = "bad" if work_unit["feeder"] == "lv906" else "control"
+        return runtimes[role]
+
+    return pair, runtimes, factory
+
+
+def test_reconstruct_case_matches_archived_schedule_and_baseline_hashes() -> None:
+    pair, runtimes, factory = _d1_fake_pair_and_factory()
+    bad, _ = pair_members(pair)
+
+    reconstructed = reconstruct_case(
+        REPO_ROOT,
+        bad,
+        runtime_factory=factory,
+    )
+
+    assert reconstructed["source_duration_min"] == bad["source_duration_min"]
+    assert reconstructed["schedule_sha256"] == bad["schedule_sha256"]
+    assert reconstructed["bus_phase_time_sha256"] == bad["bus_phase_time_sha256"]
+    assert (
+        reconstructed["baseline_schedule_sha256"]
+        == bad["baseline_schedule_sha256"]
+    )
+    np.testing.assert_array_equal(reconstructed["schedule"], runtimes["bad"].schedule)
+    assert runtimes["bad"].generate_calls == [(15, "balanced")]
+    assert runtimes["bad"].cache_calls == 0
+
+
+def test_reconstruct_case_rejects_bus_phase_time_hash_drift() -> None:
+    pair, _, factory = _d1_fake_pair_and_factory()
+    bad, _ = pair_members(pair)
+    bad["bus_phase_time_sha256"] = "0" * 64
+
+    with pytest.raises(ValueError, match="bus-phase-time hash"):
+        reconstruct_case(REPO_ROOT, bad, runtime_factory=factory)
+
+
+def test_reconstruct_case_rejects_source_duration_or_schedule_drift() -> None:
+    pair, _, factory = _d1_fake_pair_and_factory()
+    bad, _ = pair_members(pair)
+    bad["source_duration_min"] = 30
+    with pytest.raises(ValueError, match="source duration"):
+        reconstruct_case(REPO_ROOT, bad, runtime_factory=factory)
+
+    pair, _, factory = _d1_fake_pair_and_factory()
+    bad, _ = pair_members(pair)
+    bad["schedule_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="schedule hash"):
+        reconstruct_case(REPO_ROOT, bad, runtime_factory=factory)
+
+
+def test_execute_pair_uses_fixed_schedule_interpolation_without_reoptimization() -> None:
+    pair, runtimes, factory = _d1_fake_pair_and_factory()
+    config = load_mechanism_config(REPO_ROOT)
+
+    artifact = execute_pair(
+        REPO_ROOT,
+        pair,
+        config,
+        runtime_factory=factory,
+    )
+
+    assert artifact["status"] == "SUCCESS"
+    expected_alphas = [
+        pair["bad_alpha_transfer"],
+        pair["bad_alpha_transfer"] + config["audit"]["delta"],
+        1.0,
+    ]
+    for role, runtime in runtimes.items():
+        targeted = runtime.audit_calls[1:]
+        assert len(targeted) == 3
+        for call, alpha in zip(targeted, expected_alphas, strict=True):
+            expected = runtime.baseline + alpha * (
+                runtime.schedule - runtime.baseline
+            )
+            np.testing.assert_allclose(call["schedule"], expected, rtol=0.0, atol=0.0)
+        assert runtime.generate_calls == [(15, "balanced")]
+        assert runtime.forbidden_calls == []
+    assert [
+        call["stop_on_violation"] for call in runtimes["bad"].audit_calls[1:]
+    ] == [False, True, True]
+    assert all(
+        call["stop_on_violation"] is False
+        for call in runtimes["control"].audit_calls[1:]
+    )
+
+
+def test_execute_pair_builds_each_truth_cache_and_baseline_once() -> None:
+    pair, runtimes, factory = _d1_fake_pair_and_factory()
+
+    execute_pair(
+        REPO_ROOT,
+        pair,
+        load_mechanism_config(REPO_ROOT),
+        runtime_factory=factory,
+    )
+
+    for runtime in runtimes.values():
+        assert runtime.cache_calls == 1
+        assert len(runtime.audit_calls) == 4
+        assert runtime.audit_calls[0]["baseline_slot_count"] is None
+        assert all(
+            call["baseline_slot_count"] == 96
+            for call in runtime.audit_calls[1:]
+        )
+        assert all(call["retain_slot_results"] is True for call in runtime.audit_calls)
+
+
+def test_execute_pair_runs_exact_six_audits_and_captures_control_at_bad_slot() -> None:
+    pair, runtimes, factory = _d1_fake_pair_and_factory()
+    runtimes["bad"].load_scales[0] = -0.0
+    artifact = execute_pair(
+        REPO_ROOT,
+        pair,
+        load_mechanism_config(REPO_ROOT),
+        runtime_factory=factory,
+    )
+
+    assert [
+        (audit["audit_point"], audit["role"])
+        for audit in artifact["audits"]
+    ] == [
+        ("BOUNDARY_FEASIBLE", "bad"),
+        ("BOUNDARY_FEASIBLE", "control"),
+        ("BOUNDARY_INFEASIBLE", "bad"),
+        ("BOUNDARY_INFEASIBLE", "control"),
+        ("FULL_OFFER", "bad"),
+        ("FULL_OFFER", "control"),
+    ]
+    bad_boundary = artifact["audits"][2]
+    control_boundary = artifact["audits"][3]
+    assert bad_boundary["first_failure_slot"] == 5
+    assert control_boundary["selected_slot"]["slot"] == 5
+    assert {
+        row["constraint_family"]
+        for row in control_boundary["selected_slot"]["constraint_rows"]
+    } == {"VMIN", "VMAX", "VUF"}
+    assert all(
+        len(audit["audit_input_sha256"]) == 64
+        and len(audit["audited_schedule_sha256"]) == 64
+        for audit in artifact["audits"]
+    )
+    assert artifact["relative_stress"] == relative_stress_evidence()
+
+    first = artifact["audits"][0]
+    normalized_scales = np.ascontiguousarray(
+        runtimes["bad"].load_scales, dtype="<f8"
+    )
+    expected_scale_hash = hashlib.sha256(
+        b"evflex.d1.load-scales.v1\0"
+        + normalized_scales.tobytes(order="C")
+    ).hexdigest()
+    assert first["load_scales_sha256"] == expected_scale_hash
+    exact_input = {
+        "protocol_version": artifact["protocol_version"],
+        "pair_id": artifact["pair_id"],
+        "role": first["role"],
+        "source_evaluation_id": first["source_evaluation_id"],
+        "audit_point": first["audit_point"],
+        "alpha": first["alpha_label"],
+        "baseline_schedule_sha256": first["baseline_schedule_sha256"],
+        "source_schedule_sha256": first["source_schedule_sha256"],
+        "audited_schedule_sha256": first["audited_schedule_sha256"],
+        "load_scales_sha256": first["load_scales_sha256"],
+        "formal_constraints": first["formal_constraints"],
+    }
+    expected_input_hash = hashlib.sha256(
+        json.dumps(
+            exact_input,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert first["audit_input_sha256"] == expected_input_hash
+    count_rows = build_count_match_rows([artifact])
+    assert [row["constraint_family"] for row in count_rows] == ["VMIN"]
+
+
+def test_execute_pair_rejects_numerical_failure_or_missing_bad_witness() -> None:
+    pair, _, factory = _d1_fake_pair_and_factory(
+        bad_failure_mode="numerical"
+    )
+    with pytest.raises(ValueError, match="numerical failure"):
+        execute_pair(
+            REPO_ROOT,
+            pair,
+            load_mechanism_config(REPO_ROOT),
+            runtime_factory=factory,
+        )
+
+    pair, _, factory = _d1_fake_pair_and_factory(
+        bad_failure_mode="missing_witness"
+    )
+    with pytest.raises(ValueError, match="explicit physical witness"):
+        execute_pair(
+            REPO_ROOT,
+            pair,
+            load_mechanism_config(REPO_ROOT),
+            runtime_factory=factory,
+        )
+
+    pair, _, factory = _d1_fake_pair_and_factory(
+        bad_failure_mode="load_scale_drift"
+    )
+    with pytest.raises(ValueError, match="load-scale identity"):
+        execute_pair(
+            REPO_ROOT,
+            pair,
+            load_mechanism_config(REPO_ROOT),
+            runtime_factory=factory,
+        )

@@ -5,7 +5,7 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN, localcontext
 from pathlib import Path, PurePosixPath
@@ -1833,3 +1833,583 @@ def candidate_families(
                 }
             )
     return output
+
+
+_D1_MEMBER_KEYS = {
+    "pair_id",
+    "scenario_cluster",
+    "role",
+    "evaluation_id",
+    "work_unit_id",
+    "scenario_id",
+    "scenario_seed",
+    "feeder",
+    "call_time",
+    "direction",
+    "duration_min",
+    "requested_duration_min",
+    "source_duration_min",
+    "alpha_transfer",
+    "schedule_sha256",
+    "bus_phase_time_sha256",
+    "baseline_schedule_sha256",
+}
+_D1_AUDIT_SEQUENCE = (
+    ("BOUNDARY_FEASIBLE", "bad"),
+    ("BOUNDARY_FEASIBLE", "control"),
+    ("BOUNDARY_INFEASIBLE", "bad"),
+    ("BOUNDARY_INFEASIBLE", "control"),
+    ("FULL_OFFER", "bad"),
+    ("FULL_OFFER", "control"),
+)
+_FORMAL_CONSTRAINT_FIELDS = (
+    "vmin_pu",
+    "vmax_pu",
+    "vuf_limit_pct",
+    "transformer_loading_limit_pu",
+    "feeder_loading_limit_pu",
+)
+
+
+def canonical_json_bytes(value: Any) -> bytes:
+    """Serialize finite JSON with the frozen canonical D1 encoding."""
+
+    _validate_finite_tree(value, "canonical JSON")
+    try:
+        text = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        _fail(f"canonical JSON serialization failed ({type(exc).__name__}: {exc})")
+    return text.encode("utf-8")
+
+
+def _validated_member(member: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(member, Mapping) or set(member) != _D1_MEMBER_KEYS:
+        _fail("source member has unexpected or missing keys")
+    normalized = dict(member)
+    role = normalized.get("role")
+    if role not in {"bad", "control"}:
+        _fail("source member role must be bad or control")
+    for name in (
+        "pair_id",
+        "scenario_cluster",
+        "evaluation_id",
+        "work_unit_id",
+        "scenario_id",
+        "feeder",
+        "call_time",
+        "direction",
+    ):
+        value = normalized.get(name)
+        if not isinstance(value, str) or not value:
+            _fail(f"source member {name} must be a nonempty string")
+    if normalized["direction"] not in {"inc", "dec"}:
+        _fail("source member direction must be inc or dec")
+    for name in (
+        "scenario_seed",
+        "duration_min",
+        "requested_duration_min",
+        "source_duration_min",
+    ):
+        value = normalized.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            _fail(f"source member {name} must be a nonnegative integer")
+    if (
+        normalized["duration_min"] <= 0
+        or normalized["requested_duration_min"] != normalized["duration_min"]
+        or normalized["source_duration_min"] != normalized["duration_min"]
+    ):
+        _fail("source duration differs from the frozen requested duration")
+    alpha = _finite_float(normalized.get("alpha_transfer"), "source alpha")
+    if not 0.0 <= alpha <= 1.0:
+        _fail("source alpha must be between zero and one")
+    normalized["alpha_transfer"] = alpha
+    for name in (
+        "schedule_sha256",
+        "bus_phase_time_sha256",
+        "baseline_schedule_sha256",
+    ):
+        value = normalized.get(name)
+        if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
+            _fail(f"source member {name} must be a lowercase SHA-256")
+    return normalized
+
+
+def reconstruct_case(
+    repo_root: str | Path,
+    member: Mapping[str, Any],
+    *,
+    pilot_config: Mapping[str, Any] | None = None,
+    runtime_factory: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    """Reconstruct and hash-check one archived fixed balanced schedule."""
+
+    import numpy as np
+    from evflex import pilot
+
+    root = Path(repo_root).resolve(strict=True)
+    source = _validated_member(member)
+    loaded_pilot_config = (
+        pilot.load_pilot_config(root)
+        if pilot_config is None
+        else pilot_config
+    )
+    if not isinstance(loaded_pilot_config, Mapping):
+        _fail("pilot config must be a mapping")
+    factory = runtime_factory or pilot._create_real_pilot_runtime
+    if not callable(factory):
+        _fail("runtime factory must be callable")
+    work_unit = {
+        "work_unit_id": source["work_unit_id"],
+        "scenario_id": source["scenario_id"],
+        "scenario_seed": source["scenario_seed"],
+        "feeder": source["feeder"],
+        "call_time": source["call_time"],
+        "direction": source["direction"],
+    }
+    runtime = factory(root, work_unit, loaded_pilot_config)
+    for name in (
+        "generate_balanced_raw",
+        "create_corrected_truth_cache",
+        "audit_corrected",
+    ):
+        if not callable(getattr(runtime, name, None)):
+            _fail(f"pilot runtime lacks callable {name}")
+    fleet = getattr(runtime, "fleet", None)
+    if not isinstance(fleet, Sequence) or isinstance(fleet, (str, bytes)) or not fleet:
+        _fail("pilot runtime fleet must be a nonempty sequence")
+    baseline = np.asarray(getattr(runtime, "baseline", None), dtype=float)
+    if baseline.shape != (len(fleet), 96) or not np.isfinite(baseline).all():
+        _fail("pilot runtime baseline must be a finite fleet-by-96 matrix")
+    load_scales = np.asarray(
+        getattr(runtime, "load_scales", None), dtype=float
+    )
+    if load_scales.shape != (96,) or not np.isfinite(load_scales).all():
+        _fail("pilot runtime load scales must be 96 finite values")
+
+    raw = runtime.generate_balanced_raw(
+        source["source_duration_min"], "balanced"
+    )
+    normalized = pilot._normalize_raw_balanced_result(
+        raw,
+        source["source_duration_min"],
+        fleet,
+        baseline,
+        direction=source["direction"],
+    )
+    if (
+        normalized.get("success") is not True
+        or normalized.get("physical_feasible") is not True
+        or normalized.get("duration_min") != source["source_duration_min"]
+    ):
+        _fail("frozen balanced source schedule is not physically valid")
+    schedule = np.asarray(normalized.get("schedule"), dtype=float)
+    if schedule.shape != baseline.shape or not np.isfinite(schedule).all():
+        _fail("reconstructed source schedule is not finite fleet-by-96")
+    schedule_hash = pilot.canonical_schedule_sha256(fleet, schedule)
+    if schedule_hash != source["schedule_sha256"]:
+        _fail("reconstructed schedule hash differs from the archive")
+    bus_phase_hash = pilot._canonical_bus_phase_time_sha256(fleet, schedule)
+    if bus_phase_hash != source["bus_phase_time_sha256"]:
+        _fail("reconstructed bus-phase-time hash differs from the archive")
+    baseline_hash = pilot.canonical_schedule_sha256(fleet, baseline)
+    if baseline_hash != source["baseline_schedule_sha256"]:
+        _fail("reconstructed baseline schedule hash differs from the archive")
+    return {
+        "member": deepcopy(source),
+        "runtime": runtime,
+        "fleet": list(fleet),
+        "baseline": baseline.copy(),
+        "schedule": schedule.copy(),
+        "load_scales": load_scales.copy(),
+        "source_duration_min": source["source_duration_min"],
+        "flex_kw": _finite_float(normalized.get("flex_kw"), "source flex"),
+        "schedule_sha256": schedule_hash,
+        "bus_phase_time_sha256": bus_phase_hash,
+        "baseline_schedule_sha256": baseline_hash,
+    }
+
+
+def _load_scales_sha256(load_scales: Any) -> str:
+    import numpy as np
+
+    values = np.asarray(load_scales, dtype=np.float64)
+    if values.shape != (96,) or not np.isfinite(values).all():
+        _fail("load scales must contain exactly 96 finite values")
+    normalized = np.ascontiguousarray(values, dtype="<f8")
+    return hashlib.sha256(
+        b"evflex.d1.load-scales.v1\0" + normalized.tobytes(order="C")
+    ).hexdigest()
+
+
+def _validate_raw_formal_constraints(
+    raw: Mapping[str, Any],
+    formal_constraints: Mapping[str, Any],
+    *,
+    member: Mapping[str, Any],
+    load_scales: Any,
+) -> None:
+    import numpy as np
+
+    if not isinstance(raw, Mapping):
+        _fail("raw targeted audit must be a mapping")
+    if not isinstance(formal_constraints, Mapping):
+        _fail("formal constraints must be a mapping")
+    expected = {
+        name: _finite_float(
+            formal_constraints.get(name), f"formal constraint {name}"
+        )
+        for name in _FORMAL_CONSTRAINT_FIELDS
+    }
+    if formal_constraints.get("line_thermal_in_scope") is not False:
+        _fail("line thermal evidence is outside the D1 scope")
+    records = raw.get("slot_results")
+    if not isinstance(records, list) or not records:
+        _fail("raw targeted audit lacks retained slot results")
+    expected_scales = np.asarray(load_scales, dtype=float)
+    if expected_scales.shape != (96,) or not np.isfinite(expected_scales).all():
+        _fail("raw audit load-scale identity is invalid")
+    for index, record in enumerate(records):
+        if not isinstance(record, Mapping):
+            _fail(f"raw targeted audit slot {index} must be a mapping")
+        if (
+            record.get("slot") != index
+            or record.get("verified") is not True
+            or record.get("feeder") != member.get("feeder")
+            or record.get("model") != "3ph"
+            or record.get("source") not in {"power_flow", "baseline_reuse"}
+        ):
+            _fail("raw audit source identity differs from the reconstructed case")
+        context = _slot_mapping(
+            record.get("audit_context"), f"raw audit slot {index} context"
+        )
+        observed = {
+            name: _finite_float(
+                context.get(name), f"raw audit slot {index} {name}"
+            )
+            for name in _FORMAL_CONSTRAINT_FIELDS
+        }
+        if observed != expected or context.get("line_thermal_in_scope") is not False:
+            _fail("raw audit formal constraints differ from the frozen pilot config")
+        expected_scale = float(expected_scales[index])
+        record_scale = _finite_float(
+            record.get("load_scale"), f"raw audit slot {index} load scale"
+        )
+        context_scale = _finite_float(
+            context.get("load_scale"),
+            f"raw audit slot {index} context load scale",
+        )
+        if (
+            record_scale != expected_scale
+            or context_scale != expected_scale
+            or context.get("adapter_schema")
+            != "EV-FLEX-BIAS-PILOT-NETWORK-AUDIT"
+            or context.get("adapter_version") != "1.0"
+            or context.get("feeder") != member.get("feeder")
+            or context.get("model") != "3ph"
+        ):
+            _fail("raw audit load-scale identity differs from the reconstructed case")
+
+
+def _prepare_runtime_audit_state(
+    reconstructed: Mapping[str, Any],
+    formal_constraints: Mapping[str, Any],
+) -> dict[str, Any]:
+    runtime = reconstructed["runtime"]
+    cache = runtime.create_corrected_truth_cache()
+    raw = runtime.audit_corrected(
+        reconstructed["baseline"],
+        cache,
+        baseline_slot_results=None,
+        stop_on_violation=False,
+        retain_slot_results=True,
+    )
+    _validate_raw_formal_constraints(
+        raw,
+        formal_constraints,
+        member=reconstructed["member"],
+        load_scales=reconstructed["load_scales"],
+    )
+    compact = compact_targeted_audit(
+        raw,
+        audit_point="BOUNDARY_FEASIBLE",
+        alpha=0.0,
+    )
+    if compact["feasible"] is not True or compact["complete_coverage"] is not True:
+        _fail("source baseline audit is not feasible with complete coverage")
+    baseline_slots = raw.get("slot_results")
+    if not isinstance(baseline_slots, list) or len(baseline_slots) != 96:
+        _fail("source baseline audit did not retain exactly 96 slots")
+    return {
+        "runtime": runtime,
+        "cache": cache,
+        "baseline_slots": baseline_slots,
+    }
+
+
+def _audit_alpha_points(
+    bad_alpha: float, delta: float
+) -> dict[str, tuple[float, str]]:
+    try:
+        base = Decimal(str(bad_alpha))
+        increment = Decimal(str(delta))
+    except InvalidOperation as exc:
+        _fail(f"audit alpha cannot be represented exactly ({exc})")
+    if not Decimal("0") <= base < Decimal("0.950"):
+        _fail("bad source alpha is outside the frozen bad range")
+    if increment != Decimal("0.002"):
+        _fail("D1 audit delta must remain exactly 0.002")
+    points = {
+        "BOUNDARY_FEASIBLE": base,
+        "BOUNDARY_INFEASIBLE": min(base + increment, Decimal("1.000")),
+        "FULL_OFFER": Decimal("1.000"),
+    }
+    return {
+        name: (float(value), format(value, ".3f"))
+        for name, value in points.items()
+    }
+
+
+def _prune_selected_evidence(
+    compact: Mapping[str, Any], *, role: str, audit_point: str
+) -> dict[str, Any]:
+    output = deepcopy(dict(compact))
+    selected = output.get("selected_slot")
+    if selected is None:
+        return output
+    if not isinstance(selected, Mapping):
+        _fail("selected audit evidence must be a mapping")
+    rows = selected.get("constraint_rows")
+    if not isinstance(rows, list):
+        _fail("selected audit constraint rows must be a list")
+    if audit_point == "BOUNDARY_INFEASIBLE":
+        retained = [
+            row
+            for row in rows
+            if row.get("constraint_family") in _COUNT_MATCH_FAMILIES
+            or row.get("is_physical_violation") is True
+        ]
+    elif role == "bad" and audit_point == "FULL_OFFER":
+        retained = [
+            row for row in rows if row.get("is_physical_violation") is True
+        ]
+    else:
+        retained = []
+    selected["constraint_rows"] = retained
+    selected["simultaneous_violations"] = [
+        deepcopy(row)
+        for row in retained
+        if row.get("is_physical_violation") is True
+    ]
+    return output
+
+
+def _audit_input_sha256(
+    *,
+    protocol_version: str,
+    pair_id: str,
+    role: str,
+    source_evaluation_id: str,
+    audit_point: str,
+    alpha_label: str,
+    baseline_schedule_sha256: str,
+    source_schedule_sha256: str,
+    audited_schedule_sha256: str,
+    load_scales_sha256: str,
+    formal_constraints: Mapping[str, Any],
+) -> str:
+    payload = {
+        "protocol_version": protocol_version,
+        "pair_id": pair_id,
+        "role": role,
+        "source_evaluation_id": source_evaluation_id,
+        "audit_point": audit_point,
+        "alpha": alpha_label,
+        "baseline_schedule_sha256": baseline_schedule_sha256,
+        "source_schedule_sha256": source_schedule_sha256,
+        "audited_schedule_sha256": audited_schedule_sha256,
+        "load_scales_sha256": load_scales_sha256,
+        "formal_constraints": deepcopy(dict(formal_constraints)),
+    }
+    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+
+
+def execute_pair(
+    repo_root: str | Path,
+    pair: Mapping[str, Any],
+    config: Mapping[str, Any],
+    *,
+    runtime_factory: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    """Execute the fixed six-audit D1 protocol for one frozen pair."""
+
+    import numpy as np
+    from evflex import pilot
+
+    if not isinstance(config, Mapping):
+        _fail("mechanism config must be a mapping")
+    _assert_exact_tree(dict(config), _expected_config(), "mechanism config")
+    root = Path(repo_root).resolve(strict=True)
+    bad_member, control_member = pair_members(pair)
+    bad_member = _validated_member(bad_member)
+    control_member = _validated_member(control_member)
+    if (
+        bad_member["pair_id"] != control_member["pair_id"]
+        or bad_member["scenario_cluster"] != control_member["scenario_cluster"]
+    ):
+        _fail("pair members disagree on pair identity")
+    pilot_config = pilot.load_pilot_config(root)
+    formal_constraints = _slot_mapping(
+        pilot_config.get("formal_constraints"), "pilot formal constraints"
+    )
+    bad = reconstruct_case(
+        root,
+        bad_member,
+        pilot_config=pilot_config,
+        runtime_factory=runtime_factory,
+    )
+    control = reconstruct_case(
+        root,
+        control_member,
+        pilot_config=pilot_config,
+        runtime_factory=runtime_factory,
+    )
+    reconstructed = {"bad": bad, "control": control}
+    states = {
+        role: _prepare_runtime_audit_state(case, formal_constraints)
+        for role, case in reconstructed.items()
+    }
+    alpha_points = _audit_alpha_points(
+        bad_member["alpha_transfer"], config["audit"]["delta"]
+    )
+    load_scale_hashes = {
+        role: _load_scales_sha256(case["load_scales"])
+        for role, case in reconstructed.items()
+    }
+    audits: list[dict[str, Any]] = []
+    bad_failure_slot: int | None = None
+    for sequence_index, (audit_point, role) in enumerate(_D1_AUDIT_SEQUENCE):
+        case = reconstructed[role]
+        member = case["member"]
+        alpha, alpha_label = alpha_points[audit_point]
+        audited_schedule = case["baseline"] + alpha * (
+            case["schedule"] - case["baseline"]
+        )
+        if not np.isfinite(audited_schedule).all():
+            _fail("audited fixed schedule contains a non-finite value")
+        stop_on_violation = bool(
+            role == "bad" and audit_point != "BOUNDARY_FEASIBLE"
+        )
+        raw = states[role]["runtime"].audit_corrected(
+            audited_schedule,
+            states[role]["cache"],
+            baseline_slot_results=states[role]["baseline_slots"],
+            stop_on_violation=stop_on_violation,
+            retain_slot_results=True,
+        )
+        _validate_raw_formal_constraints(
+            raw,
+            formal_constraints,
+            member=case["member"],
+            load_scales=case["load_scales"],
+        )
+        capture_slot = (
+            bad_failure_slot
+            if role == "control" and audit_point == "BOUNDARY_INFEASIBLE"
+            else None
+        )
+        compact = compact_targeted_audit(
+            raw,
+            audit_point=audit_point,
+            alpha=alpha,
+            capture_slot=capture_slot,
+        )
+        should_be_feasible = bool(
+            role == "control" or audit_point == "BOUNDARY_FEASIBLE"
+        )
+        if should_be_feasible:
+            if compact["feasible"] is not True:
+                _fail(f"{audit_point}/{role} must remain feasible")
+        elif (
+            compact["feasible"] is not False
+            or compact["explicit_physical_witness"] is not True
+            or compact["failure_class"] != "PHYSICAL_CONSTRAINT"
+        ):
+            _fail(
+                f"{audit_point}/{role} must be physically infeasible "
+                "with an explicit physical witness"
+            )
+        if role == "bad" and audit_point == "BOUNDARY_INFEASIBLE":
+            bad_failure_slot = compact["first_failure_slot"]
+            if not isinstance(bad_failure_slot, int):
+                _fail("bad boundary audit lacks an explicit first failure slot")
+
+        compact = _prune_selected_evidence(
+            compact, role=role, audit_point=audit_point
+        )
+        audited_hash = pilot.canonical_schedule_sha256(
+            case["fleet"], audited_schedule
+        )
+        audit_input_hash = _audit_input_sha256(
+            protocol_version=config["protocol_version"],
+            pair_id=member["pair_id"],
+            role=role,
+            source_evaluation_id=member["evaluation_id"],
+            audit_point=audit_point,
+            alpha_label=alpha_label,
+            baseline_schedule_sha256=case["baseline_schedule_sha256"],
+            source_schedule_sha256=case["schedule_sha256"],
+            audited_schedule_sha256=audited_hash,
+            load_scales_sha256=load_scale_hashes[role],
+            formal_constraints=formal_constraints,
+        )
+        audit_record = {
+            "sequence_index": sequence_index,
+            "pair_id": member["pair_id"],
+            "scenario_cluster": member["scenario_cluster"],
+            "role": role,
+            "source_evaluation_id": member["evaluation_id"],
+            "source_work_unit_id": member["work_unit_id"],
+            "scenario_id": member["scenario_id"],
+            "scenario_seed": member["scenario_seed"],
+            "feeder": member["feeder"],
+            "call_time": member["call_time"],
+            "direction": member["direction"],
+            "duration_min": member["duration_min"],
+            "source_duration_min": member["source_duration_min"],
+            "alpha_label": alpha_label,
+            "baseline_schedule_sha256": case[
+                "baseline_schedule_sha256"
+            ],
+            "source_schedule_sha256": case["schedule_sha256"],
+            "bus_phase_time_sha256": case["bus_phase_time_sha256"],
+            "audited_schedule_sha256": audited_hash,
+            "load_scales_sha256": load_scale_hashes[role],
+            "audit_input_sha256": audit_input_hash,
+            "formal_constraints": deepcopy(dict(formal_constraints)),
+            "line_thermal_in_scope": False,
+            **compact,
+        }
+        audits.append(audit_record)
+    if bad_failure_slot is None:
+        _fail("D1 pair completed without a bad boundary failure slot")
+    return {
+        "protocol_version": config["protocol_version"],
+        "status": "SUCCESS",
+        "pair_id": bad_member["pair_id"],
+        "scenario_cluster": bad_member["scenario_cluster"],
+        "source_commit": config["source_commit"],
+        "line_thermal_in_scope": False,
+        "resource_policy": deepcopy(config["resource_policy"]),
+        "relative_stress": relative_stress_evidence(),
+        "members": {
+            "bad": deepcopy(bad_member),
+            "control": deepcopy(control_member),
+        },
+        "audits": audits,
+    }

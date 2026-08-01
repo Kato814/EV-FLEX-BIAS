@@ -278,7 +278,7 @@ git commit -m "feat: add exact D1 confound diagnostics"
 - Modify: `src/evflex/mechanism_diagnostic.py`
 - Modify: `tests/test_mechanism_diagnostic.py`
 
-- [ ] **Step 1: Write failing fake-runtime tests**
+- [x] **Step 1: Write failing fake-runtime tests**
 
 Add tests named:
 
@@ -292,13 +292,13 @@ Add tests named:
 
 The fake runtime must expose only the existing methods and attributes used by `_RealPilotRuntime`: `fleet`, `baseline`, `load_scales`, `generate_balanced_raw`, `create_corrected_truth_cache`, and `audit_corrected`. It must fail the test if a tie-break, legacy verifier, optimizer, alpha search, timing path, or process pool is invoked.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py -k 'reconstruct_case or execute_pair' -q -p no:faulthandler
 ```
 
-- [ ] **Step 3: Implement reconstruction through the frozen pilot runtime**
+- [x] **Step 3: Implement reconstruction through the frozen pilot runtime**
 
 Add:
 
@@ -339,14 +339,14 @@ Execute in the only permitted order: `BOUNDARY_FEASIBLE/bad`, `BOUNDARY_FEASIBLE
 
 Freeze `audit_input_sha256` as SHA-256 over canonical UTF-8 JSON containing exactly: protocol version, pair/role/source evaluation identity, audit-point name, alpha as a fixed three-decimal string (`0.940`, `0.942`, `1.000`), baseline schedule hash, source schedule hash, audited schedule hash, load-scales hash, and the formal constraint mapping copied from the frozen pilot config. Canonical JSON uses sorted keys, separators `(',', ':')`, `ensure_ascii=False`, `allow_nan=False`, and no trailing newline. The load-scales hash is SHA-256 over the domain prefix `b'evflex.d1.load-scales.v1\0'` followed by the contiguous little-endian float64 bytes of exactly 96 values. Full nonviolating margin rows are persisted only for bad `BOUNDARY_INFEASIBLE` at its first failure slot and its control at that same slot/fraction, and only for VMIN/VMAX/VUF. Bad `BOUNDARY_INFEASIBLE` and `FULL_OFFER` still persist every explicit simultaneous witness across all five families.
 
-- [ ] **Step 4: Confirm GREEN and check no frozen-code edit**
+- [x] **Step 4: Confirm GREEN and check no frozen-code edit**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py -k 'reconstruct_case or execute_pair' -q -p no:faulthandler
 (Get-FileHash -Algorithm SHA256 -LiteralPath 'src/evflex/pilot.py').Hash.ToLowerInvariant()
 ```
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 ```powershell
 git add src/evflex/mechanism_diagnostic.py tests/test_mechanism_diagnostic.py
