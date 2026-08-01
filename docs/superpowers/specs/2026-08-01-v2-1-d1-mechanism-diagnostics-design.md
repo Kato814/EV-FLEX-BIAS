@@ -162,6 +162,8 @@ After the structural gate passes:
 
 Only `BOUNDARY_INFEASIBLE` first-failure-slot violations enter the candidate count. A family covers a scenario cluster when it appears in at least one case from that frozen scenario ID. The four call-time/scenario groupings are scenario clusters, not independent repetitions. The 8/12 and 3/4 thresholds are prospective screening rules, not findings from the archived pilot. Multiple families may pass and all are emitted in the fixed family order; no primary mechanism is selected. A common-family candidate permits only the design of a small independent confirmation gate; it is not a unique or causal mechanism and does not authorize a formal V2.1 rerun.
 
+Every reviewer-facing conclusion must also state that IEEE13 members are time/direction/duration-matched design-unit controls rather than causal matches, and that count matching measures detection sensitivity after matching monitored-object counts but neither proves nor excludes a count effect. A failure-prefix report must state that D1 did not complete.
+
 ## Output isolation and provenance
 
 New artifacts use only these roots:
@@ -174,7 +176,9 @@ New artifacts use only these roots:
 - `reports/mechanism_diagnostic_v2_1.md`
 - `reports/mechanism_diagnostic_hashes_v2_1.csv`
 
-Writes are atomic. One terminal JSON is written per pair and contains six audits: two roles by three fractions. Resume accepts only strictly validated terminal artifacts whose identities and hashes match the manifest. Unexpected files, partial attempts, active locks, duplicate IDs, non-finite values, or source hash drift stop the run.
+Writes are atomic. Terminal status is exactly `SUCCESS`, `STOP_IMPLEMENTATION`, or `UNHANDLED_FAILURE`. A successful terminal JSON contains six audits in the only permitted order: `BOUNDARY_FEASIBLE/bad`, `BOUNDARY_FEASIBLE/control`, `BOUNDARY_INFEASIBLE/bad`, `BOUNDARY_INFEASIBLE/control`, `FULL_OFFER/bad`, `FULL_OFFER/control`. A failure artifact may contain only a continuous prefix of that sequence, including a zero-length prefix when failure precedes the first audit, must identify the first failed rule or handled exception, and stops all later pairs. Resume accepts only strictly validated terminal artifacts whose identities and hashes match the manifest.
+
+Runner state paths are frozen as `results/mechanism_diagnostic_v2_1/.run.lock`, `results/mechanism_diagnostic_v2_1/.attempts/pair_XX.json`, and atomic pair temporaries matching `results/mechanism_diagnostic_v2_1/pairs/pair_XX.json*.tmp`. Evaluator temporaries match each named report path plus `*.tmp`. Unexpected pair files, stale attempt state, active locks, duplicate IDs, non-finite values, or source hash drift stop the run or evaluation.
 
 The evaluator is read-only with respect to pair artifacts and supports `--verify-existing` to verify an archived report without regeneration.
 
@@ -200,7 +204,7 @@ The evaluator is read-only with respect to pair artifacts and supports `--verify
 
 `scripts/run_mechanism_diagnostic_v2_1.py` performs preflight, reconstructs and verifies frozen schedules, runs sequential targeted audits, and writes one terminal JSON per pair using D1-specific atomic and resume validation. It must not reuse the archived runner's three-evaluation/single-ablation expected-ID rule.
 
-`scripts/evaluate_mechanism_diagnostic_v2_1.py` strictly loads D1 pair artifacts, produces a deterministic 72-row audit CSV plus JSON and Chinese Markdown reports, and implements `--verify-existing`.
+`scripts/evaluate_mechanism_diagnostic_v2_1.py` strictly loads D1 pair artifacts and implements `--verify-existing`. With 12 successful pairs it produces a deterministic 72-row audit CSV. With an ordered failure prefix it reports only completed audits, hashes only existing terminal pair files, explicitly lists every missing pair, and states that D1 did not complete; it cannot emit a valid diagnostic classification. Normal evaluation exits nonzero for either `STOP_IMPLEMENTATION` or `UNHANDLED_FAILURE`, while read-only verification exits zero when either failure report reproduces exactly and nonzero only for integrity mismatch.
 
 ### Tests
 
@@ -210,10 +214,10 @@ The evaluator is read-only with respect to pair artifacts and supports `--verify
 ## Execution sequence
 
 1. Commit this design and the implementation plan before production code changes.
-2. Write failing unit tests for evidence preservation in the new D1 module and verify RED.
-3. Implement the smallest D1 evidence compactor and verify GREEN without changing `pilot.py`.
-4. Write failing protocol and gate tests and verify RED.
-5. Implement the D1 module, config, manifest, runner, and evaluator in small reviewed commits.
+2. Write failing strict config and manifest-loader tests, then freeze the smallest D1 protocol identity layer.
+3. Write failing unit tests for evidence preservation in the new D1 module and verify RED.
+4. Implement the smallest D1 evidence compactor and verify GREEN without changing `pilot.py`.
+5. Write failing count, execution, artifact, runner, and gate tests; implement each layer in small reviewed commits.
 6. Run focused tests, the complete suite, and the archived pilot `--verify-existing` regression under the one-thread environment.
 7. Freeze code and source hashes before any D1 case execution.
 8. Run the 24 source schedules and 72 targeted network audits sequentially.
