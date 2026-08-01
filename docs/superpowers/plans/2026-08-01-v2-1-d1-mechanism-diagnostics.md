@@ -1,6 +1,6 @@
 # V2.1 D1 Mechanism Diagnostics Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Execution amendment (2026-08-01):** At the user's direction, continue with `superpowers:executing-plans` in the main task only. Do not dispatch subagents. Perform separate specification, code-quality, and scientific review passes locally. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build and run the frozen 12-pair D1 diagnostic that reproduces the archived LV906 boundary failures, preserves explicit first-slot physical witnesses, compares matched IEEE13 design units, and emits a conservative Chinese scientific decision without starting formal V2.1.
 
@@ -24,6 +24,7 @@
 Use this PowerShell preamble for every Python or pytest command:
 
 ```powershell
+$env:Path="$(Resolve-Path -LiteralPath '.venv\Scripts');$env:Path"
 $env:PYTHONPATH='src'
 $env:OMP_NUM_THREADS='1'
 $env:OPENBLAS_NUM_THREADS='1'
@@ -31,6 +32,7 @@ $env:MKL_NUM_THREADS='1'
 $env:NUMEXPR_NUM_THREADS='1'
 $env:VECLIB_MAXIMUM_THREADS='1'
 $env:BLIS_NUM_THREADS='1'
+python -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version"
 ```
 
 ## Task 1: Freeze and strictly load the D1 protocol and pair manifest
@@ -42,7 +44,7 @@ $env:BLIS_NUM_THREADS='1'
 - Create: `src/evflex/mechanism_diagnostic.py`
 - Create: `tests/test_mechanism_diagnostic.py`
 
-- [ ] **Step 1: Write failing config and manifest tests**
+- [x] **Step 1: Write failing config and manifest tests**
 
 Add tests named:
 
@@ -54,7 +56,7 @@ Add tests named:
 
 The tests must assert exact pair order `01` through `12`, exact bad/control IDs from the design, four scenario-cluster IDs, matching call time/direction/duration, all 12 bad alpha values, all control `alpha_transfer == 1.0`, archived scenario seeds, requested/source durations, schedule hashes, baseline schedule hashes, and source work-unit IDs.
 
-- [ ] **Step 2: Run the focused tests and confirm RED**
+- [x] **Step 2: Run the focused tests and confirm RED**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py -k 'load_config or manifest or source_hash' -q -p no:faulthandler
@@ -62,7 +64,7 @@ python -m pytest tests/test_mechanism_diagnostic.py -k 'load_config or manifest 
 
 Expected: fail because the D1 module and frozen files do not exist.
 
-- [ ] **Step 3: Add the smallest strict loader**
+- [x] **Step 3: Add the smallest strict loader**
 
 The config must freeze:
 
@@ -104,13 +106,13 @@ pair_members(pair: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]
 
 Use `csv.DictReader`, duplicate-header/duplicate-key rejection, strict integer/finite-float parsing, exact key sets, SHA-256 regex validation, path containment checks, and deterministic pair ordering. Reject NaN, Infinity, unexpected columns, missing source IDs, and any mismatch with `results/pilot_v2_1/pilot_evaluations_v2_1.csv`.
 
-- [ ] **Step 4: Run focused tests and confirm GREEN**
+- [x] **Step 4: Run focused tests and confirm GREEN**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py -k 'load_config or manifest or source_hash' -q -p no:faulthandler
 ```
 
-- [ ] **Step 5: Verify frozen pilot compatibility**
+- [x] **Step 5: Verify frozen pilot compatibility**
 
 ```powershell
 (Get-FileHash -Algorithm SHA256 -LiteralPath 'src/evflex/pilot.py').Hash.ToLowerInvariant()
@@ -119,7 +121,7 @@ python scripts/evaluate_pilot_gate_v2_1.py --verify-existing
 
 Expected: exact frozen hash; old verifier returns exit `0`, `verified=true`, and no errors.
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 ```powershell
 git add config/mechanism_diagnostic_v2_1.json manifests/mechanism_diagnostic_pairs_v2_1.csv src/evflex/mechanism_diagnostic.py tests/test_mechanism_diagnostic.py
@@ -542,7 +544,7 @@ git status --short
 
 Expected: frozen hash; old verifier passes; D1 preflight passes without writes; no unexpected changes.
 
-- [ ] **Step 4: Request independent specification and code-quality reviews**
+- [ ] **Step 4: Perform separate specification and code-quality review passes**
 
 Reviewers must verify:
 
@@ -632,7 +634,7 @@ python scripts/evaluate_pilot_gate_v2_1.py --verify-existing
 python -m pytest -q -p no:faulthandler
 ```
 
-- [ ] **Step 4: Perform an independent read-only scientific review**
+- [ ] **Step 4: Perform a separate read-only scientific review pass**
 
 The reviewer must reconcile the 12 source alphas, all 72 audit rows, 12 bad brackets, 12 bad full-offer witnesses, 36 feasible control audits, simultaneous violation families, scenario-cluster coverage, exact count fractions, and relative-stress limitation. The reviewer must distinguish:
 
