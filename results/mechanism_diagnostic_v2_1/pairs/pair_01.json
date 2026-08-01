@@ -1,0 +1,71 @@
+{
+  "audits": [],
+  "failure": {
+    "detail": "mechanism diagnostic: raw audit load-scale identity differs from the reconstructed case",
+    "kind": "FROZEN_RULE_CONTRADICTION",
+    "rule_code": "PRE_AUDIT_IMPLEMENTATION_INVALID",
+    "sequence_index": null
+  },
+  "line_thermal_in_scope": false,
+  "members": {
+    "bad": {
+      "alpha_transfer": 0.94,
+      "baseline_schedule_sha256": "8f21edcd9ddd0481d1fb432b2a5e84228d230969513db0f7414427c16335f4b8",
+      "bus_phase_time_sha256": "71cfbde690781c27e1046b3447b791b8f3071a60f07fd6601c8e557914293090",
+      "call_time": "19:00",
+      "direction": "dec",
+      "duration_min": 15,
+      "evaluation_id": "v20_core_lv906_1900_18__dec__15m",
+      "feeder": "lv906",
+      "pair_id": "01",
+      "requested_duration_min": 15,
+      "role": "bad",
+      "scenario_cluster": "lv906_1900_18",
+      "scenario_id": "lv906_1900_18",
+      "scenario_seed": 2026072017,
+      "schedule_sha256": "1f68cba3e80904535c4a95e428a40893196da61db4327567f86c9b4b994b990f",
+      "source_duration_min": 15,
+      "work_unit_id": "v20_work_lv906_1900_18__dec"
+    },
+    "control": {
+      "alpha_transfer": 1.0,
+      "baseline_schedule_sha256": "6280af04e4c13212c2ad5bfaa178151743c9628d27ec0378f333ebe9450b7dd4",
+      "bus_phase_time_sha256": "37e5f9b99813d6ee22a0ae09e948213e52ab686e4b15b0486d36da28c5630846",
+      "call_time": "19:00",
+      "direction": "dec",
+      "duration_min": 15,
+      "evaluation_id": "v20_core_ieee13_1900_17__dec__15m",
+      "feeder": "ieee13",
+      "pair_id": "01",
+      "requested_duration_min": 15,
+      "role": "control",
+      "scenario_cluster": "lv906_1900_18",
+      "scenario_id": "ieee13_1900_17",
+      "scenario_seed": 2026071616,
+      "schedule_sha256": "e57f41b2819b802cf4a42576c56917808f994c16e8ecd45d14d05767892d75b6",
+      "source_duration_min": 15,
+      "work_unit_id": "v20_work_ieee13_1900_17__dec"
+    }
+  },
+  "pair_id": "01",
+  "protocol_version": "EV-FLEX-BIAS-V2.1-D1-MECHANISM",
+  "relative_stress": {
+    "global_ratio": null,
+    "phase_ratios": null,
+    "reason_code": "RELATIVE_STRESS_NOT_IN_SCOPE_NO_FROZEN_DENOMINATOR"
+  },
+  "resource_policy": {
+    "numeric_threads": {
+      "BLIS_NUM_THREADS": 1,
+      "MKL_NUM_THREADS": 1,
+      "NUMEXPR_NUM_THREADS": 1,
+      "OMP_NUM_THREADS": 1,
+      "OPENBLAS_NUM_THREADS": 1,
+      "VECLIB_MAXIMUM_THREADS": 1
+    },
+    "workers": 1
+  },
+  "scenario_cluster": "lv906_1900_18",
+  "source_commit": "e1740f912a351b1822b5ee019f9e4f05b6b71c6f",
+  "status": "STOP_IMPLEMENTATION"
+}
