@@ -3,11 +3,14 @@ from __future__ import annotations
 import csv
 import json
 import shutil
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
 from evflex.mechanism_diagnostic import (
+    compact_targeted_audit,
+    constraint_rows_from_slot,
     load_mechanism_config,
     load_pair_manifest,
     pair_members,
@@ -1051,3 +1054,472 @@ def test_provenance_rejects_malformed_manifest_csv_cell(tmp_path: Path) -> None:
         ),
     ):
         load_pair_manifest(tmp_path)
+
+
+def _formal_coverage() -> dict[str, object]:
+    return {
+        "all_bus_count": 2,
+        "monitored_bus_count": 2,
+        "energized_voltage_node_count": 3,
+        "monitored_voltage_node_count": 3,
+        "three_phase_bus_count": 1,
+        "monitored_vuf_bus_count": 1,
+        "enabled_transformer_count": 1,
+        "rated_transformer_count": 1,
+        "transformer_rating_coverage": 1.0,
+        "line_count": 1,
+        "line_thermal_in_scope": False,
+        "feeder_rating_multiplier": 1.0,
+        "transformer_ratings_kva": {"t1": 100.0},
+        "transformer_raw_ratings_kva": {"t1": 100.0},
+        "transformer_rating_multiplier": 1.0,
+        "transformer_rating_basis": "NATIVE_SYSTEM_TOTAL_KVA",
+        "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
+    }
+
+
+def _safe_metrics() -> dict[str, float]:
+    return {
+        "V:bus1.1": 1.0,
+        "V:bus2.2": 1.0,
+        "V:near.3": 0.94999995,
+        "U:bus1": 0.5,
+        "S:transformer:t1": 0.5,
+        "S:feeder": 0.5,
+    }
+
+
+def _violating_metrics() -> dict[str, float]:
+    return {
+        "V:bus1.1": 0.949,
+        "V:bus2.2": 1.051,
+        "V:near.3": 1.0,
+        "U:bus1": 2.2,
+        "S:transformer:t1": 1.1,
+        "S:feeder": 1.05,
+    }
+
+
+def _physical_violation(
+    metric: str, value: float, limit: float, direction: str
+) -> dict[str, object]:
+    return {
+        "kind": "physical_constraint",
+        "metric": metric,
+        "value": value,
+        "limit": limit,
+        "direction": direction,
+    }
+
+
+def _all_physical_violations() -> list[dict[str, object]]:
+    return [
+        _physical_violation("V:bus1.1", 0.949, 0.95, "lo"),
+        _physical_violation("V:bus2.2", 1.051, 1.05, "hi"),
+        _physical_violation("U:bus1", 2.2, 2.0, "hi"),
+        _physical_violation("S:transformer:t1", 1.1, 1.0, "hi"),
+        _physical_violation("S:feeder", 1.05, 1.0, "hi"),
+    ]
+
+
+def _slot_result(
+    slot: int,
+    *,
+    metrics: dict[str, float] | None = None,
+    violations: list[dict[str, object]] | None = None,
+    numerical_failure: bool = False,
+    line_thermal_in_scope: bool = False,
+) -> dict[str, object]:
+    values = dict(metrics or _safe_metrics())
+    witnesses = list(violations or [])
+    coverage = _formal_coverage()
+    coverage["line_thermal_in_scope"] = line_thermal_in_scope
+    formal_integrity = {
+        "validated": True,
+        "result_schema_valid": True,
+        "metrics_finite": True,
+        "summary_finite": True,
+        "coverage_complete": True,
+        "summary_consistent": True,
+    }
+    return {
+        "slot": slot,
+        "verified": True,
+        "baseline_exact": False,
+        "baseline_schedule": None,
+        "load_scale": 1.0,
+        "feeder": "lv906",
+        "model": "3ph",
+        "source": "power_flow",
+        "audit_context": {
+            "adapter_schema": "EV-FLEX-BIAS-PILOT-NETWORK-AUDIT",
+            "adapter_version": "1.0",
+            "feeder": "lv906",
+            "model": "3ph",
+            "load_scale": 1.0,
+            "vmin_pu": 0.95,
+            "vmax_pu": 1.05,
+            "vuf_limit_pct": 2.0,
+            "transformer_loading_limit_pu": 1.0,
+            "feeder_loading_limit_pu": 1.0,
+            "feeder_kva": 1000.0,
+            "line_thermal_in_scope": line_thermal_in_scope,
+            "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
+            "transformer_rating_basis": "NATIVE_SYSTEM_TOTAL_KVA",
+            "transformer_rating_multiplier": 1.0,
+            "groups": [],
+        },
+        "group_power": [0.0],
+        "coverage": deepcopy(coverage),
+        "formal_integrity": deepcopy(formal_integrity),
+        "result": {
+            "metrics": values,
+            "feasible": not numerical_failure and not witnesses,
+            "converged": not numerical_failure,
+            "numerical_failure": numerical_failure,
+            "violations": witnesses,
+            "vmin": min(value for key, value in values.items() if key.startswith("V:")),
+            "vmax": max(value for key, value in values.items() if key.startswith("V:")),
+            "vufmax": max(
+                (value for key, value in values.items() if key.startswith("U:")),
+                default=0.0,
+            ),
+            "transformer_loading_max": max(
+                (
+                    value
+                    for key, value in values.items()
+                    if key.startswith("S:transformer:")
+                ),
+                default=0.0,
+            ),
+            "feeder_loading": values.get("S:feeder"),
+            "line_thermal_in_scope": line_thermal_in_scope,
+            "coverage": deepcopy(coverage),
+            "formal_integrity": deepcopy(formal_integrity),
+        },
+    }
+
+
+def _raw_audit(slot_results: list[dict[str, object]]) -> dict[str, object]:
+    failures: list[dict[str, object]] = []
+    trace: list[dict[str, object]] = []
+    numerical_checks = 0
+    physical_checks = 0
+    for record in slot_results:
+        result = record["result"]
+        assert isinstance(result, dict)
+        witnesses = result["violations"]
+        assert isinstance(witnesses, list)
+        numerical = bool(result["numerical_failure"])
+        physical = any(item.get("kind") == "physical_constraint" for item in witnesses)
+        if numerical:
+            numerical_checks += 1
+        if physical:
+            physical_checks += 1
+        if numerical or witnesses:
+            failure_class = "NUMERICAL_INVALID" if numerical else "PHYSICAL_CONSTRAINT"
+            failures.append(
+                {
+                    "slot": record["slot"],
+                    "converged": bool(result["converged"]),
+                    "numerical_failure": numerical,
+                    "failure_class": failure_class,
+                    "physical_witness": physical,
+                    "violations": deepcopy(witnesses),
+                }
+            )
+        else:
+            failure_class = "NONE"
+        trace.append(
+            {
+                "slot": record["slot"],
+                "feasible": bool(result["feasible"]),
+                "converged": bool(result["converged"]),
+                "numerical_failure": numerical,
+                "failure_class": failure_class,
+                "physical_witness": physical,
+            }
+        )
+    checked = len(slot_results)
+    complete = checked == 96
+    feasible = complete and not failures
+    failure_class = (
+        "NUMERICAL_INVALID"
+        if numerical_checks
+        else "PHYSICAL_CONSTRAINT"
+        if physical_checks
+        else "NONE"
+    )
+    return {
+        "feasible": feasible,
+        "checked_intervals": checked,
+        "coverage_ratio": checked / 96.0,
+        "complete_coverage": complete,
+        "eligible_for_v01_pass": feasible,
+        "power_flow_evaluations": checked,
+        "reused_baseline_intervals": 0,
+        "converged_checks": checked - numerical_checks,
+        "nonconverged_checks": numerical_checks,
+        "numerical_failure_checks": numerical_checks,
+        "physical_violation_checks": physical_checks,
+        "failure_class": failure_class,
+        "nonconverged_slots": [
+            item["slot"] for item in failures if not item["converged"]
+        ],
+        "violations": failures,
+        "slot_results": slot_results,
+        "slot_audit_trace": trace,
+        "coverage_counts": deepcopy(_formal_coverage()),
+        "vmin": min(
+            record["result"]["vmin"] for record in slot_results
+        ),
+        "vmax": max(
+            record["result"]["vmax"] for record in slot_results
+        ),
+        "vufmax": max(
+            record["result"]["vufmax"] for record in slot_results
+        ),
+        "transformer_loading_max": max(
+            record["result"]["transformer_loading_max"] for record in slot_results
+        ),
+        "feeder_loading_max": max(
+            record["result"]["feeder_loading"] for record in slot_results
+        ),
+    }
+
+
+def test_constraint_rows_emit_both_voltage_bounds_and_fixed_order() -> None:
+    rows = constraint_rows_from_slot(_slot_result(7))
+
+    assert [(row["constraint_family"], row["metric_id"]) for row in rows] == [
+        ("VMIN", "V:bus1.1"),
+        ("VMIN", "V:bus2.2"),
+        ("VMIN", "V:near.3"),
+        ("VMAX", "V:bus1.1"),
+        ("VMAX", "V:bus2.2"),
+        ("VMAX", "V:near.3"),
+        ("VUF", "U:bus1"),
+        ("TRANSFORMER", "S:transformer:t1"),
+        ("FEEDER", "S:feeder"),
+    ]
+    near = next(
+        row
+        for row in rows
+        if row["constraint_family"] == "VMIN" and row["metric_id"] == "V:near.3"
+    )
+    assert near["signed_headroom"] == pytest.approx(-5e-8)
+    assert near["is_physical_violation"] is False
+
+
+def test_constraint_rows_cover_all_five_families_and_exclude_lines() -> None:
+    slot = _slot_result(
+        7,
+        metrics=_violating_metrics(),
+        violations=_all_physical_violations(),
+    )
+    rows = constraint_rows_from_slot(slot)
+    violated = [row for row in rows if row["is_physical_violation"]]
+
+    assert [row["constraint_family"] for row in violated] == [
+        "VMIN",
+        "VMAX",
+        "VUF",
+        "TRANSFORMER",
+        "FEEDER",
+    ]
+    assert [row["object_id"] for row in violated] == [
+        "bus1.1",
+        "bus2.2",
+        "bus1",
+        "t1",
+        "feeder",
+    ]
+    line_slot = _slot_result(7)
+    line_slot["result"]["metrics"]["S:line:l1"] = 1.1
+    with pytest.raises(ValueError, match="unsupported monitored metric"):
+        constraint_rows_from_slot(line_slot)
+
+
+def test_compactor_retains_all_simultaneous_first_slot_violations() -> None:
+    slots = [
+        _slot_result(0),
+        _slot_result(1),
+        _slot_result(
+            2,
+            metrics=_violating_metrics(),
+            violations=_all_physical_violations(),
+        ),
+    ]
+    compact = compact_targeted_audit(
+        _raw_audit(slots), audit_point="BOUNDARY_INFEASIBLE", alpha=0.942
+    )
+
+    assert compact["first_failure_slot"] == 2
+    assert compact["checked_intervals"] == 3
+    assert compact["explicit_physical_witness"] is True
+    selected = compact["selected_slot"]
+    assert selected["slot"] == 2
+    assert [item["constraint_family"] for item in selected["simultaneous_violations"]] == [
+        "VMIN",
+        "VMAX",
+        "VUF",
+        "TRANSFORMER",
+        "FEEDER",
+    ]
+
+
+def test_compactor_uses_explicit_physical_witness_not_headroom_sign() -> None:
+    rows = constraint_rows_from_slot(_slot_result(3))
+    negative = [row for row in rows if row["signed_headroom"] < 0]
+
+    assert negative
+    assert all(row["is_physical_violation"] is False for row in negative)
+
+
+def test_compactor_rejects_numerical_or_incomplete_metric_evidence() -> None:
+    numerical = _raw_audit([_slot_result(0, numerical_failure=True)])
+    with pytest.raises(ValueError, match="numerical failure"):
+        compact_targeted_audit(
+            numerical, audit_point="BOUNDARY_INFEASIBLE", alpha=0.942
+        )
+
+    incomplete_slot = _slot_result(
+        0,
+        metrics=_violating_metrics(),
+        violations=_all_physical_violations(),
+    )
+    del incomplete_slot["result"]["metrics"]["S:feeder"]
+    incomplete = _raw_audit([incomplete_slot])
+    with pytest.raises(ValueError, match="formal metric coverage"):
+        compact_targeted_audit(
+            incomplete, audit_point="BOUNDARY_INFEASIBLE", alpha=0.942
+        )
+
+
+def test_compactor_validates_early_stop_and_96_slot_feasible_coverage() -> None:
+    failure_slots = [
+        _slot_result(0),
+        _slot_result(
+            1,
+            metrics=_violating_metrics(),
+            violations=_all_physical_violations(),
+        ),
+        _slot_result(2),
+    ]
+    invalid_stop = _raw_audit(failure_slots)
+    with pytest.raises(ValueError, match="early-stop consistency"):
+        compact_targeted_audit(
+            invalid_stop, audit_point="BOUNDARY_INFEASIBLE", alpha=0.942
+        )
+
+    incomplete_feasible = _raw_audit([_slot_result(slot) for slot in range(95)])
+    incomplete_feasible["feasible"] = True
+    with pytest.raises(ValueError, match="96-slot coverage"):
+        compact_targeted_audit(
+            incomplete_feasible, audit_point="BOUNDARY_FEASIBLE", alpha=0.94
+        )
+
+    complete = _raw_audit([_slot_result(slot) for slot in range(96)])
+    compact = compact_targeted_audit(
+        complete,
+        audit_point="BOUNDARY_INFEASIBLE",
+        alpha=0.7,
+        capture_slot=42,
+    )
+    assert compact["feasible"] is True
+    assert compact["complete_coverage"] is True
+    assert compact["selected_slot"]["slot"] == 42
+
+
+def test_compactor_rejects_aggregate_witness_or_constraint_drift() -> None:
+    valid = _raw_audit(
+        [
+            _slot_result(0),
+            _slot_result(
+                1,
+                metrics=_violating_metrics(),
+                violations=_all_physical_violations(),
+            ),
+        ]
+    )
+
+    missing_aggregate = deepcopy(valid)
+    missing_aggregate["violations"] = []
+    with pytest.raises(ValueError, match="aggregate violation evidence"):
+        compact_targeted_audit(
+            missing_aggregate,
+            audit_point="BOUNDARY_INFEASIBLE",
+            alpha=0.942,
+        )
+
+    trace_drift = deepcopy(valid)
+    trace_drift["slot_audit_trace"][-1]["physical_witness"] = False
+    with pytest.raises(ValueError, match="slot audit trace"):
+        compact_targeted_audit(
+            trace_drift,
+            audit_point="BOUNDARY_INFEASIBLE",
+            alpha=0.942,
+        )
+
+    count_drift = deepcopy(valid)
+    count_drift["physical_violation_checks"] = 0
+    with pytest.raises(ValueError, match="physical violation count"):
+        compact_targeted_audit(
+            count_drift,
+            audit_point="BOUNDARY_INFEASIBLE",
+            alpha=0.942,
+        )
+
+    constraint_drift = _slot_result(0)
+    constraint_drift["audit_context"]["vmin_pu"] = 1.06
+    with pytest.raises(ValueError, match="formal constraint context"):
+        constraint_rows_from_slot(constraint_drift)
+
+
+def test_compactor_rejects_aggregate_coverage_extrema_or_accounting_drift() -> None:
+    valid = _raw_audit(
+        [
+            _slot_result(0),
+            _slot_result(
+                1,
+                metrics=_violating_metrics(),
+                violations=_all_physical_violations(),
+            ),
+        ]
+    )
+
+    coverage_drift = deepcopy(valid)
+    coverage_drift["coverage_counts"]["line_count"] = 2
+    with pytest.raises(ValueError, match="aggregate formal coverage"):
+        compact_targeted_audit(
+            coverage_drift,
+            audit_point="BOUNDARY_INFEASIBLE",
+            alpha=0.942,
+        )
+
+    extrema_drift = deepcopy(valid)
+    extrema_drift["vmin"] = 0.5
+    with pytest.raises(ValueError, match="aggregate extrema"):
+        compact_targeted_audit(
+            extrema_drift,
+            audit_point="BOUNDARY_INFEASIBLE",
+            alpha=0.942,
+        )
+
+    accounting_drift = deepcopy(valid)
+    accounting_drift["power_flow_evaluations"] = 1
+    with pytest.raises(ValueError, match="evaluation accounting"):
+        compact_targeted_audit(
+            accounting_drift,
+            audit_point="BOUNDARY_INFEASIBLE",
+            alpha=0.942,
+        )
+
+    limit_drift = deepcopy(valid)
+    limit_drift["slot_results"][0]["audit_context"]["vmin_pu"] = 0.94
+    with pytest.raises(ValueError, match="constraint limits differ"):
+        compact_targeted_audit(
+            limit_drift,
+            audit_point="BOUNDARY_INFEASIBLE",
+            alpha=0.942,
+        )

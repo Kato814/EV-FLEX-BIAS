@@ -136,7 +136,7 @@ git commit -m "feat: freeze D1 mechanism protocol"
 - Modify: `src/evflex/mechanism_diagnostic.py`
 - Modify: `tests/test_mechanism_diagnostic.py`
 
-- [ ] **Step 1: Write failing synthetic evidence tests**
+- [x] **Step 1: Write failing synthetic evidence tests**
 
 Add tests named:
 
@@ -149,13 +149,13 @@ Add tests named:
 
 Synthetic slot results must use the existing shape `slot_result['result']['metrics']`, `slot_result['result']['violations']`, `slot_result['audit_context']`, and `slot_result['coverage']`. Include a voltage value within `1e-7` of a limit so the test proves that explicit evaluator violations, not `signed_headroom < 0`, define `is_physical_violation`.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py -k 'constraint_rows or compactor' -q -p no:faulthandler
 ```
 
-- [ ] **Step 3: Implement pure evidence extraction**
+- [x] **Step 3: Implement pure evidence extraction**
 
 Add:
 
@@ -194,14 +194,14 @@ all declared metrics for that slot are present
 
 For a feasible audit require 96 checked and retained trace slots. Persist only the selected first/capture-slot detailed metrics, not all 96 full slot payloads.
 
-- [ ] **Step 4: Confirm GREEN and regression safety**
+- [x] **Step 4: Confirm GREEN and regression safety**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py -k 'constraint_rows or compactor' -q -p no:faulthandler
 python -m pytest tests/test_pilot.py -q -p no:faulthandler
 ```
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ```powershell
 git add src/evflex/mechanism_diagnostic.py tests/test_mechanism_diagnostic.py

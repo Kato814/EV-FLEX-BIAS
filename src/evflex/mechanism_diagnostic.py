@@ -6,6 +6,7 @@ import json
 import math
 import re
 from collections.abc import Mapping
+from copy import deepcopy
 from decimal import Decimal, InvalidOperation
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -900,3 +901,502 @@ def verify_frozen_sources(
             _fail(
                 f"source hash drift: {relative} expected {expected}, got {actual}"
             )
+
+
+_CONSTRAINT_FAMILY_ORDER = (
+    "VMIN",
+    "VMAX",
+    "VUF",
+    "TRANSFORMER",
+    "FEEDER",
+)
+_AUDIT_POINTS = (
+    "BOUNDARY_FEASIBLE",
+    "BOUNDARY_INFEASIBLE",
+    "FULL_OFFER",
+)
+
+
+def _finite_float(value: Any, label: str) -> float:
+    if isinstance(value, bool):
+        _fail(f"{label} must be a finite number")
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError):
+        _fail(f"{label} must be a finite number")
+    if not math.isfinite(result):
+        _fail(f"{label} must be a finite number")
+    return result
+
+
+def _strict_nonnegative_int(value: Any, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        _fail(f"{label} must be a nonnegative integer")
+    return value
+
+
+def _slot_mapping(value: Any, label: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        _fail(f"{label} must be a mapping")
+    return value
+
+
+def _validated_slot_payload(
+    slot_result: Mapping[str, Any],
+) -> tuple[
+    int,
+    Mapping[str, Any],
+    Mapping[str, Any],
+    Mapping[str, Any],
+    Mapping[str, Any],
+]:
+    slot = _strict_nonnegative_int(slot_result.get("slot"), "audit slot")
+    if slot > 95:
+        _fail("audit slot must be between 0 and 95")
+    context = _slot_mapping(slot_result.get("audit_context"), "audit context")
+    coverage = _slot_mapping(slot_result.get("coverage"), "slot coverage")
+    result = _slot_mapping(slot_result.get("result"), "slot result")
+    metrics = _slot_mapping(result.get("metrics"), "slot metrics")
+    result_coverage = _slot_mapping(result.get("coverage"), "result coverage")
+    if context.get("line_thermal_in_scope") is not False:
+        _fail("line thermal evidence is outside the D1 scope")
+    if coverage.get("line_thermal_in_scope") is not False:
+        _fail("line thermal evidence is outside the D1 scope")
+    if result_coverage.get("line_thermal_in_scope") is not False:
+        _fail("line thermal evidence is outside the D1 scope")
+    vmin = _finite_float(context.get("vmin_pu"), "vmin")
+    vmax = _finite_float(context.get("vmax_pu"), "vmax")
+    vuf_limit = _finite_float(context.get("vuf_limit_pct"), "VUF limit")
+    transformer_limit = _finite_float(
+        context.get("transformer_loading_limit_pu"), "transformer limit"
+    )
+    feeder_limit = _finite_float(
+        context.get("feeder_loading_limit_pu"), "feeder limit"
+    )
+    if (
+        vmin >= vmax
+        or vuf_limit <= 0.0
+        or transformer_limit != 1.0
+        or feeder_limit != 1.0
+    ):
+        _fail("formal constraint context is invalid")
+    if dict(coverage) != dict(result_coverage):
+        _fail("slot and result formal coverage differ")
+    record_integrity = _slot_mapping(
+        slot_result.get("formal_integrity"), "slot formal integrity"
+    )
+    result_integrity = _slot_mapping(
+        result.get("formal_integrity"), "result formal integrity"
+    )
+    if dict(record_integrity) != dict(result_integrity):
+        _fail("slot and result formal integrity differ")
+    required_integrity = {
+        "validated",
+        "result_schema_valid",
+        "metrics_finite",
+        "summary_finite",
+        "coverage_complete",
+        "summary_consistent",
+    }
+    if set(record_integrity) != required_integrity or not all(
+        record_integrity.get(name) is True for name in required_integrity
+    ):
+        _fail("formal metric coverage integrity is invalid")
+    if result.get("numerical_failure") is not False:
+        _fail("audit contains a numerical failure")
+    if result.get("converged") is not True:
+        _fail("audit contains a nonconverged slot")
+    if not isinstance(result.get("feasible"), bool):
+        _fail("slot feasibility must be boolean")
+    if not isinstance(result.get("violations"), list):
+        _fail("slot violations must be a list")
+    try:
+        from evflex import pilot as frozen_pilot
+
+        coverage_valid = frozen_pilot._formal_coverage_is_complete(
+            coverage, metrics
+        )
+        summary_valid = frozen_pilot._formal_summary_matches_metrics(
+            result, metrics
+        )
+    except Exception as exc:
+        _fail(
+            "formal metric coverage validation failed "
+            f"({type(exc).__name__}: {exc})"
+        )
+    if not coverage_valid or not summary_valid:
+        _fail("formal metric coverage is incomplete or inconsistent")
+    return slot, context, coverage, result, metrics
+
+
+def _metric_spec(
+    metric_id: str,
+    context: Mapping[str, Any],
+) -> list[tuple[str, str, float, str]]:
+    if metric_id.startswith("V:"):
+        object_id = metric_id.removeprefix("V:")
+        specs = [
+            ("VMIN", "lo", _finite_float(context.get("vmin_pu"), "vmin"), object_id),
+            ("VMAX", "hi", _finite_float(context.get("vmax_pu"), "vmax"), object_id),
+        ]
+    elif metric_id.startswith("U:"):
+        object_id = metric_id.removeprefix("U:")
+        specs = [
+            (
+                "VUF",
+                "hi",
+                _finite_float(context.get("vuf_limit_pct"), "VUF limit"),
+                object_id,
+            )
+        ]
+    elif metric_id.startswith("S:transformer:"):
+        object_id = metric_id.removeprefix("S:transformer:")
+        specs = [
+            (
+                "TRANSFORMER",
+                "hi",
+                _finite_float(
+                    context.get("transformer_loading_limit_pu"),
+                    "transformer limit",
+                ),
+                object_id,
+            )
+        ]
+    elif metric_id == "S:feeder":
+        specs = [
+            (
+                "FEEDER",
+                "hi",
+                _finite_float(
+                    context.get("feeder_loading_limit_pu"), "feeder limit"
+                ),
+                "feeder",
+            )
+        ]
+    else:
+        _fail(f"unsupported monitored metric {metric_id!r}")
+    if any(not object_id for _, _, _, object_id in specs):
+        _fail(f"monitored metric has an empty object ID: {metric_id!r}")
+    return specs
+
+
+def constraint_rows_from_slot(
+    slot_result: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Extract ordered signed margins while preserving explicit pilot witnesses."""
+
+    if not isinstance(slot_result, Mapping):
+        _fail("slot result must be a mapping")
+    slot, context, _coverage, result, metrics = _validated_slot_payload(
+        slot_result
+    )
+    values: dict[str, float] = {}
+    specs_by_key: dict[tuple[str, str], tuple[str, str, float, str]] = {}
+    object_keys: set[tuple[str, str]] = set()
+    for raw_metric_id, raw_value in metrics.items():
+        if not isinstance(raw_metric_id, str) or not raw_metric_id:
+            _fail("formal metric IDs must be non-empty strings")
+        value = _finite_float(raw_value, f"metric {raw_metric_id}")
+        values[raw_metric_id] = value
+        for family, direction, limit, object_id in _metric_spec(
+            raw_metric_id, context
+        ):
+            object_key = (family, object_id)
+            if object_key in object_keys:
+                _fail(f"duplicate object ID {object_id!r} in family {family}")
+            object_keys.add(object_key)
+            specs_by_key[(raw_metric_id, direction)] = (
+                family,
+                direction,
+                limit,
+                object_id,
+            )
+
+    explicit: set[tuple[str, str]] = set()
+    for index, raw_witness in enumerate(result["violations"]):
+        witness = _slot_mapping(raw_witness, f"slot violation {index}")
+        if witness.get("kind") != "physical_constraint":
+            _fail("audit contains a nonphysical violation record")
+        metric_id = witness.get("metric")
+        direction = witness.get("direction")
+        if not isinstance(metric_id, str) or direction not in {"lo", "hi"}:
+            _fail("physical witness identity is invalid")
+        key = (metric_id, direction)
+        spec = specs_by_key.get(key)
+        if spec is None:
+            _fail("physical witness is absent from the declared formal metrics")
+        if key in explicit:
+            _fail("duplicate physical witness identity")
+        witness_value = _finite_float(
+            witness.get("value"), f"physical witness {metric_id} value"
+        )
+        witness_limit = _finite_float(
+            witness.get("limit"), f"physical witness {metric_id} limit"
+        )
+        if witness_value != values[metric_id] or witness_limit != spec[2]:
+            _fail("physical witness value or limit differs from the formal metric")
+        explicit.add(key)
+
+    rows: list[dict[str, Any]] = []
+    for (metric_id, direction), (family, _, limit, object_id) in specs_by_key.items():
+        value = values[metric_id]
+        signed_headroom = value - limit if direction == "lo" else limit - value
+        rows.append(
+            {
+                "slot": slot,
+                "constraint_family": family,
+                "metric_id": metric_id,
+                "object_id": object_id,
+                "value": value,
+                "limit": limit,
+                "direction": direction,
+                "signed_headroom": signed_headroom,
+                "exceedance": max(0.0, -signed_headroom),
+                "is_physical_violation": (metric_id, direction) in explicit,
+            }
+        )
+    family_index = {
+        family: index for index, family in enumerate(_CONSTRAINT_FAMILY_ORDER)
+    }
+    rows.sort(
+        key=lambda row: (
+            family_index[row["constraint_family"]],
+            row["metric_id"],
+            row["direction"],
+        )
+    )
+    return rows
+
+
+def compact_targeted_audit(
+    raw: Mapping[str, Any],
+    *,
+    audit_point: str,
+    alpha: float,
+    capture_slot: int | None = None,
+) -> dict[str, Any]:
+    """Validate one targeted audit and retain only its diagnostic slot details."""
+
+    if not isinstance(raw, Mapping):
+        _fail("targeted audit must be a mapping")
+    if audit_point not in _AUDIT_POINTS:
+        _fail(f"unknown audit point {audit_point!r}")
+    alpha_value = _finite_float(alpha, "audit alpha")
+    if not 0.0 <= alpha_value <= 1.0:
+        _fail("audit alpha must be between 0 and 1")
+    if capture_slot is not None:
+        capture_slot = _strict_nonnegative_int(capture_slot, "capture slot")
+        if capture_slot > 95:
+            _fail("capture slot must be between 0 and 95")
+
+    numerical_checks = _strict_nonnegative_int(
+        raw.get("numerical_failure_checks"), "numerical failure count"
+    )
+    nonconverged_checks = _strict_nonnegative_int(
+        raw.get("nonconverged_checks"), "nonconverged count"
+    )
+    if numerical_checks or nonconverged_checks:
+        _fail("targeted audit contains a numerical failure")
+    if not isinstance(raw.get("feasible"), bool):
+        _fail("targeted audit feasibility must be boolean")
+    checked = _strict_nonnegative_int(
+        raw.get("checked_intervals"), "checked interval count"
+    )
+    slot_results = raw.get("slot_results")
+    trace = raw.get("slot_audit_trace")
+    if not isinstance(slot_results, list) or not isinstance(trace, list):
+        _fail("targeted audit must retain slot results and audit trace")
+    if checked != len(slot_results) or checked != len(trace):
+        _fail("targeted audit checked interval count is inconsistent")
+    if checked == 0 or checked > 96:
+        _fail("targeted audit checked interval count is invalid")
+
+    rows_by_slot: dict[int, list[dict[str, Any]]] = {}
+    result_violations_by_slot: dict[int, list[Any]] = {}
+    validated_results: list[Mapping[str, Any]] = []
+    physical_slots: list[int] = []
+    constraint_signature: tuple[float, ...] | None = None
+    for expected_slot, record in enumerate(slot_results):
+        if not isinstance(record, Mapping) or record.get("slot") != expected_slot:
+            _fail("targeted audit slot sequence is not contiguous from zero")
+        rows = constraint_rows_from_slot(record)
+        rows_by_slot[expected_slot] = rows
+        result = _slot_mapping(record.get("result"), "slot result")
+        validated_results.append(result)
+        result_violations_by_slot[expected_slot] = deepcopy(result["violations"])
+        context = _slot_mapping(record.get("audit_context"), "audit context")
+        observed_signature = tuple(
+            _finite_float(context.get(name), f"audit context {name}")
+            for name in (
+                "vmin_pu",
+                "vmax_pu",
+                "vuf_limit_pct",
+                "transformer_loading_limit_pu",
+                "feeder_loading_limit_pu",
+            )
+        )
+        if constraint_signature is None:
+            constraint_signature = observed_signature
+        elif observed_signature != constraint_signature:
+            _fail("formal constraint limits differ across retained slots")
+        violated = [row for row in rows if row["is_physical_violation"]]
+        if bool(violated) == bool(result.get("feasible")):
+            _fail("slot feasibility and explicit physical witnesses disagree")
+        if violated:
+            physical_slots.append(expected_slot)
+        trace_record = _slot_mapping(
+            trace[expected_slot], f"slot audit trace {expected_slot}"
+        )
+        expected_failure_class = "PHYSICAL_CONSTRAINT" if violated else "NONE"
+        expected_trace = {
+            "slot": expected_slot,
+            "feasible": bool(result["feasible"]),
+            "converged": True,
+            "numerical_failure": False,
+            "failure_class": expected_failure_class,
+            "physical_witness": bool(violated),
+        }
+        if dict(trace_record) != expected_trace:
+            _fail("slot audit trace differs from retained slot evidence")
+
+    feasible = bool(raw["feasible"])
+    complete = raw.get("complete_coverage")
+    if not isinstance(complete, bool):
+        _fail("targeted audit complete_coverage must be boolean")
+    if complete is not (checked == 96):
+        _fail("targeted audit complete_coverage is inconsistent")
+    coverage_ratio = _finite_float(raw.get("coverage_ratio"), "coverage ratio")
+    if not math.isclose(
+        coverage_ratio, checked / 96.0, rel_tol=0.0, abs_tol=1e-15
+    ):
+        _fail("targeted audit coverage ratio is inconsistent")
+    converged_checks = _strict_nonnegative_int(
+        raw.get("converged_checks"), "converged count"
+    )
+    if converged_checks != checked:
+        _fail("targeted audit converged count is inconsistent")
+    physical_checks = _strict_nonnegative_int(
+        raw.get("physical_violation_checks"), "physical violation count"
+    )
+    if physical_checks != len(physical_slots):
+        _fail("targeted audit physical violation count is inconsistent")
+    expected_failure_class = (
+        "PHYSICAL_CONSTRAINT" if physical_slots else "NONE"
+    )
+    if raw.get("failure_class") != expected_failure_class:
+        _fail("targeted audit failure class is inconsistent")
+    aggregate_violations = raw.get("violations")
+    if not isinstance(aggregate_violations, list):
+        _fail("aggregate violation evidence must be a list")
+    if len(aggregate_violations) != len(physical_slots):
+        _fail("aggregate violation evidence differs from retained slots")
+    for index, (aggregate, physical_slot) in enumerate(
+        zip(aggregate_violations, physical_slots, strict=True)
+    ):
+        aggregate_record = _slot_mapping(
+            aggregate, f"aggregate violation evidence {index}"
+        )
+        expected_aggregate = {
+            "slot": physical_slot,
+            "converged": True,
+            "numerical_failure": False,
+            "failure_class": "PHYSICAL_CONSTRAINT",
+            "physical_witness": True,
+            "violations": result_violations_by_slot[physical_slot],
+        }
+        if dict(aggregate_record) != expected_aggregate:
+            _fail("aggregate violation evidence differs from retained slots")
+    first_failure_slot = min(physical_slots) if physical_slots else None
+    if feasible:
+        if physical_slots:
+            _fail("feasible audit contains an explicit physical witness")
+        if checked != 96 or complete is not True:
+            _fail("feasible audit requires complete 96-slot coverage")
+        selected_index = capture_slot
+    else:
+        if first_failure_slot is None:
+            _fail("infeasible audit lacks an explicit physical witness")
+        if checked != first_failure_slot + 1:
+            _fail("physical audit early-stop consistency is invalid")
+        if slot_results[-1].get("slot") != first_failure_slot:
+            _fail("first physical failure must be the final retained slot")
+        selected_index = first_failure_slot
+        if capture_slot is not None and capture_slot != first_failure_slot:
+            _fail("capture slot differs from the first physical failure")
+
+    if selected_index is not None and selected_index >= checked:
+        _fail("capture slot was not evaluated")
+    selected = None
+    if selected_index is not None:
+        selected_rows = rows_by_slot[selected_index]
+        selected = {
+            "slot": selected_index,
+            "constraint_rows": deepcopy(selected_rows),
+            "simultaneous_violations": [
+                deepcopy(row)
+                for row in selected_rows
+                if row["is_physical_violation"]
+            ],
+        }
+
+    coverage_counts = _slot_mapping(
+        raw.get("coverage_counts"), "aggregate formal coverage"
+    )
+    if coverage_counts.get("line_thermal_in_scope") is not False:
+        _fail("line thermal evidence is outside the D1 scope")
+    for index, record in enumerate(slot_results):
+        slot_coverage = _slot_mapping(
+            record.get("coverage"), f"slot coverage {index}"
+        )
+        if dict(slot_coverage) != dict(coverage_counts):
+            _fail("aggregate formal coverage differs from retained slots")
+
+    power_flow_evaluations = _strict_nonnegative_int(
+        raw.get("power_flow_evaluations"), "power-flow evaluation count"
+    )
+    reused_baseline_intervals = _strict_nonnegative_int(
+        raw.get("reused_baseline_intervals"), "reused baseline interval count"
+    )
+    if (
+        power_flow_evaluations + reused_baseline_intervals != checked
+        or raw.get("eligible_for_v01_pass") is not feasible
+        or raw.get("nonconverged_slots") != []
+    ):
+        _fail("targeted audit evaluation accounting is inconsistent")
+
+    extrema: dict[str, float] = {}
+    for aggregate_name, result_name, reducer in (
+        ("vmin", "vmin", min),
+        ("vmax", "vmax", max),
+        ("vufmax", "vufmax", max),
+        ("transformer_loading_max", "transformer_loading_max", max),
+        ("feeder_loading_max", "feeder_loading", max),
+    ):
+        observed = _finite_float(
+            raw.get(aggregate_name), f"targeted audit {aggregate_name}"
+        )
+        expected = reducer(
+            _finite_float(result.get(result_name), f"slot {result_name}")
+            for result in validated_results
+        )
+        if observed != expected:
+            _fail("targeted audit aggregate extrema are inconsistent")
+        extrema[aggregate_name] = observed
+    return {
+        "audit_point": audit_point,
+        "alpha": alpha_value,
+        "feasible": feasible,
+        "checked_intervals": checked,
+        "coverage_ratio": coverage_ratio,
+        "complete_coverage": complete,
+        "converged_checks": converged_checks,
+        "nonconverged_checks": nonconverged_checks,
+        "numerical_failure_checks": numerical_checks,
+        "physical_violation_checks": physical_checks,
+        "failure_class": expected_failure_class,
+        "first_failure_slot": first_failure_slot,
+        "explicit_physical_witness": first_failure_slot is not None,
+        "selected_slot": selected,
+        "coverage_counts": deepcopy(dict(coverage_counts)),
+        **extrema,
+    }
