@@ -363,7 +363,7 @@ git commit -m "feat: execute fixed-schedule D1 pairs"
 - Modify: `tests/test_mechanism_diagnostic.py`
 - Create: `tests/test_mechanism_runner.py`
 
-- [ ] **Step 1: Write failing artifact and runner tests**
+- [x] **Step 1: Write failing artifact and runner tests**
 
 Add tests named:
 
@@ -379,13 +379,13 @@ Add tests named:
 
 Load the script in tests with `importlib.util`, inject a fake `execute_pair`, and assert no `ProcessPoolExecutor` is created.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py tests/test_mechanism_runner.py -k 'artifact or runner' -q -p no:faulthandler
 ```
 
-- [ ] **Step 3: Implement strict terminal validation**
+- [x] **Step 3: Implement strict terminal validation**
 
 Add to the module:
 
@@ -401,7 +401,7 @@ strict_json_file(path: Path) -> dict[str, Any]
 
 Reject duplicate JSON keys, NaN/Infinity, unknown/missing keys, wrong order, wrong hashes, inconsistent alpha labels, incomplete feasible audits, invalid early stops, missing simultaneous witnesses, non-null stress ratios, any line-thermal scope, and any source or resource-policy mismatch.
 
-- [ ] **Step 4: Implement the sequential runner**
+- [x] **Step 4: Implement the sequential runner**
 
 The runner must:
 
@@ -418,11 +418,11 @@ The runner must:
 - never call the archived runner's three-evaluation/single-ablation expected-ID logic;
 - print a strict JSON summary and return nonzero on any implementation or provenance failure.
 
-`validate_pair_artifact` dispatches strictly by status. `SUCCESS` requires exactly all six audits and permits the next pair. `STOP_IMPLEMENTATION` records the exact first frozen-rule contradiction and may contain only a continuous prefix of the six-audit sequence, ending at the audit that exposed that contradiction; a zero-length prefix is allowed only when the frozen rule fails before the first audit. It stops before the next pair and may not omit an earlier audit or retain anything after the stop point. `UNHANDLED_FAILURE` records exact pair identity plus exception type/message after controlled handling and follows the same continuous-prefix rule, including zero length when the exception precedes auditing. Resume validates and skips `SUCCESS`; it validates then immediately re-emits the stop for either failure status. It never overwrites or recomputes any terminal status.
+`validate_pair_artifact` dispatches strictly by status. `SUCCESS` requires exactly all six audits and permits the next pair. `STOP_IMPLEMENTATION` records the exact first frozen-rule contradiction and may contain only a continuous prefix of the six-audit sequence. A completed audit that contradicts its frozen outcome is retained as the final prefix row. If the current audit evidence is itself invalid and therefore cannot pass the audit schema, `AUDIT_EVIDENCE_INVALID` retains only the preceding valid prefix and records the rejected audit's sequence index; a zero-length prefix is permitted at sequence index zero. A distinct pre-audit implementation failure uses a zero-length prefix and null sequence index. It stops before the next pair and may not omit an earlier audit or retain anything after the stop point. `UNHANDLED_FAILURE` records exact pair identity plus exception type/message after controlled handling and follows the same continuous-prefix rule, including zero length when the exception precedes auditing. Resume validates and skips `SUCCESS`; it validates then immediately re-emits the stop for either failure status. It never overwrites or recomputes any terminal status.
 
 The runner creates `results/mechanism_diagnostic_v2_1/.attempts/pair_XX.json` immediately before pair execution and removes it only after a terminal pair JSON has been atomically written and strictly revalidated. A crash therefore leaves explicit attempt evidence and the next preflight stops for inspection. Pair and report temporary-file scans use only the frozen patterns above.
 
-- [ ] **Step 5: Confirm GREEN**
+- [x] **Step 5: Confirm GREEN**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py tests/test_mechanism_runner.py -k 'artifact or runner' -q -p no:faulthandler
@@ -431,7 +431,7 @@ python scripts/run_mechanism_diagnostic_v2_1.py --preflight-only
 
 Preflight must perform no schedule solve, power flow, or output write. It rejects drift or dirtiness only in the archived source/evidence paths and frozen pilot files; it does not require the new D1 implementation files to be committed during Tasks 1-6. Task 8 separately requires a clean reviewed D1 code commit before production.
 
-- [ ] **Step 6: Commit Task 5**
+- [x] **Step 6: Commit Task 5**
 
 ```powershell
 git add src/evflex/mechanism_diagnostic.py scripts/run_mechanism_diagnostic_v2_1.py tests/test_mechanism_diagnostic.py tests/test_mechanism_runner.py

@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from evflex.mechanism_diagnostic import (
+    D1AuditStop,
     build_count_match_rows,
     candidate_families,
     classify_count_match,
@@ -24,6 +25,7 @@ from evflex.mechanism_diagnostic import (
     pair_members,
     reconstruct_case,
     relative_stress_evidence,
+    validate_pair_artifact,
     verify_frozen_sources,
 )
 
@@ -2175,6 +2177,11 @@ def test_execute_pair_runs_exact_six_audits_and_captures_control_at_bad_slot() -
         load_mechanism_config(REPO_ROOT),
         runtime_factory=factory,
     )
+    validate_pair_artifact(
+        artifact,
+        pair,
+        load_mechanism_config(REPO_ROOT),
+    )
 
     assert [
         (audit["audit_point"], audit["role"])
@@ -2271,3 +2278,62 @@ def test_execute_pair_rejects_numerical_failure_or_missing_bad_witness() -> None
             load_mechanism_config(REPO_ROOT),
             runtime_factory=factory,
         )
+
+
+def test_execute_pair_preserves_completed_prefix_on_audit_evidence_error() -> None:
+    pair, _, factory = _d1_fake_pair_and_factory(
+        bad_failure_mode="numerical"
+    )
+
+    with pytest.raises(D1AuditStop, match="numerical failure") as caught:
+        execute_pair(
+            REPO_ROOT,
+            pair,
+            load_mechanism_config(REPO_ROOT),
+            runtime_factory=factory,
+        )
+
+    assert caught.value.rule_code == "AUDIT_EVIDENCE_INVALID"
+    assert caught.value.sequence_index == 2
+    assert [audit["sequence_index"] for audit in caught.value.audits] == [0, 1]
+
+
+def test_execute_pair_retains_audit_that_contradicts_frozen_rule() -> None:
+    pair, _, factory = _d1_fake_pair_and_factory(
+        bad_failure_mode="missing_witness"
+    )
+    config = load_mechanism_config(REPO_ROOT)
+
+    with pytest.raises(D1AuditStop, match="explicit physical witness") as caught:
+        execute_pair(
+            REPO_ROOT,
+            pair,
+            config,
+            runtime_factory=factory,
+        )
+
+    assert caught.value.rule_code == "BAD_BOUNDARY_INFEASIBLE_REQUIRED"
+    assert caught.value.sequence_index == 2
+    assert [audit["sequence_index"] for audit in caught.value.audits] == [0, 1, 2]
+    assert caught.value.audits[-1]["feasible"] is True
+
+    bad, control = pair_members(pair)
+    terminal = {
+        "protocol_version": config["protocol_version"],
+        "status": "STOP_IMPLEMENTATION",
+        "pair_id": pair["pair_id"],
+        "scenario_cluster": pair["scenario_cluster"],
+        "source_commit": config["source_commit"],
+        "line_thermal_in_scope": False,
+        "resource_policy": deepcopy(config["resource_policy"]),
+        "relative_stress": relative_stress_evidence(),
+        "members": {"bad": bad, "control": control},
+        "audits": caught.value.audits,
+        "failure": {
+            "kind": "FROZEN_RULE_CONTRADICTION",
+            "rule_code": caught.value.rule_code,
+            "detail": caught.value.detail,
+            "sequence_index": caught.value.sequence_index,
+        },
+    }
+    validate_pair_artifact(terminal, pair, config)

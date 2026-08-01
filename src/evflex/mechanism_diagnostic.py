@@ -295,6 +295,49 @@ class _StrictDecodeError(ValueError):
     pass
 
 
+class D1AuditStop(ValueError):
+    """Carry a controlled audit-stage stop with its validated prefix."""
+
+    def __init__(
+        self,
+        rule_code: str,
+        detail: str,
+        *,
+        audits: Sequence[Mapping[str, Any]],
+        sequence_index: int,
+    ) -> None:
+        if (
+            not isinstance(rule_code, str)
+            or re.fullmatch(r"[A-Z][A-Z0-9_]*", rule_code) is None
+        ):
+            raise ValueError("D1 audit stop rule code is invalid")
+        if not isinstance(detail, str) or not detail:
+            raise ValueError("D1 audit stop detail must be nonempty")
+        if (
+            isinstance(sequence_index, bool)
+            or not isinstance(sequence_index, int)
+            or not 0 <= sequence_index < 6
+        ):
+            raise ValueError("D1 audit stop sequence index is invalid")
+        if isinstance(audits, (str, bytes)) or not isinstance(audits, Sequence):
+            raise ValueError("D1 audit stop audits must be a sequence")
+        if not all(isinstance(audit, Mapping) for audit in audits):
+            raise ValueError("D1 audit stop audits must contain mappings")
+        retained = [deepcopy(dict(audit)) for audit in audits]
+        if len(retained) not in {sequence_index, sequence_index + 1}:
+            raise ValueError("D1 audit stop prefix length is inconsistent")
+        if any(
+            audit.get("sequence_index") != index
+            for index, audit in enumerate(retained)
+        ):
+            raise ValueError("D1 audit stop prefix is not continuous")
+        super().__init__(detail)
+        self.rule_code = rule_code
+        self.detail = detail
+        self.audits = retained
+        self.sequence_index = sequence_index
+
+
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -337,6 +380,16 @@ def _strict_json_file(path: Path, label: str) -> Any:
             f"{label}: malformed JSON at line {exc.lineno}, column {exc.colno}"
         )
     _validate_finite_tree(value, label)
+    return value
+
+
+def strict_json_file(path: str | Path) -> dict[str, Any]:
+    """Read one finite duplicate-key-free JSON object."""
+
+    target = Path(path)
+    value = _strict_json_file(target, str(target))
+    if not isinstance(value, dict):
+        _fail(f"{target}: JSON root must be an object")
     return value
 
 
@@ -2294,108 +2347,145 @@ def execute_pair(
     audits: list[dict[str, Any]] = []
     bad_failure_slot: int | None = None
     for sequence_index, (audit_point, role) in enumerate(_D1_AUDIT_SEQUENCE):
-        case = reconstructed[role]
-        member = case["member"]
-        alpha, alpha_label = alpha_points[audit_point]
-        audited_schedule = case["baseline"] + alpha * (
-            case["schedule"] - case["baseline"]
-        )
-        if not np.isfinite(audited_schedule).all():
-            _fail("audited fixed schedule contains a non-finite value")
-        stop_on_violation = bool(
-            role == "bad" and audit_point != "BOUNDARY_FEASIBLE"
-        )
-        raw = states[role]["runtime"].audit_corrected(
-            audited_schedule,
-            states[role]["cache"],
-            baseline_slot_results=states[role]["baseline_slots"],
-            stop_on_violation=stop_on_violation,
-            retain_slot_results=True,
-        )
-        _validate_raw_formal_constraints(
-            raw,
-            formal_constraints,
-            member=case["member"],
-            load_scales=case["load_scales"],
-        )
-        capture_slot = (
-            bad_failure_slot
-            if role == "control" and audit_point == "BOUNDARY_INFEASIBLE"
-            else None
-        )
-        compact = compact_targeted_audit(
-            raw,
-            audit_point=audit_point,
-            alpha=alpha,
-            capture_slot=capture_slot,
-        )
+        try:
+            case = reconstructed[role]
+            member = case["member"]
+            alpha, alpha_label = alpha_points[audit_point]
+            audited_schedule = case["baseline"] + alpha * (
+                case["schedule"] - case["baseline"]
+            )
+            if not np.isfinite(audited_schedule).all():
+                _fail("audited fixed schedule contains a non-finite value")
+            stop_on_violation = bool(
+                role == "bad" and audit_point != "BOUNDARY_FEASIBLE"
+            )
+            raw = states[role]["runtime"].audit_corrected(
+                audited_schedule,
+                states[role]["cache"],
+                baseline_slot_results=states[role]["baseline_slots"],
+                stop_on_violation=stop_on_violation,
+                retain_slot_results=True,
+            )
+            _validate_raw_formal_constraints(
+                raw,
+                formal_constraints,
+                member=case["member"],
+                load_scales=case["load_scales"],
+            )
+            capture_slot = (
+                bad_failure_slot
+                if role == "control" and audit_point == "BOUNDARY_INFEASIBLE"
+                else None
+            )
+            compact = compact_targeted_audit(
+                raw,
+                audit_point=audit_point,
+                alpha=alpha,
+                capture_slot=capture_slot,
+            )
+        except D1AuditStop:
+            raise
+        except ValueError as exc:
+            raise D1AuditStop(
+                "AUDIT_EVIDENCE_INVALID",
+                str(exc),
+                audits=audits,
+                sequence_index=sequence_index,
+            ) from exc
         should_be_feasible = bool(
             role == "control" or audit_point == "BOUNDARY_FEASIBLE"
         )
         if should_be_feasible:
-            if compact["feasible"] is not True:
-                _fail(f"{audit_point}/{role} must remain feasible")
-        elif (
-            compact["feasible"] is not False
-            or compact["explicit_physical_witness"] is not True
-            or compact["failure_class"] != "PHYSICAL_CONSTRAINT"
-        ):
-            _fail(
+            matches_frozen_rule = compact["feasible"] is True
+            contradiction_detail = f"{audit_point}/{role} must remain feasible"
+        else:
+            matches_frozen_rule = bool(
+                compact["feasible"] is False
+                and compact["explicit_physical_witness"] is True
+                and compact["failure_class"] == "PHYSICAL_CONSTRAINT"
+            )
+            contradiction_detail = (
                 f"{audit_point}/{role} must be physically infeasible "
                 "with an explicit physical witness"
             )
-        if role == "bad" and audit_point == "BOUNDARY_INFEASIBLE":
+        if (
+            matches_frozen_rule
+            and role == "bad"
+            and audit_point == "BOUNDARY_INFEASIBLE"
+        ):
             bad_failure_slot = compact["first_failure_slot"]
             if not isinstance(bad_failure_slot, int):
-                _fail("bad boundary audit lacks an explicit first failure slot")
+                raise D1AuditStop(
+                    "AUDIT_EVIDENCE_INVALID",
+                    "bad boundary audit lacks an explicit first failure slot",
+                    audits=audits,
+                    sequence_index=sequence_index,
+                )
 
-        compact = _prune_selected_evidence(
-            compact, role=role, audit_point=audit_point
-        )
-        audited_hash = pilot.canonical_schedule_sha256(
-            case["fleet"], audited_schedule
-        )
-        audit_input_hash = _audit_input_sha256(
-            protocol_version=config["protocol_version"],
-            pair_id=member["pair_id"],
-            role=role,
-            source_evaluation_id=member["evaluation_id"],
-            audit_point=audit_point,
-            alpha_label=alpha_label,
-            baseline_schedule_sha256=case["baseline_schedule_sha256"],
-            source_schedule_sha256=case["schedule_sha256"],
-            audited_schedule_sha256=audited_hash,
-            load_scales_sha256=load_scale_hashes[role],
-            formal_constraints=formal_constraints,
-        )
-        audit_record = {
-            "sequence_index": sequence_index,
-            "pair_id": member["pair_id"],
-            "scenario_cluster": member["scenario_cluster"],
-            "role": role,
-            "source_evaluation_id": member["evaluation_id"],
-            "source_work_unit_id": member["work_unit_id"],
-            "scenario_id": member["scenario_id"],
-            "scenario_seed": member["scenario_seed"],
-            "feeder": member["feeder"],
-            "call_time": member["call_time"],
-            "direction": member["direction"],
-            "duration_min": member["duration_min"],
-            "source_duration_min": member["source_duration_min"],
-            "alpha_label": alpha_label,
-            "baseline_schedule_sha256": case[
-                "baseline_schedule_sha256"
-            ],
-            "source_schedule_sha256": case["schedule_sha256"],
-            "bus_phase_time_sha256": case["bus_phase_time_sha256"],
-            "audited_schedule_sha256": audited_hash,
-            "load_scales_sha256": load_scale_hashes[role],
-            "audit_input_sha256": audit_input_hash,
-            "formal_constraints": deepcopy(dict(formal_constraints)),
-            "line_thermal_in_scope": False,
-            **compact,
-        }
+        try:
+            compact = _prune_selected_evidence(
+                compact, role=role, audit_point=audit_point
+            )
+            audited_hash = pilot.canonical_schedule_sha256(
+                case["fleet"], audited_schedule
+            )
+            audit_input_hash = _audit_input_sha256(
+                protocol_version=config["protocol_version"],
+                pair_id=member["pair_id"],
+                role=role,
+                source_evaluation_id=member["evaluation_id"],
+                audit_point=audit_point,
+                alpha_label=alpha_label,
+                baseline_schedule_sha256=case["baseline_schedule_sha256"],
+                source_schedule_sha256=case["schedule_sha256"],
+                audited_schedule_sha256=audited_hash,
+                load_scales_sha256=load_scale_hashes[role],
+                formal_constraints=formal_constraints,
+            )
+            audit_record = {
+                "sequence_index": sequence_index,
+                "pair_id": member["pair_id"],
+                "scenario_cluster": member["scenario_cluster"],
+                "role": role,
+                "source_evaluation_id": member["evaluation_id"],
+                "source_work_unit_id": member["work_unit_id"],
+                "scenario_id": member["scenario_id"],
+                "scenario_seed": member["scenario_seed"],
+                "feeder": member["feeder"],
+                "call_time": member["call_time"],
+                "direction": member["direction"],
+                "duration_min": member["duration_min"],
+                "source_duration_min": member["source_duration_min"],
+                "alpha_label": alpha_label,
+                "baseline_schedule_sha256": case[
+                    "baseline_schedule_sha256"
+                ],
+                "source_schedule_sha256": case["schedule_sha256"],
+                "bus_phase_time_sha256": case["bus_phase_time_sha256"],
+                "audited_schedule_sha256": audited_hash,
+                "load_scales_sha256": load_scale_hashes[role],
+                "audit_input_sha256": audit_input_hash,
+                "formal_constraints": deepcopy(dict(formal_constraints)),
+                "line_thermal_in_scope": False,
+                **compact,
+            }
+        except D1AuditStop:
+            raise
+        except ValueError as exc:
+            raise D1AuditStop(
+                "AUDIT_EVIDENCE_INVALID",
+                str(exc),
+                audits=audits,
+                sequence_index=sequence_index,
+            ) from exc
         audits.append(audit_record)
+        if not matches_frozen_rule:
+            raise D1AuditStop(
+                _STOP_RULE_BY_SEQUENCE[sequence_index],
+                contradiction_detail,
+                audits=audits,
+                sequence_index=sequence_index,
+            )
     if bad_failure_slot is None:
         _fail("D1 pair completed without a bad boundary failure slot")
     return {
@@ -2413,3 +2503,591 @@ def execute_pair(
         },
         "audits": audits,
     }
+
+
+_FROZEN_FORMAL_CONSTRAINTS = {
+    "vmin_pu": 0.95,
+    "vmax_pu": 1.06,
+    "vuf_limit_pct": 2.0,
+    "transformer_loading_limit_pu": 1.0,
+    "feeder_loading_limit_pu": 1.0,
+    "line_thermal_in_scope": False,
+}
+_PAIR_COMMON_KEYS = {
+    "protocol_version",
+    "status",
+    "pair_id",
+    "scenario_cluster",
+    "source_commit",
+    "line_thermal_in_scope",
+    "resource_policy",
+    "relative_stress",
+    "members",
+    "audits",
+}
+_AUDIT_ARTIFACT_KEYS = {
+    "sequence_index",
+    "pair_id",
+    "scenario_cluster",
+    "role",
+    "source_evaluation_id",
+    "source_work_unit_id",
+    "scenario_id",
+    "scenario_seed",
+    "feeder",
+    "call_time",
+    "direction",
+    "duration_min",
+    "source_duration_min",
+    "alpha_label",
+    "baseline_schedule_sha256",
+    "source_schedule_sha256",
+    "bus_phase_time_sha256",
+    "audited_schedule_sha256",
+    "load_scales_sha256",
+    "audit_input_sha256",
+    "formal_constraints",
+    "line_thermal_in_scope",
+    "audit_point",
+    "alpha",
+    "feasible",
+    "checked_intervals",
+    "coverage_ratio",
+    "complete_coverage",
+    "converged_checks",
+    "nonconverged_checks",
+    "numerical_failure_checks",
+    "physical_violation_checks",
+    "failure_class",
+    "first_failure_slot",
+    "explicit_physical_witness",
+    "selected_slot",
+    "coverage_counts",
+    "vmin",
+    "vmax",
+    "vufmax",
+    "transformer_loading_max",
+    "feeder_loading_max",
+}
+_CONSTRAINT_ROW_KEYS = {
+    "slot",
+    "constraint_family",
+    "metric_id",
+    "object_id",
+    "value",
+    "limit",
+    "direction",
+    "signed_headroom",
+    "exceedance",
+    "is_physical_violation",
+}
+_COVERAGE_KEYS = {
+    "all_bus_count",
+    "monitored_bus_count",
+    "energized_voltage_node_count",
+    "monitored_voltage_node_count",
+    "three_phase_bus_count",
+    "monitored_vuf_bus_count",
+    "enabled_transformer_count",
+    "rated_transformer_count",
+    "transformer_rating_coverage",
+    "line_count",
+    "line_thermal_in_scope",
+    "feeder_rating_multiplier",
+    "transformer_ratings_kva",
+    "transformer_raw_ratings_kva",
+    "transformer_rating_multiplier",
+    "transformer_rating_basis",
+    "transformer_power_basis",
+}
+_STOP_RULE_BY_SEQUENCE = {
+    0: "BAD_BOUNDARY_FEASIBLE_REQUIRED",
+    1: "CONTROL_FEASIBLE_REQUIRED",
+    2: "BAD_BOUNDARY_INFEASIBLE_REQUIRED",
+    3: "CONTROL_FEASIBLE_REQUIRED",
+    4: "BAD_FULL_OFFER_INFEASIBLE_REQUIRED",
+    5: "CONTROL_FEASIBLE_REQUIRED",
+}
+
+
+def _artifact_int(value: Any, label: str, *, minimum: int = 0) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        _fail(f"{label} must be an integer >= {minimum}")
+    return value
+
+
+def _artifact_number(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        _fail(f"{label} must be a finite JSON number")
+    number = float(value)
+    if not math.isfinite(number):
+        _fail(f"{label} must be a finite JSON number")
+    return number
+
+
+def _validate_coverage_artifact(value: Any, label: str) -> None:
+    coverage = _slot_mapping(value, label)
+    if set(coverage) != _COVERAGE_KEYS:
+        _fail(f"{label} has unexpected or missing fields")
+    counts = {
+        name: _artifact_int(coverage.get(name), f"{label}.{name}")
+        for name in (
+            "all_bus_count",
+            "monitored_bus_count",
+            "energized_voltage_node_count",
+            "monitored_voltage_node_count",
+            "three_phase_bus_count",
+            "monitored_vuf_bus_count",
+            "enabled_transformer_count",
+            "rated_transformer_count",
+            "line_count",
+        )
+    }
+    ratings = _slot_mapping(
+        coverage.get("transformer_ratings_kva"),
+        f"{label}.transformer_ratings_kva",
+    )
+    raw_ratings = _slot_mapping(
+        coverage.get("transformer_raw_ratings_kva"),
+        f"{label}.transformer_raw_ratings_kva",
+    )
+    multiplier = _artifact_number(
+        coverage.get("transformer_rating_multiplier"),
+        f"{label}.transformer_rating_multiplier",
+    )
+    expected_basis = (
+        "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
+        if multiplier == 3.0
+        else "NATIVE_SYSTEM_TOTAL_KVA"
+    )
+    if (
+        counts["all_bus_count"] <= 0
+        or counts["all_bus_count"] != counts["monitored_bus_count"]
+        or counts["energized_voltage_node_count"] <= 0
+        or counts["energized_voltage_node_count"]
+        != counts["monitored_voltage_node_count"]
+        or counts["three_phase_bus_count"]
+        != counts["monitored_vuf_bus_count"]
+        or counts["enabled_transformer_count"]
+        != counts["rated_transformer_count"]
+        or counts["rated_transformer_count"] != len(ratings)
+        or set(map(str.lower, map(str, ratings)))
+        != set(map(str.lower, map(str, raw_ratings)))
+        or coverage.get("line_thermal_in_scope") is not False
+        or _artifact_number(
+            coverage.get("transformer_rating_coverage"),
+            f"{label}.transformer_rating_coverage",
+        )
+        != 1.0
+        or _artifact_number(
+            coverage.get("feeder_rating_multiplier"),
+            f"{label}.feeder_rating_multiplier",
+        )
+        != 1.0
+        or multiplier not in {1.0, 3.0}
+        or coverage.get("transformer_rating_basis") != expected_basis
+        or coverage.get("transformer_power_basis")
+        != "SYSTEM_TOTAL_TERMINAL_POWER"
+    ):
+        _fail(f"{label} is not complete formal coverage")
+    for name, rating in ratings.items():
+        observed = _artifact_number(rating, f"{label}.rating.{name}")
+        raw = _artifact_number(
+            raw_ratings.get(name), f"{label}.raw_rating.{name}"
+        )
+        if observed <= 0.0 or raw <= 0.0 or not math.isclose(
+            observed, raw * multiplier, rel_tol=1e-12, abs_tol=1e-12
+        ):
+            _fail(f"{label} contains inconsistent transformer ratings")
+
+
+def _validate_constraint_rows_artifact(
+    selected: Mapping[str, Any],
+    *,
+    audit_index: int,
+) -> None:
+    slot = _artifact_int(selected.get("slot"), "selected slot")
+    if slot > 95:
+        _fail("selected slot must be between zero and 95")
+    rows = selected.get("constraint_rows")
+    simultaneous = selected.get("simultaneous_violations")
+    if not isinstance(rows, list) or not isinstance(simultaneous, list):
+        _fail("selected evidence rows must be lists")
+    family_index = {
+        family: index for index, family in enumerate(_CONSTRAINT_FAMILY_ORDER)
+    }
+    previous: tuple[int, str, str] | None = None
+    seen_objects: set[tuple[str, str]] = set()
+    physical_rows: list[dict[str, Any]] = []
+    voltage_objects = {"VMIN": set(), "VMAX": set()}
+    for row_index, raw_row in enumerate(rows):
+        row = _slot_mapping(raw_row, f"constraint row {row_index}")
+        if set(row) != _CONSTRAINT_ROW_KEYS:
+            _fail("constraint row has unexpected or missing fields")
+        if row.get("slot") != slot:
+            _fail("constraint row slot differs from selected slot")
+        family = row.get("constraint_family")
+        metric_id = row.get("metric_id")
+        object_id = row.get("object_id")
+        direction = row.get("direction")
+        marker = row.get("is_physical_violation")
+        if (
+            family not in family_index
+            or not isinstance(metric_id, str)
+            or not metric_id
+            or not isinstance(object_id, str)
+            or not object_id
+            or direction not in {"lo", "hi"}
+            or not isinstance(marker, bool)
+        ):
+            _fail("constraint row identity is invalid")
+        object_key = (family, object_id)
+        if object_key in seen_objects:
+            _fail("duplicate constraint object within a family")
+        seen_objects.add(object_key)
+        expected_direction = "lo" if family == "VMIN" else "hi"
+        expected_limit = {
+            "VMIN": _FROZEN_FORMAL_CONSTRAINTS["vmin_pu"],
+            "VMAX": _FROZEN_FORMAL_CONSTRAINTS["vmax_pu"],
+            "VUF": _FROZEN_FORMAL_CONSTRAINTS["vuf_limit_pct"],
+            "TRANSFORMER": _FROZEN_FORMAL_CONSTRAINTS[
+                "transformer_loading_limit_pu"
+            ],
+            "FEEDER": _FROZEN_FORMAL_CONSTRAINTS[
+                "feeder_loading_limit_pu"
+            ],
+        }[family]
+        prefix_valid = bool(
+            (family in {"VMIN", "VMAX"} and metric_id == f"V:{object_id}")
+            or (family == "VUF" and metric_id == f"U:{object_id}")
+            or (
+                family == "TRANSFORMER"
+                and metric_id == f"S:transformer:{object_id}"
+            )
+            or (
+                family == "FEEDER"
+                and metric_id == "S:feeder"
+                and object_id == "feeder"
+            )
+        )
+        value = _artifact_number(row.get("value"), "constraint value")
+        limit = _artifact_number(row.get("limit"), "constraint limit")
+        headroom = _artifact_number(
+            row.get("signed_headroom"), "constraint signed headroom"
+        )
+        exceedance = _artifact_number(
+            row.get("exceedance"), "constraint exceedance"
+        )
+        expected_headroom = (
+            value - limit if direction == "lo" else limit - value
+        )
+        if (
+            direction != expected_direction
+            or not prefix_valid
+            or limit != expected_limit
+            or not math.isclose(
+                headroom, expected_headroom, rel_tol=0.0, abs_tol=1e-12
+            )
+            or not math.isclose(
+                exceedance,
+                max(0.0, -headroom),
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+        ):
+            _fail("constraint row value, limit, or margin is inconsistent")
+        order_key = (family_index[family], metric_id, direction)
+        if previous is not None and order_key < previous:
+            _fail("constraint rows are not in frozen order")
+        previous = order_key
+        if family in voltage_objects:
+            voltage_objects[family].add(object_id)
+        if marker:
+            physical_rows.append(dict(row))
+        if audit_index in {2, 3} and family not in _COUNT_MATCH_FAMILIES and not marker:
+            _fail("boundary evidence retains an out-of-scope nonphysical row")
+        if audit_index == 4 and not marker:
+            _fail("full-offer evidence retains a nonphysical row")
+    if audit_index in {2, 3} and (
+        not rows or voltage_objects["VMIN"] != voltage_objects["VMAX"]
+    ):
+        _fail("boundary count-match voltage rows are incomplete")
+    if [dict(row) for row in simultaneous] != physical_rows:
+        _fail("simultaneous violations differ from explicit constraint rows")
+
+
+def _validate_audit_artifact(
+    audit: Mapping[str, Any],
+    *,
+    pair: Mapping[str, Any],
+    config: Mapping[str, Any],
+    index: int,
+) -> bool:
+    if set(audit) != _AUDIT_ARTIFACT_KEYS:
+        _fail("audit artifact has unexpected or missing fields")
+    point, role = _D1_AUDIT_SEQUENCE[index]
+    members = pair_members(pair)
+    member = members[0] if role == "bad" else members[1]
+    identity_pairs = {
+        "sequence_index": index,
+        "pair_id": pair["pair_id"],
+        "scenario_cluster": pair["scenario_cluster"],
+        "role": role,
+        "source_evaluation_id": member["evaluation_id"],
+        "source_work_unit_id": member["work_unit_id"],
+        "scenario_id": member["scenario_id"],
+        "scenario_seed": member["scenario_seed"],
+        "feeder": member["feeder"],
+        "call_time": member["call_time"],
+        "direction": member["direction"],
+        "duration_min": member["duration_min"],
+        "source_duration_min": member["source_duration_min"],
+        "baseline_schedule_sha256": member["baseline_schedule_sha256"],
+        "source_schedule_sha256": member["schedule_sha256"],
+        "bus_phase_time_sha256": member["bus_phase_time_sha256"],
+        "audit_point": point,
+    }
+    if any(audit.get(name) != value for name, value in identity_pairs.items()):
+        _fail("audit identity or order differs from the frozen pair")
+    alpha, alpha_label = _audit_alpha_points(
+        float(pair["bad_alpha_transfer"]), float(config["audit"]["delta"])
+    )[point]
+    if (
+        audit.get("alpha_label") != alpha_label
+        or _artifact_number(audit.get("alpha"), "audit alpha") != alpha
+        or audit.get("formal_constraints") != _FROZEN_FORMAL_CONSTRAINTS
+        or audit.get("line_thermal_in_scope") is not False
+    ):
+        _fail("audit alpha or formal constraints differ from the frozen protocol")
+    for name in (
+        "audited_schedule_sha256",
+        "load_scales_sha256",
+        "audit_input_sha256",
+    ):
+        value = audit.get(name)
+        if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
+            _fail(f"audit {name} must be a lowercase SHA-256")
+    expected_input_hash = _audit_input_sha256(
+        protocol_version=str(config["protocol_version"]),
+        pair_id=str(pair["pair_id"]),
+        role=role,
+        source_evaluation_id=str(member["evaluation_id"]),
+        audit_point=point,
+        alpha_label=alpha_label,
+        baseline_schedule_sha256=str(member["baseline_schedule_sha256"]),
+        source_schedule_sha256=str(member["schedule_sha256"]),
+        audited_schedule_sha256=str(audit["audited_schedule_sha256"]),
+        load_scales_sha256=str(audit["load_scales_sha256"]),
+        formal_constraints=_FROZEN_FORMAL_CONSTRAINTS,
+    )
+    if audit.get("audit_input_sha256") != expected_input_hash:
+        _fail("audit input hash differs from the retained identity")
+
+    feasible = audit.get("feasible")
+    complete = audit.get("complete_coverage")
+    explicit = audit.get("explicit_physical_witness")
+    if not all(isinstance(value, bool) for value in (feasible, complete, explicit)):
+        _fail("audit feasibility flags must be boolean")
+    checked = _artifact_int(
+        audit.get("checked_intervals"), "audit checked intervals", minimum=1
+    )
+    converged = _artifact_int(audit.get("converged_checks"), "audit convergence")
+    nonconverged = _artifact_int(
+        audit.get("nonconverged_checks"), "audit nonconvergence"
+    )
+    numerical = _artifact_int(
+        audit.get("numerical_failure_checks"), "audit numerical failures"
+    )
+    physical = _artifact_int(
+        audit.get("physical_violation_checks"), "audit physical failures"
+    )
+    ratio = _artifact_number(audit.get("coverage_ratio"), "audit coverage ratio")
+    if (
+        checked > 96
+        or converged != checked
+        or nonconverged != 0
+        or numerical != 0
+        or complete is not (checked == 96)
+        or not math.isclose(ratio, checked / 96.0, rel_tol=0.0, abs_tol=1e-15)
+    ):
+        _fail("audit coverage or convergence counters are inconsistent")
+    selected = audit.get("selected_slot")
+    if selected is not None:
+        selected = _slot_mapping(selected, "selected audit evidence")
+        if set(selected) != {
+            "slot",
+            "constraint_rows",
+            "simultaneous_violations",
+        }:
+            _fail("selected audit evidence has unexpected fields")
+        _validate_constraint_rows_artifact(selected, audit_index=index)
+    _validate_coverage_artifact(
+        audit.get("coverage_counts"), "audit formal coverage"
+    )
+    for name in (
+        "vmin",
+        "vmax",
+        "vufmax",
+        "transformer_loading_max",
+        "feeder_loading_max",
+    ):
+        _artifact_number(audit.get(name), f"audit {name}")
+
+    if feasible:
+        structurally_valid = bool(
+            checked == 96
+            and complete is True
+            and physical == 0
+            and audit.get("failure_class") == "NONE"
+            and audit.get("first_failure_slot") is None
+            and explicit is False
+        )
+    else:
+        first_failure = _artifact_int(
+            audit.get("first_failure_slot"), "audit first failure slot"
+        )
+        structurally_valid = bool(
+            checked == first_failure + 1
+            and complete is False
+            and physical == 1
+            and audit.get("failure_class") == "PHYSICAL_CONSTRAINT"
+            and explicit is True
+            and isinstance(selected, Mapping)
+            and selected.get("slot") == first_failure
+            and bool(selected.get("simultaneous_violations"))
+        )
+    if not structurally_valid:
+        _fail("audit feasibility and physical witness evidence are inconsistent")
+    if index == 2:
+        if not feasible and not isinstance(selected, Mapping):
+            _fail("bad boundary audit lacks selected count-match evidence")
+    elif index == 3:
+        if not isinstance(selected, Mapping):
+            _fail("control boundary audit lacks selected count-match evidence")
+    elif selected is not None and not (index == 4 and not feasible):
+        _fail("audit retains detailed slot evidence outside the frozen scope")
+    expected_feasible = not (
+        role == "bad" and point in {"BOUNDARY_INFEASIBLE", "FULL_OFFER"}
+    )
+    return feasible is expected_feasible
+
+
+def validate_pair_artifact(
+    artifact: Mapping[str, Any],
+    pair: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> None:
+    """Strictly validate one immutable D1 terminal pair artifact."""
+
+    if not isinstance(artifact, Mapping):
+        _fail("pair artifact must be a mapping")
+    _validate_finite_tree(artifact, "pair artifact")
+    _assert_exact_tree(dict(config), _expected_config(), "mechanism config")
+    status = artifact.get("status")
+    if status not in {"SUCCESS", "STOP_IMPLEMENTATION", "UNHANDLED_FAILURE"}:
+        _fail("pair artifact status is not terminal")
+    expected_keys = set(_PAIR_COMMON_KEYS)
+    if status != "SUCCESS":
+        expected_keys.add("failure")
+    if set(artifact) != expected_keys:
+        _fail("pair artifact has unexpected or missing fields")
+    if (
+        artifact.get("protocol_version") != config["protocol_version"]
+        or artifact.get("pair_id") != pair.get("pair_id")
+        or artifact.get("scenario_cluster") != pair.get("scenario_cluster")
+    ):
+        _fail("pair identity differs from the frozen manifest")
+    if (
+        artifact.get("source_commit") != config["source_commit"]
+        or artifact.get("line_thermal_in_scope") is not False
+        or artifact.get("resource_policy") != config["resource_policy"]
+        or artifact.get("relative_stress") != relative_stress_evidence()
+    ):
+        _fail("pair provenance, resource policy, or scope differs")
+    bad, control = pair_members(pair)
+    if artifact.get("members") != {"bad": bad, "control": control}:
+        _fail("pair member identity differs from the frozen manifest")
+    audits = artifact.get("audits")
+    if not isinstance(audits, list) or not all(
+        isinstance(audit, Mapping) for audit in audits
+    ):
+        _fail("pair artifact audits must be a mapping list")
+    if status == "SUCCESS" and len(audits) != 6:
+        _fail("successful pair artifact must contain exactly six audits")
+    if status != "SUCCESS" and len(audits) > 6:
+        _fail("failure artifact exceeds the continuous audit prefix")
+
+    matches_expected: list[bool] = []
+    for index, audit in enumerate(audits):
+        if audit.get("sequence_index") != index:
+            _fail("failure artifact does not contain a continuous audit prefix")
+        matches_expected.append(
+            _validate_audit_artifact(
+                audit,
+                pair=pair,
+                config=config,
+                index=index,
+            )
+        )
+    if len(audits) >= 4:
+        bad_slot = audits[2].get("first_failure_slot")
+        control_selected = audits[3].get("selected_slot")
+        if (
+            not isinstance(bad_slot, int)
+            or isinstance(bad_slot, bool)
+            or not isinstance(control_selected, Mapping)
+            or control_selected.get("slot") != bad_slot
+        ):
+            _fail("control capture slot differs from the bad first failure slot")
+    if status == "SUCCESS":
+        if not all(matches_expected):
+            _fail("successful artifact contradicts a frozen audit rule")
+        return
+
+    failure = _slot_mapping(artifact.get("failure"), "terminal failure")
+    if status == "STOP_IMPLEMENTATION":
+        if set(failure) != {"kind", "rule_code", "detail", "sequence_index"}:
+            _fail("STOP_IMPLEMENTATION failure fields are invalid")
+        sequence_index = failure.get("sequence_index")
+        rule_code = failure.get("rule_code")
+        if (
+            not isinstance(rule_code, str)
+            or re.fullmatch(r"[A-Z][A-Z0-9_]*", rule_code) is None
+        ):
+            _fail("STOP_IMPLEMENTATION rule code is invalid")
+        if not isinstance(failure.get("detail"), str) or not failure.get("detail"):
+            _fail("STOP_IMPLEMENTATION detail must be nonempty")
+        if not audits and sequence_index is None:
+            if rule_code != "PRE_AUDIT_IMPLEMENTATION_INVALID":
+                _fail("pre-audit STOP_IMPLEMENTATION rule code is invalid")
+        elif sequence_index == len(audits):
+            if (
+                sequence_index >= len(_D1_AUDIT_SEQUENCE)
+                or any(not item for item in matches_expected)
+                or rule_code != "AUDIT_EVIDENCE_INVALID"
+            ):
+                _fail("STOP_IMPLEMENTATION has an invalid audit-stage prefix")
+        elif audits:
+            if (
+                sequence_index != len(audits) - 1
+                or any(not item for item in matches_expected[:-1])
+                or matches_expected[-1]
+                or rule_code != _STOP_RULE_BY_SEQUENCE[len(audits) - 1]
+            ):
+                _fail("STOP_IMPLEMENTATION is not the first failed frozen rule")
+        else:
+            _fail("STOP_IMPLEMENTATION does not identify a valid stop point")
+        if failure.get("kind") != "FROZEN_RULE_CONTRADICTION":
+            _fail("STOP_IMPLEMENTATION failure kind is invalid")
+    else:
+        if set(failure) != {"kind", "exception_type", "message", "sequence_index"}:
+            _fail("UNHANDLED_FAILURE fields are invalid")
+        if (
+            failure.get("kind") != "UNHANDLED_EXCEPTION"
+            or failure.get("sequence_index") != len(audits)
+            or any(not item for item in matches_expected)
+            or not isinstance(failure.get("exception_type"), str)
+            or not failure.get("exception_type")
+            or not isinstance(failure.get("message"), str)
+        ):
+            _fail("UNHANDLED_FAILURE is not a valid continuous audit prefix")
