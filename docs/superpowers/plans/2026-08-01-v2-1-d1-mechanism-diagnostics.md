@@ -577,7 +577,7 @@ If no review changes exist, do not create an empty commit. The clean current HEA
 
 - `results/mechanism_diagnostic_v2_1/pairs/pair_01.json` through `pair_12.json`
 
-- [ ] **Step 1: Re-run preflight immediately before production**
+- [x] **Step 1: Re-run preflight immediately before production**
 
 ```powershell
 python scripts/run_mechanism_diagnostic_v2_1.py --preflight-only
@@ -586,7 +586,7 @@ git status --short
 
 Require a clean code worktree and no D1 state files before the first run.
 
-- [ ] **Step 2: Run all pairs in manifest order**
+- [x] **Step 2: Run all pairs in manifest order**
 
 ```powershell
 python scripts/run_mechanism_diagnostic_v2_1.py
@@ -594,7 +594,7 @@ python scripts/run_mechanism_diagnostic_v2_1.py
 
 Run in the foreground with one process and one numeric thread. Do not launch another pair runner concurrently. A valid resume may skip already verified terminal pair files after an interruption.
 
-- [ ] **Step 3: Inspect terminal state without inferring from CPU activity**
+- [x] **Step 3: Inspect terminal state without inferring from CPU activity**
 
 ```powershell
 Get-ChildItem -LiteralPath 'results/mechanism_diagnostic_v2_1/pairs' -File | Select-Object Name,Length
@@ -602,6 +602,8 @@ Get-ChildItem -LiteralPath 'results/mechanism_diagnostic_v2_1' -Recurse -Force |
 ```
 
 Require exactly 12 `SUCCESS` pair JSON files for a completed diagnostic and no lock, attempt, or temporary state. If the runner stops earlier, require an ordered successful prefix followed by exactly one immutable `STOP_IMPLEMENTATION` or `UNHANDLED_FAILURE` terminal artifact and no later pair; preserve that evidence and do not broaden the run.
+
+**Production outcome (2026-08-01):** Preflight passed, then pair 01 produced the immutable terminal `STOP_IMPLEMENTATION` with rule `PRE_AUDIT_IMPLEMENTATION_INVALID` before any targeted audit. Pair 02--12 were not run, and no lock, attempt, or temporary file remained. This is the required stopped-prefix outcome, not a completed 12-pair scientific diagnostic.
 
 ## Task 9: Evaluate, independently review, and archive the D1 decision
 
@@ -612,7 +614,7 @@ Require exactly 12 `SUCCESS` pair JSON files for a completed diagnostic and no l
 - `reports/mechanism_diagnostic_v2_1.md`
 - `reports/mechanism_diagnostic_hashes_v2_1.csv`
 
-- [ ] **Step 1: Build the reports**
+- [x] **Step 1: Build the reports**
 
 ```powershell
 python scripts/evaluate_mechanism_diagnostic_v2_1.py
@@ -620,7 +622,7 @@ python scripts/evaluate_mechanism_diagnostic_v2_1.py
 
 An exit `1` with `STOP_IMPLEMENTATION` is a scientific/structural result to investigate; an exit `1` with `UNHANDLED_FAILURE` is an implementation/infrastructure failure to preserve and diagnose. Neither is permission to rewrite the gate.
 
-- [ ] **Step 2: Verify report reproducibility and old evidence immutability**
+- [x] **Step 2: Verify report reproducibility and old evidence immutability**
 
 ```powershell
 python scripts/evaluate_mechanism_diagnostic_v2_1.py --verify-existing
@@ -628,13 +630,13 @@ python scripts/evaluate_pilot_gate_v2_1.py --verify-existing
 (Get-FileHash -Algorithm SHA256 -LiteralPath 'src/evflex/pilot.py').Hash.ToLowerInvariant()
 ```
 
-- [ ] **Step 3: Run full tests once more**
+- [x] **Step 3: Run full tests once more**
 
 ```powershell
 python -m pytest -q -p no:faulthandler
 ```
 
-- [ ] **Step 4: Perform a separate read-only scientific review pass**
+- [x] **Step 4: Perform a separate read-only scientific review pass**
 
 The reviewer must reconcile the 12 source alphas, all 72 audit rows, 12 bad brackets, 12 bad full-offer witnesses, 36 feasible control audits, simultaneous violation families, scenario-cluster coverage, exact count fractions, and relative-stress limitation. The reviewer must distinguish:
 
@@ -643,7 +645,9 @@ The reviewer must reconcile the 12 source alphas, all 72 audit rows, 12 bad brac
 - fixed-schedule transfer failure from redispatch infeasibility;
 - D1 completion from permission for formal V2.1.
 
-- [ ] **Step 5: Commit only verified generated evidence**
+Because the valid terminal prefix contains 0/72 targeted audits, the requested 12-pair physical reconciliation is unavailable rather than silently inferred. The separate review records the exact implementation-contract root cause and concludes that no mechanism family, count effect, or feeder-causal claim can be evaluated from this D1 run.
+
+- [x] **Step 5: Commit only verified generated evidence**
 
 ```powershell
 git add results/mechanism_diagnostic_v2_1 reports/mechanism_diagnostic_audits_v2_1.csv reports/mechanism_diagnostic_v2_1.json reports/mechanism_diagnostic_v2_1.md reports/mechanism_diagnostic_hashes_v2_1.csv
@@ -654,7 +658,7 @@ git status --short
 
 Do not commit lock, attempt, temporary, cache, or environment files.
 
-- [ ] **Step 6: Apply the frozen decision boundary**
+- [x] **Step 6: Apply the frozen decision boundary**
 
 - `STOP_IMPLEMENTATION`: stop, preserve evidence, diagnose the exact contradiction, and do not start formal V2.1.
 - `VALID_HETEROGENEOUS`: retain the narrowed research question, report heterogeneous explicit witnesses, and decide separately whether any small confirmation design is worthwhile.
