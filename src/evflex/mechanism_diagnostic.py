@@ -994,6 +994,176 @@ def _slot_mapping(value: Any, label: str) -> Mapping[str, Any]:
     return value
 
 
+def _d1_nonnegative_integer(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(number) or number < 0 or not number.is_integer():
+        return None
+    return int(number)
+
+
+def _d1_is_finite_number(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
+def _d1_formal_coverage_is_complete(
+    coverage: Mapping[str, Any], metrics: Mapping[str, Any]
+) -> bool:
+    if not all(isinstance(name, str) for name in metrics):
+        return False
+    count_names = (
+        "all_bus_count",
+        "monitored_bus_count",
+        "energized_voltage_node_count",
+        "monitored_voltage_node_count",
+        "three_phase_bus_count",
+        "monitored_vuf_bus_count",
+        "enabled_transformer_count",
+        "rated_transformer_count",
+        "line_count",
+    )
+    counts = {
+        name: _d1_nonnegative_integer(coverage.get(name)) for name in count_names
+    }
+    if any(value is None for value in counts.values()):
+        return False
+    voltage_metrics = [name for name in metrics if name.startswith("V:")]
+    vuf_metrics = [name for name in metrics if name.startswith("U:")]
+    transformer_metrics = [
+        name for name in metrics if name.startswith("S:transformer:")
+    ]
+    ratings = coverage.get("transformer_ratings_kva")
+    raw_ratings = coverage.get("transformer_raw_ratings_kva")
+    if not isinstance(ratings, Mapping) or not isinstance(raw_ratings, Mapping):
+        return False
+    if not all(
+        isinstance(name, str)
+        and _d1_is_finite_number(rating)
+        and float(rating) > 0.0
+        for name, rating in ratings.items()
+    ) or not all(
+        isinstance(name, str)
+        and _d1_is_finite_number(rating)
+        and float(rating) > 0.0
+        for name, rating in raw_ratings.items()
+    ):
+        return False
+    transformer_metric_names = {
+        name.removeprefix("S:transformer:").lower()
+        for name in transformer_metrics
+    }
+    transformer_rating_names = {str(name).lower() for name in ratings}
+    try:
+        transformer_rating_coverage = float(
+            coverage["transformer_rating_coverage"]
+        )
+        feeder_rating_multiplier = float(coverage["feeder_rating_multiplier"])
+        transformer_rating_multiplier = float(
+            coverage["transformer_rating_multiplier"]
+        )
+        normalized_ratings_match = all(
+            math.isclose(
+                float(ratings[name]),
+                float(raw_ratings[name]) * transformer_rating_multiplier,
+                rel_tol=1e-12,
+                abs_tol=1e-12,
+            )
+            for name in ratings
+        )
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+    expected_rating_basis = (
+        "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
+        if transformer_rating_multiplier == 3.0
+        else "NATIVE_SYSTEM_TOTAL_KVA"
+    )
+    rating_basis_valid = bool(
+        transformer_rating_multiplier in {1.0, 3.0}
+        and coverage.get("transformer_rating_basis") == expected_rating_basis
+        and coverage.get("transformer_power_basis")
+        == "SYSTEM_TOTAL_TERMINAL_POWER"
+        and {str(name).lower() for name in raw_ratings}
+        == transformer_rating_names
+        and normalized_ratings_match
+    )
+    return bool(
+        counts["all_bus_count"] > 0
+        and counts["all_bus_count"] == counts["monitored_bus_count"]
+        and counts["energized_voltage_node_count"] > 0
+        and counts["energized_voltage_node_count"]
+        == counts["monitored_voltage_node_count"]
+        == len(voltage_metrics)
+        and counts["three_phase_bus_count"]
+        == counts["monitored_vuf_bus_count"]
+        == len(vuf_metrics)
+        and counts["enabled_transformer_count"]
+        == counts["rated_transformer_count"]
+        == len(transformer_metrics)
+        == len(ratings)
+        and transformer_metric_names == transformer_rating_names
+        and rating_basis_valid
+        and math.isfinite(transformer_rating_coverage)
+        and transformer_rating_coverage == 1.0
+        and coverage.get("line_thermal_in_scope") is False
+        and math.isfinite(feeder_rating_multiplier)
+        and feeder_rating_multiplier == 1.0
+        and "S:feeder" in metrics
+    )
+
+
+def _d1_formal_summary_matches_metrics(
+    raw: Mapping[str, Any], metrics: Mapping[str, Any]
+) -> bool:
+    if not all(isinstance(name, str) for name in metrics):
+        return False
+    try:
+        voltage_values = [
+            float(value)
+            for name, value in metrics.items()
+            if name.startswith("V:")
+        ]
+        vuf_values = [
+            float(value)
+            for name, value in metrics.items()
+            if name.startswith("U:")
+        ]
+        transformer_values = [
+            float(value)
+            for name, value in metrics.items()
+            if name.startswith("S:transformer:")
+        ]
+        if not voltage_values or "S:feeder" not in metrics:
+            return False
+        expected = {
+            "vmin": min(voltage_values),
+            "vmax": max(voltage_values),
+            "vufmax": max(vuf_values, default=0.0),
+            "transformer_loading_max": max(transformer_values, default=0.0),
+            "feeder_loading": float(metrics["S:feeder"]),
+        }
+        return all(
+            _d1_is_finite_number(raw.get(name))
+            and math.isclose(
+                float(raw[name]),
+                value,
+                rel_tol=1e-12,
+                abs_tol=1e-12,
+            )
+            for name, value in expected.items()
+        )
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+
+
 def _validated_slot_payload(
     slot_result: Mapping[str, Any],
 ) -> tuple[
@@ -1063,20 +1233,8 @@ def _validated_slot_payload(
         _fail("slot feasibility must be boolean")
     if not isinstance(result.get("violations"), list):
         _fail("slot violations must be a list")
-    try:
-        from evflex import pilot as frozen_pilot
-
-        coverage_valid = frozen_pilot._formal_coverage_is_complete(
-            coverage, metrics
-        )
-        summary_valid = frozen_pilot._formal_summary_matches_metrics(
-            result, metrics
-        )
-    except Exception as exc:
-        _fail(
-            "formal metric coverage validation failed "
-            f"({type(exc).__name__}: {exc})"
-        )
+    coverage_valid = _d1_formal_coverage_is_complete(coverage, metrics)
+    summary_valid = _d1_formal_summary_matches_metrics(result, metrics)
     if not coverage_valid or not summary_valid:
         _fail("formal metric coverage is incomplete or inconsistent")
     return slot, context, coverage, result, metrics

@@ -1444,6 +1444,28 @@ def test_compactor_validates_early_stop_and_96_slot_feasible_coverage() -> None:
     assert compact["selected_slot"]["slot"] == 42
 
 
+def test_compactor_does_not_call_unlisted_pilot_validation_helpers() -> None:
+    source = (REPO_ROOT / "src" / "evflex" / "mechanism_diagnostic.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "frozen_pilot._formal_coverage_is_complete" not in source
+    assert "frozen_pilot._formal_summary_matches_metrics" not in source
+
+
+def test_compactor_rejects_nonstring_metric_label_as_controlled_error() -> None:
+    invalid = _raw_audit([_slot_result(0)])
+    invalid["slot_results"][0]["result"]["metrics"][1] = 1.0
+
+    with pytest.raises(ValueError, match="formal metric coverage"):
+        compact_targeted_audit(
+            invalid,
+            audit_point="BOUNDARY_INFEASIBLE",
+            alpha=0.942,
+            capture_slot=0,
+        )
+
+
 def test_compactor_rejects_aggregate_witness_or_constraint_drift() -> None:
     valid = _raw_audit(
         [

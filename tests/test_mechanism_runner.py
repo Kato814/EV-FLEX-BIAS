@@ -408,6 +408,56 @@ def test_runner_resumes_only_strictly_valid_completed_pair(tmp_path: Path) -> No
     assert result.read_bytes() == before
 
 
+def test_pair_id_requires_a_complete_success_prefix(tmp_path: Path) -> None:
+    runner = _load_runner()
+    config, pairs = _config_and_pairs()
+
+    with pytest.raises(ValueError, match="preceding SUCCESS prefix"):
+        runner.run_diagnostic(
+            tmp_path,
+            pair_id="02",
+            config=config,
+            pairs=pairs[:2],
+            execute_fn=lambda *_: _success_artifact(pairs[1], config),
+            preflight=False,
+        )
+
+    first = tmp_path / config["artifact_names"]["pair_artifact_pattern"].format(
+        pair_id="01"
+    )
+    first.parent.mkdir(parents=True, exist_ok=True)
+    first.write_text(
+        json.dumps(_success_artifact(pairs[0], config), allow_nan=False),
+        encoding="utf-8",
+    )
+    summary = runner.run_diagnostic(
+        tmp_path,
+        pair_id="02",
+        config=config,
+        pairs=pairs[:2],
+        execute_fn=lambda *_: _success_artifact(pairs[1], config),
+        preflight=False,
+    )
+    assert summary["status"] == "SUCCESS"
+    assert summary["completed_pair_ids"] == ["02"]
+
+
+def test_runner_rejects_noncontinuous_existing_pair_inventory(tmp_path: Path) -> None:
+    runner = _load_runner()
+    config, pairs = _config_and_pairs()
+    second = tmp_path / config["artifact_names"]["pair_artifact_pattern"].format(
+        pair_id="02"
+    )
+    second.parent.mkdir(parents=True, exist_ok=True)
+    second.write_text(
+        json.dumps(_success_artifact(pairs[1], config), allow_nan=False),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="continuous terminal prefix"):
+        runner.validate_runtime_inventory(tmp_path, config, pairs[:2])
+
+
 def test_runner_stops_on_invalid_existing_pair_lock_attempt_or_tmp(
     tmp_path: Path,
 ) -> None:
@@ -572,3 +622,26 @@ def test_runner_preserves_completed_prefix_from_controlled_audit_stop(
     payload = strict_json_file(result)
     assert len(payload["audits"]) == 2
     assert payload["failure"]["sequence_index"] == 2
+
+
+def test_runner_main_emits_strict_json_on_preflight_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner = _load_runner()
+
+    def fail_preflight(_root: Path) -> tuple[dict[str, object], list[object]]:
+        raise ValueError("frozen source drift")
+
+    runner.preflight = fail_preflight
+    exit_code = runner.main(["--preflight-only"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 1
+    assert captured.err == ""
+    assert payload == {
+        "detail": "frozen source drift",
+        "error_type": "ValueError",
+        "formal_v2_1_run_started": False,
+        "status": "RUNNER_ERROR",
+    }

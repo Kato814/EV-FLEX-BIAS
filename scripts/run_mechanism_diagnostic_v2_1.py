@@ -155,6 +155,28 @@ def validate_runtime_inventory(
             if path.is_file() and ".tmp" in path.name:
                 raise ValueError(f"D1 temporary file requires inspection: {path}")
 
+    missing_seen = False
+    failure_seen = False
+    for pair in pairs:
+        pair_id = str(pair["pair_id"])
+        path = _pair_path(root, config, pair_id)
+        if not path.is_file():
+            missing_seen = True
+            continue
+        if missing_seen or failure_seen:
+            raise ValueError(
+                "existing D1 pair files are not a continuous terminal prefix"
+            )
+        try:
+            payload = strict_json_file(path)
+            validate_pair_artifact(payload, pair, config)
+        except ValueError as exc:
+            raise ValueError(
+                f"invalid existing pair artifact will not be overwritten: {path}: {exc}"
+            ) from exc
+        if payload["status"] != "SUCCESS":
+            failure_seen = True
+
     for name in ("audit_csv", "report_json", "report_markdown", "hashes_csv"):
         report = _rooted(root, config["artifact_names"][name])
         if report.parent.exists():
@@ -305,8 +327,11 @@ def run_diagnostic(
         selected = [pair for pair in loaded_pairs if pair.get("pair_id") == pair_id]
         if len(selected) != 1:
             raise ValueError(f"unknown or duplicate D1 pair ID: {pair_id}")
+        selected_index = loaded_pairs.index(selected[0])
+        predecessors = loaded_pairs[:selected_index]
     else:
         selected = loaded_pairs
+        predecessors = []
     compute = execute_fn or execute_pair
     if not callable(compute):
         raise ValueError("D1 execute function must be callable")
@@ -315,6 +340,19 @@ def run_diagnostic(
     skipped: list[str] = []
     lock = _rooted(root, loaded_config["artifact_names"]["run_lock"])
     with exclusive_lock(lock):
+        for predecessor in predecessors:
+            predecessor_id = str(predecessor["pair_id"])
+            existing = _existing_terminal(
+                _pair_path(root, loaded_config, predecessor_id),
+                predecessor,
+                loaded_config,
+            )
+            if existing is None or existing["status"] != "SUCCESS":
+                raise ValueError(
+                    f"D1 pair {pair_id} requires a preceding SUCCESS prefix; "
+                    f"pair {predecessor_id} is not SUCCESS"
+                )
+            skipped.append(predecessor_id)
         for pair in selected:
             current_id = str(pair["pair_id"])
             result_path = _pair_path(root, loaded_config, current_id)
@@ -381,19 +419,36 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--pair-id")
     args = parser.parse_args(argv)
-    if args.preflight_only:
-        config, pairs = preflight(args.repo_root)
+    try:
+        if args.preflight_only:
+            config, pairs = preflight(args.repo_root)
+            summary = {
+                "status": "PREFLIGHT_OK",
+                "pair_count": len(pairs),
+                "protocol_version": config["protocol_version"],
+                "formal_v2_1_run_started": False,
+            }
+            exit_code = 0
+        else:
+            summary = run_diagnostic(args.repo_root, pair_id=args.pair_id)
+            exit_code = 0 if summary["status"] == "SUCCESS" else 1
+    except Exception as exc:
         summary = {
-            "status": "PREFLIGHT_OK",
-            "pair_count": len(pairs),
-            "protocol_version": config["protocol_version"],
+            "status": "RUNNER_ERROR",
+            "error_type": type(exc).__name__,
+            "detail": str(exc),
             "formal_v2_1_run_started": False,
         }
-        print(json.dumps(summary, sort_keys=True, ensure_ascii=False))
-        return 0
-    summary = run_diagnostic(args.repo_root, pair_id=args.pair_id)
-    print(json.dumps(summary, sort_keys=True, ensure_ascii=False))
-    return 0 if summary["status"] == "SUCCESS" else 1
+        exit_code = 1
+    print(
+        json.dumps(
+            summary,
+            sort_keys=True,
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+    )
+    return exit_code
 
 
 if __name__ == "__main__":

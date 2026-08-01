@@ -519,19 +519,19 @@ git commit -m "feat: evaluate D1 mechanism gate"
 
 - Modify only files identified by review findings
 
-- [ ] **Step 1: Run focused D1 tests**
+- [x] **Step 1: Run focused D1 tests**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py tests/test_mechanism_runner.py tests/test_mechanism_evaluator.py -q -p no:faulthandler
 ```
 
-- [ ] **Step 2: Run the complete suite with low resources**
+- [x] **Step 2: Run the complete suite with low resources**
 
 ```powershell
 python -m pytest -q -p no:faulthandler
 ```
 
-- [ ] **Step 3: Run immutable regressions and preflight**
+- [x] **Step 3: Run immutable regressions and preflight**
 
 ```powershell
 (Get-FileHash -Algorithm SHA256 -LiteralPath 'src/evflex/pilot.py').Hash.ToLowerInvariant()
@@ -544,7 +544,7 @@ git status --short
 
 Expected: frozen hash; old verifier passes; D1 preflight passes without writes; no unexpected changes.
 
-- [ ] **Step 4: Perform separate specification and code-quality review passes**
+- [x] **Step 4: Perform separate specification and code-quality review passes**
 
 Reviewers must verify:
 
@@ -555,11 +555,11 @@ Reviewers must verify:
 - exact rational count thresholds and conservative language;
 - strict resume, atomic write, and read-only verification behavior.
 
-- [ ] **Step 5: Address findings test-first and rerun Steps 1-3**
+- [x] **Step 5: Address findings test-first and rerun Steps 1-3**
 
 Every behavior fix gets a reproducing failing test first. Documentation-only corrections still run `git diff --check` and relevant tests.
 
-- [ ] **Step 6: Commit final reviewed code and record the clean HEAD**
+- [x] **Step 6: Commit final reviewed code and record the clean HEAD**
 
 ```powershell
 git add config manifests src scripts tests docs

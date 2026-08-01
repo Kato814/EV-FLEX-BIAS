@@ -78,6 +78,13 @@ _AUDIT_COLUMNS = (
     "audit_input_sha256",
 )
 _HASH_COLUMNS = ("pair_id", "status", "path", "sha256")
+_D1_CODE_PATHS = (
+    "config/mechanism_diagnostic_v2_1.json",
+    "manifests/mechanism_diagnostic_pairs_v2_1.csv",
+    "src/evflex/mechanism_diagnostic.py",
+    "scripts/run_mechanism_diagnostic_v2_1.py",
+    "scripts/evaluate_mechanism_diagnostic_v2_1.py",
+)
 
 
 def _rooted(repo_root: Path, relative: str) -> Path:
@@ -104,6 +111,35 @@ def _output_paths(
         key: _rooted(root, str(config["artifact_names"][key]))
         for key in _OUTPUT_KEYS
     }
+
+
+def _resolve_d1_code_commit(
+    root: Path,
+    *,
+    subprocess_runner: Callable[..., Any] = subprocess.run,
+) -> str:
+    revision = subprocess_runner(
+        [
+            "git",
+            "log",
+            "-1",
+            "--format=%H",
+            "--",
+            *_D1_CODE_PATHS,
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    commit = revision.stdout.strip().lower()
+    if (
+        revision.returncode != 0
+        or len(commit) != 40
+        or any(character not in "0123456789abcdef" for character in commit)
+    ):
+        raise ValueError("could not resolve the D1 production code commit")
+    return commit
 
 
 def verify_evaluator_integrity(
@@ -135,12 +171,37 @@ def verify_evaluator_integrity(
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "no verifier output").strip()
         raise ValueError(f"archived pilot verifier failed: {detail}")
+    status = subprocess_runner(
+        ["git", "status", "--porcelain", "--", *_D1_CODE_PATHS],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if status.returncode != 0:
+        raise ValueError("could not inspect D1 production code worktree state")
+    if status.stdout.strip():
+        raise ValueError("D1 production code paths have uncommitted changes")
+    commit = _resolve_d1_code_commit(
+        root, subprocess_runner=subprocess_runner
+    )
+    code_hashes: dict[str, str] = {}
+    for relative in _D1_CODE_PATHS:
+        path = _rooted(root, relative)
+        if not path.is_file():
+            raise ValueError(f"D1 production code path is missing: {relative}")
+        code_hashes[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
     pilot_path = _rooted(root, str(config["pilot_py"]["path"]))
     return {
         "frozen_sources_verified": True,
         "archived_pilot_verified": True,
         "source_commit": config["source_commit"],
         "pilot_py_sha256": hashlib.sha256(pilot_path.read_bytes()).hexdigest(),
+        "code_provenance": {
+            "d1_code_commit": commit,
+            "d1_code_paths_clean": True,
+            "file_sha256": code_hashes,
+        },
     }
 
 
@@ -463,7 +524,12 @@ def _build_artifacts(
         "resource_policy": deepcopy(config["resource_policy"]),
         "source_commit": config["source_commit"],
         "pilot_py_sha256": config["pilot_py"]["sha256"],
-        "source_integrity": deepcopy(dict(integrity)),
+        "source_integrity": {
+            key: deepcopy(value)
+            for key, value in integrity.items()
+            if key != "code_provenance"
+        },
+        "code_provenance": deepcopy(integrity["code_provenance"]),
     }
     hash_rows = _hash_rows(root, config, terminal)
     artifacts = {
@@ -535,9 +601,35 @@ def evaluate_mechanism_diagnostic(
     validate_evaluator_inventory(root, loaded_config, loaded_pairs)
     verifier = verify_evaluator_integrity if integrity_verifier is None else integrity_verifier
     integrity = dict(verifier(root, loaded_config))
+    code_provenance = integrity.get("code_provenance")
+    code_commit = (
+        code_provenance.get("d1_code_commit")
+        if isinstance(code_provenance, Mapping)
+        else None
+    )
+    code_hashes = (
+        code_provenance.get("file_sha256")
+        if isinstance(code_provenance, Mapping)
+        else None
+    )
     if (
         integrity.get("frozen_sources_verified") is not True
         or integrity.get("archived_pilot_verified") is not True
+        or not isinstance(code_provenance, Mapping)
+        or code_provenance.get("d1_code_paths_clean") is not True
+        or not isinstance(code_commit, str)
+        or len(code_commit) != 40
+        or any(
+            character not in "0123456789abcdef" for character in code_commit
+        )
+        or not isinstance(code_hashes, Mapping)
+        or not code_hashes
+        or any(
+            not isinstance(value, str)
+            or len(value) != 64
+            or any(character not in "0123456789abcdef" for character in value)
+            for value in code_hashes.values()
+        )
     ):
         raise ValueError("D1 evaluator source integrity was not verified")
     artifacts, report, valid_decision = _build_artifacts(

@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from types import ModuleType
 
 import pytest
@@ -86,6 +87,13 @@ def _verified_integrity(
     return {
         "frozen_sources_verified": True,
         "archived_pilot_verified": True,
+        "code_provenance": {
+            "d1_code_commit": "a" * 40,
+            "d1_code_paths_clean": True,
+            "file_sha256": {
+                "src/evflex/mechanism_diagnostic.py": "b" * 64,
+            },
+        },
     }
 
 
@@ -238,6 +246,51 @@ def test_evaluator_hash_csv_covers_all_pair_artifacts(tmp_path: Path) -> None:
     for row in rows:
         pair_path = _pair_path(tmp_path, config, row["pair_id"])
         assert row["sha256"] == hashlib.sha256(pair_path.read_bytes()).hexdigest()
+
+
+def test_evaluator_report_records_clean_d1_code_provenance(tmp_path: Path) -> None:
+    evaluator = _load_evaluator()
+    config, pairs = _inputs()
+    _write_success_pairs(tmp_path, config, pairs)
+
+    _evaluate(evaluator, tmp_path, config, pairs)
+    report = strict_json_file(_report_path(tmp_path, config, "report_json"))
+
+    assert report["code_provenance"] == {
+        "d1_code_commit": "a" * 40,
+        "d1_code_paths_clean": True,
+        "file_sha256": {
+            "src/evflex/mechanism_diagnostic.py": "b" * 64,
+        },
+    }
+
+
+def test_code_provenance_uses_last_code_change_not_current_head(
+    tmp_path: Path,
+) -> None:
+    evaluator = _load_evaluator()
+    calls: list[list[str]] = []
+
+    def fake_subprocess(args: list[str], **_kwargs: object) -> SimpleNamespace:
+        calls.append(args)
+        return SimpleNamespace(returncode=0, stdout="c" * 40 + "\n", stderr="")
+
+    commit = evaluator._resolve_d1_code_commit(
+        tmp_path,
+        subprocess_runner=fake_subprocess,
+    )
+
+    assert commit == "c" * 40
+    assert calls == [
+        [
+            "git",
+            "log",
+            "-1",
+            "--format=%H",
+            "--",
+            *evaluator._D1_CODE_PATHS,
+        ]
+    ]
 
 
 def test_verify_existing_is_read_only_and_detects_byte_tampering(
