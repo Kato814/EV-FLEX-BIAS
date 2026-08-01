@@ -169,6 +169,7 @@ New artifacts use only these roots:
 - `config/mechanism_diagnostic_v2_1.json`
 - `manifests/mechanism_diagnostic_pairs_v2_1.csv`
 - `results/mechanism_diagnostic_v2_1/`
+- `reports/mechanism_diagnostic_audits_v2_1.csv`
 - `reports/mechanism_diagnostic_v2_1.json`
 - `reports/mechanism_diagnostic_v2_1.md`
 - `reports/mechanism_diagnostic_hashes_v2_1.csv`
@@ -199,7 +200,7 @@ The evaluator is read-only with respect to pair artifacts and supports `--verify
 
 `scripts/run_mechanism_diagnostic_v2_1.py` performs preflight, reconstructs and verifies frozen schedules, runs sequential targeted audits, and writes one terminal JSON per pair using D1-specific atomic and resume validation. It must not reuse the archived runner's three-evaluation/single-ablation expected-ID rule.
 
-`scripts/evaluate_mechanism_diagnostic_v2_1.py` strictly loads D1 pair artifacts, produces deterministic CSV/JSON/Chinese Markdown reports, and implements `--verify-existing`.
+`scripts/evaluate_mechanism_diagnostic_v2_1.py` strictly loads D1 pair artifacts, produces a deterministic 72-row audit CSV plus JSON and Chinese Markdown reports, and implements `--verify-existing`.
 
 ### Tests
 
