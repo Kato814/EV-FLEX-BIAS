@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from copy import deepcopy
+from decimal import Decimal
 from pathlib import Path
 from types import ModuleType
 
@@ -118,10 +119,12 @@ def _selected(*, physical: bool) -> dict[str, object]:
 
 
 def _alpha(pair: dict[str, object], config: dict[str, object], point: str) -> float:
+    base = Decimal(str(pair["bad_alpha_transfer"]))
+    delta = Decimal(str(config["audit"]["delta"]))
     if point == "BOUNDARY_FEASIBLE":
-        return float(pair["bad_alpha_transfer"])
+        return float(base)
     if point == "BOUNDARY_INFEASIBLE":
-        return float(pair["bad_alpha_transfer"]) + float(config["audit"]["delta"])
+        return float(base + delta)
     return 1.0
 
 

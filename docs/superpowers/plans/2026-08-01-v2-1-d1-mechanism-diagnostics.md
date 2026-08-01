@@ -448,7 +448,7 @@ git commit -m "feat: add resumable D1 diagnostic runner"
 - Create: `tests/test_mechanism_evaluator.py`
 - Modify: `tests/test_mechanism_diagnostic.py`
 
-- [ ] **Step 1: Write failing gate tests**
+- [x] **Step 1: Write failing gate tests**
 
 Add tests named:
 
@@ -460,7 +460,7 @@ Add tests named:
 
 The structural gate must require all 11 conditions in the design. A qualifying common family can produce only `COMMON_CANDIDATE_CONFOUNDED`, because the frozen relative-stress confound is unresolved. Neither successful branch may alter the archived pilot `NO_GO` or authorize formal V2.1.
 
-- [ ] **Step 2: Write failing evaluator tests**
+- [x] **Step 2: Write failing evaluator tests**
 
 Add tests named:
 
@@ -473,13 +473,13 @@ Add tests named:
 
 The Chinese Markdown assertions must include the fixed-schedule evidence boundary, `line_thermal_in_scope=false`, the unresolved relative-stress confound, candidate families or heterogeneous result, the unchanged pilot NO_GO, and an explicit statement that D1 does not authorize formal V2.1. They must also say that IEEE13 is only a time/direction/duration-matched design-unit control rather than a causal match, four groups are scenario clusters rather than independent repetitions, and count matching is only detection sensitivity after matching object counts and neither proves nor excludes a count effect. A failure-prefix report must state that D1 did not complete.
 
-- [ ] **Step 3: Confirm RED**
+- [x] **Step 3: Confirm RED**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py tests/test_mechanism_evaluator.py -k 'gate or evaluator or verify_existing' -q -p no:faulthandler
 ```
 
-- [ ] **Step 4: Implement aggregation and deterministic reports**
+- [x] **Step 4: Implement aggregation and deterministic reports**
 
 Add:
 
@@ -499,13 +499,13 @@ The evaluator strictly reads the terminal pair files. Twelve `SUCCESS` files are
 
 Use canonical UTF-8, `\n` line endings, stable key/row ordering, finite-only JSON, and atomic writes. A failure JSON lists all missing pair IDs and cannot carry a valid classification. Normal evaluation returns exit `0` for either structurally valid diagnostic classification and exit `1` for `STOP_IMPLEMENTATION`, `UNHANDLED_FAILURE`, or artifact invalidity. `--verify-existing` rebuilds the same success or failure-mode artifact set in memory or a system temporary directory and compares without writing any workspace file; verification returns exit `0` when existing bytes and inventory reproduce exactly even if their terminal decision is `STOP_IMPLEMENTATION` or `UNHANDLED_FAILURE`, and exit `1` only for verification/integrity failure.
 
-- [ ] **Step 5: Confirm GREEN**
+- [x] **Step 5: Confirm GREEN**
 
 ```powershell
 python -m pytest tests/test_mechanism_diagnostic.py tests/test_mechanism_evaluator.py -k 'gate or evaluator or verify_existing' -q -p no:faulthandler
 ```
 
-- [ ] **Step 6: Commit Task 6**
+- [x] **Step 6: Commit Task 6**
 
 ```powershell
 git add src/evflex/mechanism_diagnostic.py scripts/evaluate_mechanism_diagnostic_v2_1.py tests/test_mechanism_diagnostic.py tests/test_mechanism_evaluator.py

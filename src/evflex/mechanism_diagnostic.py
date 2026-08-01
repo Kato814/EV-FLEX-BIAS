@@ -1888,6 +1888,397 @@ def candidate_families(
     return output
 
 
+_GATE_CHECK_CODES = (
+    "PAIR_AND_SOURCE_COUNTS",
+    "FROZEN_IDENTITY_AND_PROTOCOL",
+    "BAD_BOUNDARY_FEASIBLE",
+    "BAD_BOUNDARY_INFEASIBLE",
+    "BAD_FULL_OFFER_INFEASIBLE",
+    "BAD_NUMERICAL_FAILURES_ZERO",
+    "CONTROLS_FEASIBLE",
+    "VIOLATION_ROWS_VALID",
+    "COVERAGE_AND_EARLY_STOP_VALID",
+    "INTEGRITY_AND_PROVENANCE_VALID",
+    "FROZEN_PILOT_AND_ARCHIVE_IDENTITY",
+)
+
+
+def _gate_audits(
+    artifact: Mapping[str, Any],
+) -> list[Mapping[str, Any]] | None:
+    audits = artifact.get("audits")
+    if not isinstance(audits, list) or len(audits) != 6:
+        return None
+    if not all(isinstance(audit, Mapping) for audit in audits):
+        return None
+    for index, audit in enumerate(audits):
+        point, role = _D1_AUDIT_SEQUENCE[index]
+        if (
+            audit.get("sequence_index") != index
+            or audit.get("audit_point") != point
+            or audit.get("role") != role
+        ):
+            return None
+    return audits
+
+
+def _gate_complete_feasible(audit: Mapping[str, Any]) -> bool:
+    return bool(
+        audit.get("feasible") is True
+        and audit.get("checked_intervals") == 96
+        and audit.get("complete_coverage") is True
+        and audit.get("numerical_failure_checks") == 0
+        and audit.get("physical_violation_checks") == 0
+        and audit.get("failure_class") == "NONE"
+        and audit.get("first_failure_slot") is None
+        and audit.get("explicit_physical_witness") is False
+    )
+
+
+def _gate_physical_failure(audit: Mapping[str, Any]) -> bool:
+    first = audit.get("first_failure_slot")
+    selected = audit.get("selected_slot")
+    return bool(
+        audit.get("feasible") is False
+        and isinstance(first, int)
+        and not isinstance(first, bool)
+        and 0 <= first < 96
+        and audit.get("checked_intervals") == first + 1
+        and audit.get("complete_coverage") is False
+        and audit.get("numerical_failure_checks") == 0
+        and audit.get("physical_violation_checks") == 1
+        and audit.get("failure_class") == "PHYSICAL_CONSTRAINT"
+        and audit.get("explicit_physical_witness") is True
+        and isinstance(selected, Mapping)
+        and selected.get("slot") == first
+        and bool(selected.get("simultaneous_violations"))
+    )
+
+
+def _gate_selected_rows_valid(audit: Mapping[str, Any]) -> bool:
+    selected = audit.get("selected_slot")
+    if selected is None:
+        return True
+    if not isinstance(selected, Mapping):
+        return False
+    slot = selected.get("slot")
+    rows = selected.get("constraint_rows")
+    simultaneous = selected.get("simultaneous_violations")
+    if (
+        isinstance(slot, bool)
+        or not isinstance(slot, int)
+        or not 0 <= slot < 96
+        or not isinstance(rows, list)
+        or not isinstance(simultaneous, list)
+        or not all(isinstance(row, Mapping) for row in simultaneous)
+    ):
+        return False
+    physical: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    family_positions = {
+        family: index for index, family in enumerate(_CONSTRAINT_FAMILY_ORDER)
+    }
+    previous: tuple[int, str, str] | None = None
+    for raw in rows:
+        if not isinstance(raw, Mapping):
+            return False
+        family = raw.get("constraint_family")
+        metric_id = raw.get("metric_id")
+        object_id = raw.get("object_id")
+        direction = raw.get("direction")
+        marker = raw.get("is_physical_violation")
+        if (
+            raw.get("slot") != slot
+            or family not in family_positions
+            or not isinstance(metric_id, str)
+            or not metric_id
+            or not isinstance(object_id, str)
+            or not object_id
+            or direction not in {"lo", "hi"}
+            or not isinstance(marker, bool)
+        ):
+            return False
+        key = (str(family), object_id)
+        if key in seen:
+            return False
+        seen.add(key)
+        order = (family_positions[str(family)], metric_id, str(direction))
+        if previous is not None and order < previous:
+            return False
+        previous = order
+        try:
+            if any(
+                isinstance(raw.get(name), bool)
+                for name in ("value", "limit", "signed_headroom", "exceedance")
+            ):
+                return False
+            value = float(raw.get("value"))
+            limit = float(raw.get("limit"))
+            headroom = float(raw.get("signed_headroom"))
+            exceedance = float(raw.get("exceedance"))
+        except (TypeError, ValueError):
+            return False
+        if not all(math.isfinite(item) for item in (value, limit, headroom, exceedance)):
+            return False
+        expected_direction = "lo" if family == "VMIN" else "hi"
+        expected_limit = {
+            "VMIN": _FROZEN_FORMAL_CONSTRAINTS["vmin_pu"],
+            "VMAX": _FROZEN_FORMAL_CONSTRAINTS["vmax_pu"],
+            "VUF": _FROZEN_FORMAL_CONSTRAINTS["vuf_limit_pct"],
+            "TRANSFORMER": _FROZEN_FORMAL_CONSTRAINTS[
+                "transformer_loading_limit_pu"
+            ],
+            "FEEDER": _FROZEN_FORMAL_CONSTRAINTS[
+                "feeder_loading_limit_pu"
+            ],
+        }[str(family)]
+        prefix_valid = bool(
+            (family in {"VMIN", "VMAX"} and metric_id == f"V:{object_id}")
+            or (family == "VUF" and metric_id == f"U:{object_id}")
+            or (
+                family == "TRANSFORMER"
+                and metric_id == f"S:transformer:{object_id}"
+            )
+            or (
+                family == "FEEDER"
+                and metric_id == "S:feeder"
+                and object_id == "feeder"
+            )
+        )
+        if (
+            direction != expected_direction
+            or limit != expected_limit
+            or not prefix_valid
+        ):
+            return False
+        expected = value - limit if direction == "lo" else limit - value
+        if (
+            not math.isclose(headroom, expected, rel_tol=0.0, abs_tol=1e-12)
+            or not math.isclose(
+                exceedance, max(0.0, -headroom), rel_tol=0.0, abs_tol=1e-12
+            )
+        ):
+            return False
+        if marker:
+            physical.append(dict(raw))
+    return [dict(row) for row in simultaneous] == physical
+
+
+def _gate_has_simultaneous_witness(audit: Mapping[str, Any]) -> bool:
+    selected = audit.get("selected_slot")
+    return bool(
+        isinstance(selected, Mapping)
+        and isinstance(selected.get("simultaneous_violations"), list)
+        and selected["simultaneous_violations"]
+    )
+
+
+def assess_mechanism_gate(
+    pair_artifacts: Sequence[Mapping[str, Any]],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply the frozen aggregate D1 structural gate and classification."""
+
+    if isinstance(pair_artifacts, (str, bytes)) or not isinstance(
+        pair_artifacts, Sequence
+    ):
+        _fail("pair artifacts must be a sequence")
+    if not isinstance(config, Mapping):
+        _fail("mechanism config must be a mapping")
+    artifacts = [artifact for artifact in pair_artifacts]
+    mappings_valid = all(isinstance(artifact, Mapping) for artifact in artifacts)
+    pair_ids = [
+        artifact.get("pair_id") if isinstance(artifact, Mapping) else None
+        for artifact in artifacts
+    ]
+    source_ids: list[Any] = []
+    if mappings_valid:
+        for artifact in artifacts:
+            members = artifact.get("members")
+            if isinstance(members, Mapping):
+                for role in ("bad", "control"):
+                    member = members.get(role)
+                    source_ids.append(
+                        member.get("evaluation_id")
+                        if isinstance(member, Mapping)
+                        else None
+                    )
+            else:
+                source_ids.extend((None, None))
+    count_ok = bool(
+        mappings_valid
+        and len(artifacts) == config.get("expected_counts", {}).get("pairs") == 12
+        and pair_ids == [f"{index:02d}" for index in range(1, 13)]
+        and len(set(pair_ids)) == 12
+        and len(source_ids) == 24
+        and all(isinstance(value, str) and value for value in source_ids)
+        and len(set(source_ids)) == 24
+    )
+    identity_ok = bool(
+        mappings_valid
+        and all(
+            artifact.get("status") == "SUCCESS"
+            and artifact.get("protocol_version") == config.get("protocol_version")
+            and artifact.get("source_commit") == config.get("source_commit")
+            and artifact.get("line_thermal_in_scope") is False
+            and artifact.get("resource_policy") == config.get("resource_policy")
+            and artifact.get("relative_stress") == relative_stress_evidence()
+            for artifact in artifacts
+        )
+    )
+    audit_sets = [
+        _gate_audits(artifact) if isinstance(artifact, Mapping) else None
+        for artifact in artifacts
+    ]
+    audits_valid = bool(artifacts and all(audits is not None for audits in audit_sets))
+    bad_feasible_ok = bool(
+        audits_valid
+        and all(_gate_complete_feasible(audits[0]) for audits in audit_sets)
+    )
+    delta = float(config.get("audit", {}).get("delta", float("nan")))
+    bad_boundary_ok = bool(
+        audits_valid
+        and math.isfinite(delta)
+        and all(
+            _gate_physical_failure(audits[2])
+            and isinstance(audits[0].get("alpha"), (int, float))
+            and not isinstance(audits[0].get("alpha"), bool)
+            and isinstance(audits[2].get("alpha"), (int, float))
+            and not isinstance(audits[2].get("alpha"), bool)
+            and 0.0 < float(audits[2]["alpha"]) - float(audits[0]["alpha"])
+            <= delta + 1e-12
+            for audits in audit_sets
+        )
+    )
+    bad_full_ok = bool(
+        audits_valid
+        and all(_gate_physical_failure(audits[4]) for audits in audit_sets)
+    )
+    bad_numerical_ok = bool(
+        audits_valid
+        and all(
+            audits[index].get("numerical_failure_checks") == 0
+            for audits in audit_sets
+            for index in (0, 2, 4)
+        )
+    )
+    controls_ok = bool(
+        audits_valid
+        and all(
+            _gate_complete_feasible(audits[index])
+            for audits in audit_sets
+            for index in (1, 3, 5)
+        )
+    )
+    rows_ok = bool(
+        audits_valid
+        and all(
+            _gate_selected_rows_valid(audit)
+            for audits in audit_sets
+            for audit in audits
+        )
+        and all(
+            _gate_has_simultaneous_witness(audits[index])
+            for audits in audit_sets
+            for index in (2, 4)
+        )
+    )
+    coverage_ok = bool(
+        audits_valid
+        and all(
+            audit.get("line_thermal_in_scope") is False
+            and (
+                _gate_complete_feasible(audit)
+                if audit.get("feasible") is True
+                else _gate_physical_failure(audit)
+            )
+            for audits in audit_sets
+            for audit in audits
+        )
+    )
+    scenario_clusters = {
+        artifact.get("scenario_cluster")
+        for artifact in artifacts
+        if isinstance(artifact, Mapping)
+    }
+    integrity_ok = bool(
+        mappings_valid
+        and audits_valid
+        and len(scenario_clusters) == 4
+        and None not in scenario_clusters
+    )
+    expected = _expected_config()
+    frozen_identity_ok = bool(
+        config.get("source_commit") == expected["source_commit"]
+        and config.get("pilot_py") == expected["pilot_py"]
+        and config.get("frozen_sources") == expected["frozen_sources"]
+    )
+    passed_values = (
+        count_ok,
+        identity_ok,
+        bad_feasible_ok,
+        bad_boundary_ok,
+        bad_full_ok,
+        bad_numerical_ok,
+        controls_ok,
+        rows_ok,
+        coverage_ok,
+        integrity_ok,
+        frozen_identity_ok,
+    )
+    checks = [
+        {"condition": index, "code": code, "passed": bool(passed)}
+        for index, (code, passed) in enumerate(
+            zip(_GATE_CHECK_CODES, passed_values), start=1
+        )
+    ]
+    structural_passed = all(passed_values)
+    candidates: list[dict[str, Any]] = []
+    count_rows: list[dict[str, Any]] = []
+    count_classifications: list[dict[str, Any]] = []
+    diagnostic_error: str | None = None
+    if structural_passed:
+        try:
+            candidates = candidate_families(artifacts)
+            count_rows = build_count_match_rows(artifacts)
+            count_classifications = [
+                classify_count_match(count_rows, family)
+                for family in _COUNT_MATCH_FAMILIES
+            ]
+        except ValueError as exc:
+            structural_passed = False
+            checks[7]["passed"] = False
+            diagnostic_error = str(exc)
+    decision = (
+        "STOP_IMPLEMENTATION"
+        if not structural_passed
+        else "COMMON_CANDIDATE_CONFOUNDED"
+        if candidates
+        else "VALID_HETEROGENEOUS"
+    )
+    return {
+        "decision": decision,
+        "structural_gate_passed": structural_passed,
+        "structural_checks": checks,
+        "diagnostic_error": diagnostic_error,
+        "candidate_families": candidates,
+        "count_match_rows": count_rows,
+        "count_match_classifications": count_classifications,
+        "relative_stress": relative_stress_evidence(),
+        "archived_pilot_decision": "NO_GO_REASSESS_BROAD_TOPIC",
+        "formal_v2_1_run_started": False,
+        "formal_v2_1_run_authorized": False,
+        "limitations": {
+            "fixed_schedule_transfer_only": True,
+            "three_phase_reoptimization_in_scope": False,
+            "line_thermal_in_scope": False,
+            "matched_controls_are_causal_matches": False,
+            "scenario_clusters_are_independent_repetitions": False,
+            "count_matching_proves_or_excludes_count_effect": False,
+        },
+    }
+
+
 _D1_MEMBER_KEYS = {
     "pair_id",
     "scenario_cluster",

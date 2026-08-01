@@ -13,6 +13,7 @@ import pytest
 
 from evflex.mechanism_diagnostic import (
     D1AuditStop,
+    assess_mechanism_gate,
     build_count_match_rows,
     candidate_families,
     classify_count_match,
@@ -1556,7 +1557,15 @@ def _diagnostic_constraint_row(
     else:
         raise AssertionError(f"unexpected family {family}")
     direction = "lo" if family == "VMIN" else "hi"
-    limit = 0.95 if family == "VMIN" else 1.05 if family == "VMAX" else 1.0
+    limit = (
+        0.95
+        if family == "VMIN"
+        else 1.06
+        if family == "VMAX"
+        else 2.0
+        if family == "VUF"
+        else 1.0
+    )
     margin = (-0.01 if physical else 0.01) if signed_headroom is None else signed_headroom
     value = limit + margin if direction == "lo" else limit - margin
     return {
@@ -1869,6 +1878,244 @@ def test_relative_stress_is_null_with_frozen_reason() -> None:
         "global_ratio": None,
         "phase_ratios": None,
     }
+
+
+def _gate_artifacts(
+    *, common_families: tuple[str, ...] = ()
+) -> list[dict[str, object]]:
+    config = load_mechanism_config(REPO_ROOT)
+    clusters = ["c1", "c2", "c3", "c4"] * 3
+    family_order = ("VMIN", "VMAX", "VUF", "TRANSFORMER", "FEEDER")
+    artifacts: list[dict[str, object]] = []
+    for index, cluster in enumerate(clusters):
+        present = set(common_families if index < 8 else ())
+        if not present:
+            present.add(family_order[index % len(family_order)])
+        bad_rows = [
+            _diagnostic_constraint_row(
+                "VMIN", "bus.1", physical="VMIN" in present
+            ),
+            _diagnostic_constraint_row(
+                "VMAX", "bus.1", physical="VMAX" in present
+            ),
+            _diagnostic_constraint_row(
+                "VUF", "bus", physical="VUF" in present
+            ),
+        ]
+        if "TRANSFORMER" in present:
+            bad_rows.append(
+                _diagnostic_constraint_row("TRANSFORMER", "t1", physical=True)
+            )
+        if "FEEDER" in present:
+            bad_rows.append(
+                _diagnostic_constraint_row("FEEDER", "feeder", physical=True)
+            )
+        control_rows = [
+            _diagnostic_constraint_row("VMIN", "control.1"),
+            _diagnostic_constraint_row("VMAX", "control.1"),
+            _diagnostic_constraint_row("VUF", "control"),
+        ]
+        full_rows = [
+            _diagnostic_constraint_row("VMIN", "full.1", physical=True)
+        ]
+        artifact = _diagnostic_pair(
+            f"{index + 1:02d}",
+            cluster,
+            bad_rows,
+            control_rows,
+            bad_full_rows=full_rows,
+        )
+        artifact.update(
+            {
+                "source_commit": config["source_commit"],
+                "line_thermal_in_scope": False,
+                "resource_policy": deepcopy(config["resource_policy"]),
+                "members": {
+                    "bad": {"evaluation_id": f"bad_{index + 1:02d}"},
+                    "control": {"evaluation_id": f"control_{index + 1:02d}"},
+                },
+            }
+        )
+        bad_alpha = 0.94
+        for sequence_index, audit in enumerate(artifact["audits"]):
+            point = audit["audit_point"]
+            role = audit["role"]
+            failure = role == "bad" and point in {
+                "BOUNDARY_INFEASIBLE",
+                "FULL_OFFER",
+            }
+            checked = 6 if failure else 96
+            alpha = (
+                bad_alpha
+                if point == "BOUNDARY_FEASIBLE"
+                else bad_alpha + 0.002
+                if point == "BOUNDARY_INFEASIBLE"
+                else 1.0
+            )
+            audit.update(
+                {
+                    "sequence_index": sequence_index,
+                    "alpha": alpha,
+                    "feasible": not failure,
+                    "checked_intervals": checked,
+                    "complete_coverage": checked == 96,
+                    "numerical_failure_checks": 0,
+                    "physical_violation_checks": 1 if failure else 0,
+                    "failure_class": "PHYSICAL_CONSTRAINT" if failure else "NONE",
+                    "first_failure_slot": 5 if failure else None,
+                    "explicit_physical_witness": failure,
+                    "line_thermal_in_scope": False,
+                }
+            )
+        artifacts.append(artifact)
+    return artifacts
+
+
+def _failed_gate_codes(result: dict[str, object]) -> set[str]:
+    return {
+        check["code"]
+        for check in result["structural_checks"]
+        if check["passed"] is False
+    }
+
+
+def test_gate_stops_on_any_bad_boundary_or_full_offer_contradiction() -> None:
+    boundary = _gate_artifacts()
+    boundary[0]["audits"][2].update(
+        {
+            "feasible": True,
+            "checked_intervals": 96,
+            "complete_coverage": True,
+            "failure_class": "NONE",
+            "first_failure_slot": None,
+            "explicit_physical_witness": False,
+        }
+    )
+    boundary_result = assess_mechanism_gate(
+        boundary, load_mechanism_config(REPO_ROOT)
+    )
+    assert boundary_result["decision"] == "STOP_IMPLEMENTATION"
+    assert "BAD_BOUNDARY_INFEASIBLE" in _failed_gate_codes(boundary_result)
+
+    full_offer = _gate_artifacts()
+    full_offer[0]["audits"][4].update(
+        {
+            "feasible": True,
+            "checked_intervals": 96,
+            "complete_coverage": True,
+            "failure_class": "NONE",
+            "first_failure_slot": None,
+            "explicit_physical_witness": False,
+        }
+    )
+    full_result = assess_mechanism_gate(
+        full_offer, load_mechanism_config(REPO_ROOT)
+    )
+    assert full_result["decision"] == "STOP_IMPLEMENTATION"
+    assert "BAD_FULL_OFFER_INFEASIBLE" in _failed_gate_codes(full_result)
+
+
+def test_gate_stops_on_any_control_failure_or_numerical_failure() -> None:
+    control = _gate_artifacts()
+    control[3]["audits"][5]["feasible"] = False
+    control_result = assess_mechanism_gate(
+        control, load_mechanism_config(REPO_ROOT)
+    )
+    assert control_result["decision"] == "STOP_IMPLEMENTATION"
+    assert "CONTROLS_FEASIBLE" in _failed_gate_codes(control_result)
+
+    numerical = _gate_artifacts()
+    numerical[7]["audits"][2]["numerical_failure_checks"] = 1
+    numerical_result = assess_mechanism_gate(
+        numerical, load_mechanism_config(REPO_ROOT)
+    )
+    assert numerical_result["decision"] == "STOP_IMPLEMENTATION"
+    assert "BAD_NUMERICAL_FAILURES_ZERO" in _failed_gate_codes(
+        numerical_result
+    )
+
+
+def test_gate_stops_on_early_stop_coverage_or_provenance_error() -> None:
+    coverage = _gate_artifacts()
+    coverage[1]["audits"][2]["checked_intervals"] = 7
+    coverage_result = assess_mechanism_gate(
+        coverage, load_mechanism_config(REPO_ROOT)
+    )
+    assert coverage_result["decision"] == "STOP_IMPLEMENTATION"
+    assert "COVERAGE_AND_EARLY_STOP_VALID" in _failed_gate_codes(
+        coverage_result
+    )
+
+    provenance = _gate_artifacts()
+    provenance[1]["source_commit"] = "0" * 40
+    provenance_result = assess_mechanism_gate(
+        provenance, load_mechanism_config(REPO_ROOT)
+    )
+    assert provenance_result["decision"] == "STOP_IMPLEMENTATION"
+    assert "FROZEN_IDENTITY_AND_PROTOCOL" in _failed_gate_codes(
+        provenance_result
+    )
+
+
+def test_gate_stops_on_invalid_violation_row_identity() -> None:
+    artifacts = _gate_artifacts()
+    selected = artifacts[0]["audits"][2]["selected_slot"]
+    physical_index = next(
+        index
+        for index, row in enumerate(selected["constraint_rows"])
+        if row["is_physical_violation"] is True
+    )
+    selected["constraint_rows"][physical_index]["metric_id"] = "LINE:invented"
+    selected["simultaneous_violations"] = [
+        deepcopy(selected["constraint_rows"][physical_index])
+    ]
+
+    result = assess_mechanism_gate(
+        artifacts, load_mechanism_config(REPO_ROOT)
+    )
+
+    assert result["decision"] == "STOP_IMPLEMENTATION"
+    assert "VIOLATION_ROWS_VALID" in _failed_gate_codes(result)
+
+
+def test_gate_stops_when_physical_witness_slot_is_missing() -> None:
+    artifacts = _gate_artifacts()
+    artifacts[0]["audits"][2]["selected_slot"] = None
+
+    result = assess_mechanism_gate(
+        artifacts, load_mechanism_config(REPO_ROOT)
+    )
+
+    assert result["decision"] == "STOP_IMPLEMENTATION"
+    assert "BAD_BOUNDARY_INFEASIBLE" in _failed_gate_codes(result)
+    assert "VIOLATION_ROWS_VALID" in _failed_gate_codes(result)
+
+
+def test_gate_returns_valid_heterogeneous_without_candidate_family() -> None:
+    result = assess_mechanism_gate(
+        _gate_artifacts(), load_mechanism_config(REPO_ROOT)
+    )
+
+    assert result["decision"] == "VALID_HETEROGENEOUS"
+    assert result["structural_gate_passed"] is True
+    assert result["candidate_families"] == []
+    assert len(result["structural_checks"]) == 11
+    assert result["formal_v2_1_run_authorized"] is False
+    assert result["archived_pilot_decision"] == "NO_GO_REASSESS_BROAD_TOPIC"
+
+
+def test_gate_returns_common_candidate_confounded_and_lists_all_candidates() -> None:
+    result = assess_mechanism_gate(
+        _gate_artifacts(common_families=("VMIN", "VUF")),
+        load_mechanism_config(REPO_ROOT),
+    )
+
+    assert result["decision"] == "COMMON_CANDIDATE_CONFOUNDED"
+    assert [
+        item["constraint_family"] for item in result["candidate_families"]
+    ] == ["VMIN", "VUF"]
+    assert result["relative_stress"] == relative_stress_evidence()
+    assert result["formal_v2_1_run_authorized"] is False
 
 
 def _d1_fake_ev() -> SimpleNamespace:
