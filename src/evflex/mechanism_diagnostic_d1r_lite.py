@@ -433,3 +433,260 @@ def verify_lite_sources(
 
     old_config = load_mechanism_config(root)
     verify_frozen_sources(root, old_config)
+
+
+def _identity_fail(code: str, detail: str) -> None:
+    raise ValueError(f"{code}: {detail}")
+
+
+def _finite_number(value: Any, code: str, detail: str) -> float:
+    if isinstance(value, bool):
+        _identity_fail(code, detail)
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        _identity_fail(code, detail)
+    if not math.isfinite(number):
+        _identity_fail(code, detail)
+    return number
+
+
+def validate_raw_audit_identity(
+    raw: Mapping[str, Any],
+    *,
+    case: Mapping[str, Any],
+    formal_constraints: Mapping[str, Any],
+    adapter_identity: Mapping[str, Any],
+) -> None:
+    """Validate audit provenance with one explicit failure code per field."""
+
+    import numpy as np
+
+    if not isinstance(raw, Mapping):
+        _identity_fail("AUDIT_STRUCTURE_INVALID", "raw audit must be a mapping")
+    records = raw.get("slot_results")
+    if not isinstance(records, list) or not records:
+        _identity_fail(
+            "AUDIT_STRUCTURE_INVALID", "raw audit must retain slot results"
+        )
+    if not isinstance(case, Mapping):
+        _identity_fail("AUDIT_STRUCTURE_INVALID", "case must be a mapping")
+    member = case.get("member")
+    if not isinstance(member, Mapping):
+        _identity_fail("AUDIT_STRUCTURE_INVALID", "case member is missing")
+    expected_feeder = member.get("feeder")
+    if not isinstance(expected_feeder, str) or not expected_feeder:
+        _identity_fail("AUDIT_STRUCTURE_INVALID", "case feeder is missing")
+    try:
+        expected_scales = np.asarray(case.get("load_scales"), dtype=float)
+    except (TypeError, ValueError, OverflowError):
+        _identity_fail("AUDIT_STRUCTURE_INVALID", "case load scales are invalid")
+    if expected_scales.shape != (len(records),) or not np.isfinite(
+        expected_scales
+    ).all():
+        _identity_fail(
+            "AUDIT_STRUCTURE_INVALID",
+            "case load scales must match the retained slot count",
+        )
+
+    if set(adapter_identity) != {"adapter_schema", "adapter_version"}:
+        _identity_fail(
+            "AUDIT_STRUCTURE_INVALID", "adapter identity fields are invalid"
+        )
+    expected_schema = adapter_identity["adapter_schema"]
+    expected_version = adapter_identity["adapter_version"]
+    if not isinstance(expected_schema, str) or type(expected_version) is not int:
+        _identity_fail(
+            "AUDIT_STRUCTURE_INVALID", "adapter identity types are invalid"
+        )
+    constraint_names = (
+        "vmin_pu",
+        "vmax_pu",
+        "vuf_limit_pct",
+        "transformer_loading_limit_pu",
+        "feeder_loading_limit_pu",
+    )
+    expected_constraints = {
+        name: _finite_number(
+            formal_constraints.get(name),
+            "AUDIT_STRUCTURE_INVALID",
+            f"formal constraint {name} is invalid",
+        )
+        for name in constraint_names
+    }
+    if formal_constraints.get("line_thermal_in_scope") is not False:
+        _identity_fail(
+            "AUDIT_STRUCTURE_INVALID", "line thermal scope must remain false"
+        )
+
+    for index, record in enumerate(records):
+        if not isinstance(record, Mapping):
+            _identity_fail(
+                "AUDIT_STRUCTURE_INVALID", f"slot {index} record is not a mapping"
+            )
+        if (
+            record.get("slot") != index
+            or record.get("verified") is not True
+            or record.get("source") not in {"power_flow", "baseline_reuse"}
+        ):
+            _identity_fail(
+                "AUDIT_SLOT_IDENTITY_MISMATCH",
+                f"slot {index} index, verification, or source differs",
+            )
+        if record.get("feeder") != expected_feeder:
+            _identity_fail(
+                "AUDIT_FEEDER_MISMATCH", f"slot {index} record feeder differs"
+            )
+        if record.get("model") != "3ph":
+            _identity_fail(
+                "AUDIT_MODEL_MISMATCH", f"slot {index} record model differs"
+            )
+        expected_scale = float(expected_scales[index])
+        record_scale = _finite_number(
+            record.get("load_scale"),
+            "AUDIT_RECORD_SCALE_MISMATCH",
+            f"slot {index} record scale is invalid",
+        )
+        if record_scale != expected_scale:
+            _identity_fail(
+                "AUDIT_RECORD_SCALE_MISMATCH",
+                f"slot {index} record scale differs",
+            )
+        context = record.get("audit_context")
+        if not isinstance(context, Mapping):
+            _identity_fail(
+                "AUDIT_STRUCTURE_INVALID", f"slot {index} context is missing"
+            )
+        context_scale = _finite_number(
+            context.get("load_scale"),
+            "AUDIT_CONTEXT_SCALE_MISMATCH",
+            f"slot {index} context scale is invalid",
+        )
+        if context_scale != expected_scale:
+            _identity_fail(
+                "AUDIT_CONTEXT_SCALE_MISMATCH",
+                f"slot {index} context scale differs",
+            )
+        observed_schema = context.get("adapter_schema")
+        if type(observed_schema) is not type(expected_schema) or (
+            observed_schema != expected_schema
+        ):
+            _identity_fail(
+                "AUDIT_SCHEMA_MISMATCH", f"slot {index} adapter schema differs"
+            )
+        observed_version = context.get("adapter_version")
+        if type(observed_version) is not type(expected_version) or (
+            observed_version != expected_version
+        ):
+            _identity_fail(
+                "AUDIT_VERSION_MISMATCH", f"slot {index} adapter version differs"
+            )
+        if context.get("feeder") != expected_feeder:
+            _identity_fail(
+                "AUDIT_FEEDER_MISMATCH", f"slot {index} context feeder differs"
+            )
+        if context.get("model") != "3ph":
+            _identity_fail(
+                "AUDIT_MODEL_MISMATCH", f"slot {index} context model differs"
+            )
+        for name, expected in expected_constraints.items():
+            observed = _finite_number(
+                context.get(name),
+                "AUDIT_FORMAL_CONSTRAINT_MISMATCH",
+                f"slot {index} formal constraint {name} is invalid",
+            )
+            if observed != expected:
+                _identity_fail(
+                    "AUDIT_FORMAL_CONSTRAINT_MISMATCH",
+                    f"slot {index} formal constraint {name} differs",
+                )
+        if context.get("line_thermal_in_scope") is not False:
+            _identity_fail(
+                "AUDIT_FORMAL_CONSTRAINT_MISMATCH",
+                f"slot {index} line thermal scope differs",
+            )
+
+
+def _case_as_d1_member(case: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "pair_id": case["pair_id"],
+        "scenario_cluster": case["scenario_cluster"],
+        "role": "bad",
+        "evaluation_id": case["evaluation_id"],
+        "work_unit_id": case["work_unit_id"],
+        "scenario_id": case["scenario_id"],
+        "scenario_seed": case["scenario_seed"],
+        "feeder": case["feeder"],
+        "call_time": case["call_time"],
+        "direction": case["direction"],
+        "duration_min": case["duration_min"],
+        "requested_duration_min": case["duration_min"],
+        "source_duration_min": case["source_duration_min"],
+        "alpha_transfer": case["alpha_transfer"],
+        "schedule_sha256": case["schedule_sha256"],
+        "bus_phase_time_sha256": case["bus_phase_time_sha256"],
+        "baseline_schedule_sha256": case["baseline_schedule_sha256"],
+    }
+
+
+def real_runtime_preflight(
+    repo_root: str | Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Run one real pair-01 baseline audit in memory before production."""
+
+    from evflex import pilot
+    from evflex.mechanism_diagnostic import (
+        compact_targeted_audit,
+        reconstruct_case,
+    )
+
+    root = Path(repo_root).resolve(strict=True)
+    if dict(config) != _expected_config():
+        _fail("real preflight requires the frozen config")
+    verify_lite_sources(root, config)
+    cases = load_lite_manifest(root)
+    case = next(item for item in cases if item["pair_id"] == "01")
+    pilot_config = pilot.load_pilot_config(root)
+    reconstructed = reconstruct_case(
+        root,
+        _case_as_d1_member(case),
+        pilot_config=pilot_config,
+    )
+    runtime = reconstructed["runtime"]
+    cache = runtime.create_corrected_truth_cache()
+    raw = runtime.audit_corrected(
+        reconstructed["baseline"],
+        cache,
+        baseline_slot_results=None,
+        stop_on_violation=False,
+        retain_slot_results=True,
+    )
+    validate_raw_audit_identity(
+        raw,
+        case=reconstructed,
+        formal_constraints=pilot_config["formal_constraints"],
+        adapter_identity=config["adapter_identity"],
+    )
+    compact = compact_targeted_audit(
+        raw,
+        audit_point="BOUNDARY_FEASIBLE",
+        alpha=0.0,
+    )
+    records = raw.get("slot_results")
+    if (
+        compact.get("feasible") is not True
+        or compact.get("complete_coverage") is not True
+        or not isinstance(records, list)
+        or len(records) != 96
+    ):
+        _fail("real preflight baseline is not feasible with 96-slot coverage")
+    return {
+        "status": "PREFLIGHT_OK",
+        "pair_id": "01",
+        "record_count": len(records),
+        "adapter_schema": config["adapter_identity"]["adapter_schema"],
+        "adapter_version": config["adapter_identity"]["adapter_version"],
+        "identity_mismatch_count": 0,
+        "writes_performed": False,
+        "formal_v2_1_run_started": False,
+    }

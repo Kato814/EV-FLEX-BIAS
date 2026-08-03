@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import csv
+from copy import deepcopy
 import json
 from pathlib import Path
 import shutil
 
+import numpy as np
 import pytest
 
+from evflex import pilot
 from evflex.mechanism_diagnostic_d1r_lite import (
     load_lite_config,
     load_lite_manifest,
     stage_a_case_ids,
     stage_b_case_ids,
+    validate_raw_audit_identity,
     verify_lite_sources,
 )
 
@@ -186,3 +190,118 @@ def test_config_rejects_json_duplicate_keys(tmp_path: Path) -> None:
 def test_config_is_strict_json_without_nonfinite_values() -> None:
     raw = json.loads((REPO_ROOT / CONFIG_RELATIVE).read_text(encoding="utf-8"))
     assert raw == load_lite_config(REPO_ROOT)
+
+
+FORMAL_CONSTRAINTS = {
+    "vmin_pu": 0.95,
+    "vmax_pu": 1.06,
+    "vuf_limit_pct": 2.0,
+    "transformer_loading_limit_pu": 1.0,
+    "feeder_loading_limit_pu": 1.0,
+    "line_thermal_in_scope": False,
+}
+
+
+class _AuditNetwork:
+    def __init__(self, load_scale: float) -> None:
+        self.load_scale = load_scale
+        self.groups: list[object] = []
+
+    def audit_context(self) -> dict[str, object]:
+        return {
+            "adapter_schema": pilot._PILOT_ADAPTER_SCHEMA,
+            "adapter_version": pilot._PILOT_ADAPTER_VERSION,
+            "feeder": "lv906",
+            "model": "3ph",
+            "load_scale": self.load_scale,
+            **FORMAL_CONSTRAINTS,
+            "feeder_kva": 1000.0,
+            "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
+            "transformer_rating_basis": "NATIVE_SYSTEM_TOTAL_KVA",
+            "transformer_rating_multiplier": 1.0,
+        }
+
+
+def _identity_fixture() -> tuple[
+    dict[str, object], dict[str, object], dict[str, object], dict[str, object]
+]:
+    records: list[dict[str, object]] = []
+    for slot, scale in enumerate((0.75, 1.25)):
+        context = pilot._capture_network_audit_context(
+            _AuditNetwork(scale),
+            feeder="lv906",
+            model="3ph",
+            load_scale=scale,
+        )
+        records.append(
+            {
+                "slot": slot,
+                "verified": True,
+                "load_scale": scale,
+                "feeder": "lv906",
+                "model": "3ph",
+                "source": "power_flow",
+                "audit_context": context,
+            }
+        )
+    raw: dict[str, object] = {"slot_results": records}
+    case: dict[str, object] = {
+        "member": {"feeder": "lv906"},
+        "load_scales": np.asarray([0.75, 1.25], dtype=float),
+    }
+    config = load_lite_config(REPO_ROOT)
+    return raw, case, FORMAL_CONSTRAINTS, config["adapter_identity"]
+
+
+def test_audit_identity_accepts_context_produced_by_frozen_pilot() -> None:
+    raw, case, formal_constraints, adapter_identity = _identity_fixture()
+
+    validate_raw_audit_identity(
+        raw,
+        case=case,
+        formal_constraints=formal_constraints,
+        adapter_identity=adapter_identity,
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    [
+        ("record_scale", "AUDIT_RECORD_SCALE_MISMATCH"),
+        ("context_scale", "AUDIT_CONTEXT_SCALE_MISMATCH"),
+        ("schema", "AUDIT_SCHEMA_MISMATCH"),
+        ("version", "AUDIT_VERSION_MISMATCH"),
+        ("feeder", "AUDIT_FEEDER_MISMATCH"),
+        ("model", "AUDIT_MODEL_MISMATCH"),
+        ("formal_constraint", "AUDIT_FORMAL_CONSTRAINT_MISMATCH"),
+    ],
+)
+def test_audit_identity_reports_field_level_failure_codes(
+    mutation: str, expected_code: str
+) -> None:
+    raw, case, formal_constraints, adapter_identity = _identity_fixture()
+    changed = deepcopy(raw)
+    record = changed["slot_results"][0]
+    context = record["audit_context"]
+    if mutation == "record_scale":
+        record["load_scale"] = 0.76
+    elif mutation == "context_scale":
+        context["load_scale"] = 0.76
+    elif mutation == "schema":
+        context["adapter_schema"] = "EV-FLEX-BIAS-PILOT-NETWORK-AUDIT"
+    elif mutation == "version":
+        context["adapter_version"] = "2"
+    elif mutation == "feeder":
+        context["feeder"] = "ieee13"
+    elif mutation == "model":
+        context["model"] = "balanced"
+    else:
+        context["vmin_pu"] = 0.94
+
+    with pytest.raises(ValueError, match=expected_code):
+        validate_raw_audit_identity(
+            changed,
+            case=case,
+            formal_constraints=formal_constraints,
+            adapter_identity=adapter_identity,
+        )
