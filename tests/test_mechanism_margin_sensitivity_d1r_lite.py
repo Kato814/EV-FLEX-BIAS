@@ -78,7 +78,21 @@ def _synthetic_source(
         },
         "cases": cases,
         "artifacts": artifacts,
-        "frozen_source_hashes": {},
+        "hash_rows": [
+            {
+                "pair_id": pair_id,
+                "stage": "A" if index < 4 else "B",
+                "status": "SUCCESS",
+                "path": config["artifact_names"][
+                    "source_case_artifact_pattern"
+                ].format(pair_id=pair_id),
+                "sha256": f"{index + 1:064x}",
+            }
+            for index, pair_id in enumerate(config["source_pair_order"])
+        ],
+        "frozen_source_hashes": {
+            item["path"]: item["sha256"] for item in config["frozen_sources"]
+        },
     }
 
 
