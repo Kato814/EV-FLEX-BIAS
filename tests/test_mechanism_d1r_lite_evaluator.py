@@ -166,10 +166,25 @@ def test_evaluator_accepts_stage_a_stop_and_writes_exactly_eight_rows(
     assert outcome["report"]["diagnostic_completed"] is True
     assert outcome["report"]["actual_cases"] == 4
     assert outcome["report"]["actual_target_audits"] == 8
+    magnitude = {
+        item["constraint_family"]: item
+        for item in outcome["report"]["boundary_exceedance_by_family"]
+    }
+    assert magnitude["VMIN"] == {
+        "constraint_family": "VMIN",
+        "unit": "pu",
+        "case_count": 2,
+        "metric_witness_count": 2,
+        "minimum_exceedance": pytest.approx(0.01),
+        "median_exceedance": pytest.approx(0.01),
+        "maximum_exceedance": pytest.approx(0.01),
+    }
     with _output_path(tmp_path, config, "audit_csv").open(
         "r", encoding="utf-8", newline=""
     ) as stream:
-        assert len(list(csv.DictReader(stream))) == 8
+        rows = list(csv.DictReader(stream))
+    assert len(rows) == 8
+    assert float(rows[1]["simultaneous_violation_exceedances"]) == pytest.approx(0.01)
 
 
 @pytest.mark.parametrize(
@@ -295,6 +310,8 @@ def test_evaluator_writes_conservative_chinese_scope_and_byte_verifies(
         "LV906 固定 EV 调度轨迹",
         "未进行三相重新优化",
         "line_thermal_in_scope=false",
+        "越限幅度",
+        "仅作描述",
         "不是唯一机制或因果机制",
         "不授权正式 V2.1",
         "NO_GO_REASSESS_BROAD_TOPIC",

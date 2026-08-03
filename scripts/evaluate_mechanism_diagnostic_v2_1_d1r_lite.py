@@ -30,6 +30,7 @@ import csv
 import hashlib
 import io
 import json
+import statistics
 import subprocess
 import tempfile
 from typing import Any
@@ -71,6 +72,9 @@ _AUDIT_COLUMNS = (
     "selected_slot",
     "simultaneous_violation_families",
     "simultaneous_violation_objects",
+    "simultaneous_violation_values",
+    "simultaneous_violation_limits",
+    "simultaneous_violation_exceedances",
     "audited_schedule_sha256",
 )
 _HASH_COLUMNS = ("pair_id", "stage", "status", "path", "sha256")
@@ -350,12 +354,20 @@ def _audit_row(
     selected_slot: Any = ""
     families = ""
     objects = ""
+    values = ""
+    limits = ""
+    exceedances = ""
     if isinstance(selected, Mapping):
         selected_slot = selected.get("slot")
         violations = selected.get("simultaneous_violations")
         if isinstance(violations, list):
             families = ";".join(str(row["constraint_family"]) for row in violations)
             objects = ";".join(str(row["object_id"]) for row in violations)
+            values = ";".join(format(float(row["value"]), ".17g") for row in violations)
+            limits = ";".join(format(float(row["limit"]), ".17g") for row in violations)
+            exceedances = ";".join(
+                format(float(row["exceedance"]), ".17g") for row in violations
+            )
     return {
         "pair_id": artifact["pair_id"],
         "stage": artifact["stage"],
@@ -385,8 +397,48 @@ def _audit_row(
         "selected_slot": selected_slot,
         "simultaneous_violation_families": families,
         "simultaneous_violation_objects": objects,
+        "simultaneous_violation_values": values,
+        "simultaneous_violation_limits": limits,
+        "simultaneous_violation_exceedances": exceedances,
         "audited_schedule_sha256": audit["audited_schedule_sha256"],
     }
+
+
+def _boundary_exceedance_by_family(
+    terminal: Sequence[Mapping[str, Any]], config: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    family_order = list(config["audit"]["family_order"])
+    values: dict[str, list[float]] = {family: [] for family in family_order}
+    pairs: dict[str, set[str]] = {family: set() for family in family_order}
+    for artifact in terminal:
+        for audit in artifact["audits"]:
+            if audit["audit_point"] != "BOUNDARY_INFEASIBLE":
+                continue
+            selected = audit["selected_slot"]
+            for row in selected["simultaneous_violations"]:
+                family = str(row["constraint_family"])
+                values[family].append(float(row["exceedance"]))
+                pairs[family].add(str(artifact["pair_id"]))
+    units = {
+        "VMIN": "pu",
+        "VMAX": "pu",
+        "VUF": "pct",
+        "TRANSFORMER": "pu",
+        "FEEDER": "pu",
+    }
+    return [
+        {
+            "constraint_family": family,
+            "unit": units[family],
+            "case_count": len(pairs[family]),
+            "metric_witness_count": len(values[family]),
+            "minimum_exceedance": min(values[family]),
+            "median_exceedance": statistics.median(values[family]),
+            "maximum_exceedance": max(values[family]),
+        }
+        for family in family_order
+        if values[family]
+    ]
 
 
 def _hash_rows(
@@ -453,6 +505,17 @@ def _render_markdown(report: Mapping[str, Any]) -> bytes:
             "",
             "本次精简筛查删除了 IEEE13 对照、全报价审计和约束数量匹配，以压缩工作量。",
             "证据仅适用于归档样本中的 LV906 固定 EV 调度轨迹及其边界外 0.002 插值点。",
+            "首失效显式证据的越限幅度如下；这些数值仅作描述，不参与冻结门槛改判：",
+            *[
+                (
+                    f"- {item['constraint_family']}：{item['case_count']} 个案例，"
+                    f"最小/中位/最大越限为 "
+                    f"{item['minimum_exceedance']:.6g}/"
+                    f"{item['median_exceedance']:.6g}/"
+                    f"{item['maximum_exceedance']:.6g} {item['unit']}。"
+                )
+                for item in report["boundary_exceedance_by_family"]
+            ],
             "本研究未进行三相重新优化，因此不能声称重新调度仍不可行。",
             "所有结果保持 `line_thermal_in_scope=false`，因此不包含线路热约束结论。",
             "达到共同候选门槛只表示样本内重复出现，仍受场景和固定轨迹混杂影响，不是唯一机制或因果机制。",
@@ -511,6 +574,9 @@ def _build_outputs(
             deepcopy(gate["qualifying_families"]) if gate else []
         ),
         "threshold": deepcopy(gate["threshold"]) if gate else None,
+        "boundary_exceedance_by_family": _boundary_exceedance_by_family(
+            terminal, config
+        ),
         "removed_components": [
             "IEEE13_CONTROLS",
             "FULL_OFFER_AUDITS",
