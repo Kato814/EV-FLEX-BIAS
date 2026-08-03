@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import csv
+from copy import deepcopy
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import math
 from pathlib import Path
 import re
 import statistics
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 
 _CONFIG_RELATIVE = Path("config/mechanism_diagnostic_v2_1_d1r_lite.json")
@@ -481,12 +483,12 @@ def validate_raw_audit_identity(
         expected_scales = np.asarray(case.get("load_scales"), dtype=float)
     except (TypeError, ValueError, OverflowError):
         _identity_fail("AUDIT_STRUCTURE_INVALID", "case load scales are invalid")
-    if expected_scales.shape != (len(records),) or not np.isfinite(
+    if expected_scales.shape != (96,) or len(records) > 96 or not np.isfinite(
         expected_scales
     ).all():
         _identity_fail(
             "AUDIT_STRUCTURE_INVALID",
-            "case load scales must match the retained slot count",
+            "case load scales must cover the fixed 96-slot horizon",
         )
 
     if set(adapter_identity) != {"adapter_schema", "adapter_version"}:
@@ -689,4 +691,236 @@ def real_runtime_preflight(
         "identity_mismatch_count": 0,
         "writes_performed": False,
         "formal_v2_1_run_started": False,
+    }
+
+
+class LiteAuditStop(ValueError):
+    """Controlled immutable case stop with the retained target-audit prefix."""
+
+    def __init__(
+        self,
+        rule_code: str,
+        detail: str,
+        *,
+        audits: Sequence[Mapping[str, Any]] = (),
+        sequence_index: int | None = None,
+    ) -> None:
+        super().__init__(detail)
+        self.rule_code = rule_code
+        self.detail = detail
+        self.audits = [deepcopy(dict(audit)) for audit in audits]
+        self.sequence_index = sequence_index
+
+
+def _identity_error_code(exc: ValueError) -> str | None:
+    prefix = str(exc).partition(":")[0]
+    if re.fullmatch(r"AUDIT_[A-Z0-9_]+", prefix):
+        return prefix
+    return None
+
+
+def _audit_points(case: Mapping[str, Any], config: Mapping[str, Any]) -> list[tuple[str, float, str]]:
+    try:
+        base = Decimal(str(case["alpha_transfer"]))
+        delta = Decimal(str(config["audit"]["delta"]))
+    except (InvalidOperation, KeyError, TypeError) as exc:
+        _fail(f"case audit alpha is invalid ({exc})")
+    if delta != Decimal("0.002") or not Decimal("0") <= base < Decimal("0.950"):
+        _fail("case audit alpha differs from the frozen boundary rule")
+    values = {
+        "BOUNDARY_FEASIBLE": base,
+        "BOUNDARY_INFEASIBLE": base + delta,
+    }
+    order = (
+        config["audit"]["stage_a_point_order"]
+        if case["stage"] == "A"
+        else config["audit"]["stage_b_point_order"]
+    )
+    return [
+        (name, float(values[name]), format(values[name], ".3f")) for name in order
+    ]
+
+
+def _prune_lite_evidence(compact: Mapping[str, Any]) -> dict[str, Any]:
+    output = deepcopy(dict(compact))
+    selected = output.get("selected_slot")
+    if selected is None:
+        return output
+    if not isinstance(selected, Mapping):
+        _fail("selected audit evidence must be a mapping")
+    mutable = dict(selected)
+    rows = mutable.get("constraint_rows")
+    if not isinstance(rows, list):
+        _fail("selected audit constraint rows must be a list")
+    retained = [deepcopy(row) for row in rows if row.get("is_physical_violation") is True]
+    mutable["constraint_rows"] = retained
+    mutable["simultaneous_violations"] = deepcopy(retained)
+    output["selected_slot"] = mutable
+    return output
+
+
+def execute_lite_case(
+    repo_root: str | Path,
+    case: Mapping[str, Any],
+    config: Mapping[str, Any],
+    *,
+    runtime_factory: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    """Execute one fixed-trajectory LV906 case under the compact protocol."""
+
+    import numpy as np
+    from evflex import pilot
+    from evflex.mechanism_diagnostic import (
+        compact_targeted_audit,
+        reconstruct_case,
+    )
+
+    root = Path(repo_root).resolve(strict=True)
+    if dict(config) != _expected_config():
+        _fail("case execution requires the frozen config")
+    if not isinstance(case, Mapping) or case.get("stage") not in {"A", "B"}:
+        _fail("case execution requires a Stage A or Stage B mapping")
+    if case.get("feeder") != "lv906":
+        _fail("D1-R-Lite executes LV906 cases only")
+    pilot_config = pilot.load_pilot_config(root)
+    reconstructed = reconstruct_case(
+        root,
+        _case_as_d1_member(case),
+        pilot_config=pilot_config,
+        runtime_factory=runtime_factory,
+    )
+    runtime = reconstructed["runtime"]
+    try:
+        cache = runtime.create_corrected_truth_cache()
+        baseline_raw = runtime.audit_corrected(
+            reconstructed["baseline"],
+            cache,
+            baseline_slot_results=None,
+            stop_on_violation=False,
+            retain_slot_results=True,
+        )
+        validate_raw_audit_identity(
+            baseline_raw,
+            case=reconstructed,
+            formal_constraints=pilot_config["formal_constraints"],
+            adapter_identity=config["adapter_identity"],
+        )
+        baseline_compact = compact_targeted_audit(
+            baseline_raw,
+            audit_point="BOUNDARY_FEASIBLE",
+            alpha=0.0,
+        )
+    except ValueError as exc:
+        code = _identity_error_code(exc) or "PRE_AUDIT_IMPLEMENTATION_INVALID"
+        raise LiteAuditStop(code, str(exc), sequence_index=None) from exc
+    baseline_slots = baseline_raw.get("slot_results")
+    if (
+        baseline_compact.get("feasible") is not True
+        or baseline_compact.get("complete_coverage") is not True
+        or not isinstance(baseline_slots, list)
+        or len(baseline_slots) != 96
+    ):
+        raise LiteAuditStop(
+            "PRE_AUDIT_IMPLEMENTATION_INVALID",
+            "D1-R-Lite baseline must be feasible with complete 96-slot coverage",
+            sequence_index=None,
+        )
+
+    audits: list[dict[str, Any]] = []
+    for sequence_index, (audit_point, alpha, alpha_label) in enumerate(
+        _audit_points(case, config)
+    ):
+        audited_schedule = reconstructed["baseline"] + alpha * (
+            reconstructed["schedule"] - reconstructed["baseline"]
+        )
+        if not np.isfinite(audited_schedule).all():
+            raise LiteAuditStop(
+                "AUDIT_EVIDENCE_INVALID",
+                "audited schedule contains a non-finite value",
+                audits=audits,
+                sequence_index=sequence_index,
+            )
+        try:
+            raw = runtime.audit_corrected(
+                audited_schedule,
+                cache,
+                baseline_slot_results=baseline_slots,
+                stop_on_violation=audit_point == "BOUNDARY_INFEASIBLE",
+                retain_slot_results=True,
+            )
+            validate_raw_audit_identity(
+                raw,
+                case=reconstructed,
+                formal_constraints=pilot_config["formal_constraints"],
+                adapter_identity=config["adapter_identity"],
+            )
+            compact = compact_targeted_audit(
+                raw,
+                audit_point=audit_point,
+                alpha=alpha,
+            )
+            compact = _prune_lite_evidence(compact)
+        except ValueError as exc:
+            code = _identity_error_code(exc) or "AUDIT_EVIDENCE_INVALID"
+            raise LiteAuditStop(
+                code,
+                str(exc),
+                audits=audits,
+                sequence_index=sequence_index,
+            ) from exc
+        audit_record = {
+            "sequence_index": sequence_index,
+            "audit_point": audit_point,
+            "alpha": alpha,
+            "alpha_label": alpha_label,
+            "source_evaluation_id": case["evaluation_id"],
+            "audited_schedule_sha256": pilot.canonical_schedule_sha256(
+                reconstructed["fleet"], audited_schedule
+            ),
+            "formal_constraints": deepcopy(pilot_config["formal_constraints"]),
+            "line_thermal_in_scope": False,
+            **compact,
+        }
+        audits.append(audit_record)
+        if audit_point == "BOUNDARY_FEASIBLE":
+            valid = bool(
+                compact.get("feasible") is True
+                and compact.get("complete_coverage") is True
+                and compact.get("explicit_physical_witness") is False
+            )
+            if not valid:
+                raise LiteAuditStop(
+                    "BOUNDARY_FEASIBLE_REQUIRED",
+                    "archived boundary point must remain feasible",
+                    audits=audits,
+                    sequence_index=sequence_index,
+                )
+        else:
+            valid = bool(
+                compact.get("feasible") is False
+                and compact.get("explicit_physical_witness") is True
+                and compact.get("failure_class") == "PHYSICAL_CONSTRAINT"
+                and compact.get("numerical_failure_checks") == 0
+            )
+            if not valid:
+                raise LiteAuditStop(
+                    "BOUNDARY_INFEASIBLE_REQUIRED",
+                    "alpha plus 0.002 must have an explicit physical witness",
+                    audits=audits,
+                    sequence_index=sequence_index,
+                )
+
+    return {
+        "protocol_version": config["protocol_version"],
+        "status": "SUCCESS",
+        "pair_id": case["pair_id"],
+        "stage": case["stage"],
+        "execution_order": case["execution_order"],
+        "scenario_cluster": case["scenario_cluster"],
+        "source_commit": config["source_commit"],
+        "line_thermal_in_scope": False,
+        "formal_v2_1_run_authorized": False,
+        "resource_policy": deepcopy(config["resource_policy"]),
+        "member": deepcopy(dict(case)),
+        "audits": audits,
     }

@@ -5,12 +5,15 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import shutil
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from evflex import pilot
 from evflex.mechanism_diagnostic_d1r_lite import (
+    LiteAuditStop,
+    execute_lite_case,
     load_lite_config,
     load_lite_manifest,
     stage_a_case_ids,
@@ -247,7 +250,7 @@ def _identity_fixture() -> tuple[
     raw: dict[str, object] = {"slot_results": records}
     case: dict[str, object] = {
         "member": {"feeder": "lv906"},
-        "load_scales": np.asarray([0.75, 1.25], dtype=float),
+        "load_scales": np.asarray([0.75, 1.25] + [1.0] * 94, dtype=float),
     }
     config = load_lite_config(REPO_ROOT)
     return raw, case, FORMAL_CONSTRAINTS, config["adapter_identity"]
@@ -305,3 +308,454 @@ def test_audit_identity_reports_field_level_failure_codes(
             formal_constraints=formal_constraints,
             adapter_identity=adapter_identity,
         )
+
+
+def _formal_coverage() -> dict[str, object]:
+    return {
+        "all_bus_count": 2,
+        "monitored_bus_count": 2,
+        "energized_voltage_node_count": 3,
+        "monitored_voltage_node_count": 3,
+        "three_phase_bus_count": 1,
+        "monitored_vuf_bus_count": 1,
+        "enabled_transformer_count": 1,
+        "rated_transformer_count": 1,
+        "transformer_rating_coverage": 1.0,
+        "line_count": 1,
+        "line_thermal_in_scope": False,
+        "feeder_rating_multiplier": 1.0,
+        "transformer_ratings_kva": {"t1": 100.0},
+        "transformer_raw_ratings_kva": {"t1": 100.0},
+        "transformer_rating_multiplier": 1.0,
+        "transformer_rating_basis": "NATIVE_SYSTEM_TOTAL_KVA",
+        "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
+    }
+
+
+def _runtime_metrics(*, physical: bool = False) -> dict[str, float]:
+    values = {
+        "V:bus1.1": 1.0,
+        "V:bus2.2": 1.0,
+        "V:bus3.3": 1.0,
+        "U:bus1": 0.5,
+        "S:transformer:t1": 0.5,
+        "S:feeder": 0.5,
+    }
+    if physical:
+        values["V:bus1.1"] = 0.94
+        values["U:bus1"] = 2.2
+    return values
+
+
+def _runtime_violations(*, physical: bool = False) -> list[dict[str, object]]:
+    if not physical:
+        return []
+    return [
+        {
+            "kind": "physical_constraint",
+            "metric": "V:bus1.1",
+            "value": 0.94,
+            "limit": 0.95,
+            "direction": "lo",
+        },
+        {
+            "kind": "physical_constraint",
+            "metric": "U:bus1",
+            "value": 2.2,
+            "limit": 2.0,
+            "direction": "hi",
+        },
+    ]
+
+
+def _runtime_slot(
+    slot: int, *, physical: bool = False, numerical: bool = False
+) -> dict[str, object]:
+    metrics = _runtime_metrics(physical=physical)
+    violations = _runtime_violations(physical=physical)
+    coverage = _formal_coverage()
+    result = {
+        "metrics": metrics,
+        "feasible": not numerical and not violations,
+        "converged": not numerical,
+        "numerical_failure": numerical,
+        "violations": violations,
+        "vmin": min(v for k, v in metrics.items() if k.startswith("V:")),
+        "vmax": max(v for k, v in metrics.items() if k.startswith("V:")),
+        "vufmax": max(v for k, v in metrics.items() if k.startswith("U:")),
+        "transformer_loading_max": max(
+            v for k, v in metrics.items() if k.startswith("S:transformer:")
+        ),
+        "feeder_loading": metrics["S:feeder"],
+        "line_thermal_in_scope": False,
+        "coverage": deepcopy(coverage),
+        "formal_integrity": {
+            "validated": True,
+            "result_schema_valid": True,
+            "metrics_finite": True,
+            "summary_finite": True,
+            "coverage_complete": True,
+            "summary_consistent": True,
+        },
+    }
+    return {
+        "slot": slot,
+        "verified": True,
+        "baseline_exact": False,
+        "baseline_schedule": None,
+        "load_scale": 1.0,
+        "feeder": "lv906",
+        "model": "3ph",
+        "source": "power_flow",
+        "audit_context": {
+            "adapter_schema": pilot._PILOT_ADAPTER_SCHEMA,
+            "adapter_version": pilot._PILOT_ADAPTER_VERSION,
+            "network_class": "tests.FakeNetwork",
+            "network_instance_id": 1,
+            "feeder": "lv906",
+            "model": "3ph",
+            "load_scale": 1.0,
+            **FORMAL_CONSTRAINTS,
+            "feeder_kva": 1000.0,
+            "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
+            "transformer_rating_basis": "NATIVE_SYSTEM_TOTAL_KVA",
+            "transformer_rating_multiplier": 1.0,
+            "groups": [],
+        },
+        "group_power": [0.0],
+        "coverage": deepcopy(coverage),
+        "formal_integrity": deepcopy(result["formal_integrity"]),
+        "result": result,
+    }
+
+
+def _runtime_raw(slots: list[dict[str, object]]) -> dict[str, object]:
+    failures: list[dict[str, object]] = []
+    trace: list[dict[str, object]] = []
+    numerical_checks = 0
+    physical_checks = 0
+    for record in slots:
+        result = record["result"]
+        violations = result["violations"]
+        numerical = bool(result["numerical_failure"])
+        physical = any(item.get("kind") == "physical_constraint" for item in violations)
+        numerical_checks += int(numerical)
+        physical_checks += int(physical)
+        failure_class = (
+            "NUMERICAL_INVALID"
+            if numerical
+            else "PHYSICAL_CONSTRAINT"
+            if physical
+            else "NONE"
+        )
+        if numerical or violations:
+            failures.append(
+                {
+                    "slot": record["slot"],
+                    "converged": bool(result["converged"]),
+                    "numerical_failure": numerical,
+                    "failure_class": failure_class,
+                    "physical_witness": physical,
+                    "violations": deepcopy(violations),
+                }
+            )
+        trace.append(
+            {
+                "slot": record["slot"],
+                "feasible": bool(result["feasible"]),
+                "converged": bool(result["converged"]),
+                "numerical_failure": numerical,
+                "failure_class": failure_class,
+                "physical_witness": physical,
+            }
+        )
+    checked = len(slots)
+    complete = checked == 96
+    feasible = complete and not failures
+    failure_class = (
+        "NUMERICAL_INVALID"
+        if numerical_checks
+        else "PHYSICAL_CONSTRAINT"
+        if physical_checks
+        else "NONE"
+    )
+    return {
+        "feasible": feasible,
+        "checked_intervals": checked,
+        "coverage_ratio": checked / 96.0,
+        "complete_coverage": complete,
+        "eligible_for_v01_pass": feasible,
+        "power_flow_evaluations": checked,
+        "reused_baseline_intervals": 0,
+        "converged_checks": checked - numerical_checks,
+        "nonconverged_checks": numerical_checks,
+        "numerical_failure_checks": numerical_checks,
+        "physical_violation_checks": physical_checks,
+        "failure_class": failure_class,
+        "nonconverged_slots": [
+            item["slot"] for item in failures if not item["converged"]
+        ],
+        "violations": failures,
+        "slot_results": slots,
+        "slot_audit_trace": trace,
+        "coverage_counts": deepcopy(_formal_coverage()),
+        "vmin": min(item["result"]["vmin"] for item in slots),
+        "vmax": max(item["result"]["vmax"] for item in slots),
+        "vufmax": max(item["result"]["vufmax"] for item in slots),
+        "transformer_loading_max": max(
+            item["result"]["transformer_loading_max"] for item in slots
+        ),
+        "feeder_loading_max": max(
+            item["result"]["feeder_loading"] for item in slots
+        ),
+    }
+
+
+def _fake_ev() -> SimpleNamespace:
+    return SimpleNamespace(
+        ev_id=1,
+        capacity=10.0,
+        initial=0.0,
+        target=1.0,
+        reserve=0.0,
+        arrival=0,
+        departure=96,
+        pch=2.0,
+        pdis=0.0,
+        eta_c=1.0,
+        eta_d=1.0,
+        v2g=False,
+        max_discharge=0.0,
+        bus="bus",
+        phase=1,
+        kv_ln=0.24,
+    )
+
+
+class _LiteFakeRuntime:
+    def __init__(self, stage: str, failure_mode: str | None = None) -> None:
+        self.stage = stage
+        self.failure_mode = failure_mode
+        self.fleet = [_fake_ev()]
+        self.baseline = np.zeros((1, 96), dtype=float)
+        self.schedule = self.baseline.copy()
+        self.schedule[0, :4] = 1.0
+        self.load_scales = np.ones(96, dtype=float)
+        self.generate_calls: list[tuple[int, str]] = []
+        self.cache_calls = 0
+        self.audit_calls: list[dict[str, object]] = []
+        self.forbidden_calls: list[str] = []
+        self._cache = object()
+        self._targeted_count = 0
+
+    def generate_balanced_raw(self, duration: int, model: str) -> dict[str, object]:
+        self.generate_calls.append((duration, model))
+        return {
+            "success": True,
+            "physical_feasible": True,
+            "schedule": self.schedule.copy(),
+            "flex_kw": 1.0,
+            "max_departure_error_kwh": 0.0,
+            "max_reserve_violation_kwh": 0.0,
+            "max_capacity_violation_kwh": 0.0,
+            "simultaneous_slots": 0,
+            "model_network_check": {"feasible": True},
+        }
+
+    def create_corrected_truth_cache(self) -> object:
+        self.cache_calls += 1
+        return self._cache
+
+    def audit_corrected(
+        self,
+        schedule: object,
+        cache: object,
+        *,
+        baseline_slot_results: object,
+        stop_on_violation: bool,
+        retain_slot_results: bool,
+    ) -> dict[str, object]:
+        assert cache is self._cache
+        self.audit_calls.append(
+            {
+                "schedule": np.asarray(schedule, dtype=float).copy(),
+                "baseline_slot_count": (
+                    None
+                    if baseline_slot_results is None
+                    else len(baseline_slot_results)
+                ),
+                "stop_on_violation": stop_on_violation,
+                "retain_slot_results": retain_slot_results,
+            }
+        )
+        if baseline_slot_results is None:
+            return _runtime_raw([_runtime_slot(slot) for slot in range(96)])
+
+        self._targeted_count += 1
+        boundary_infeasible = self.stage == "B" or self._targeted_count == 2
+        if self.failure_mode == "feasible_drift" and not boundary_infeasible:
+            return _runtime_raw(
+                [*[_runtime_slot(slot) for slot in range(5)], _runtime_slot(5, physical=True)]
+            )
+        if not boundary_infeasible:
+            return _runtime_raw([_runtime_slot(slot) for slot in range(96)])
+        if self.failure_mode == "numerical":
+            return _runtime_raw([_runtime_slot(0, numerical=True)])
+        if self.failure_mode == "missing_witness":
+            return _runtime_raw([_runtime_slot(slot) for slot in range(96)])
+        raw = _runtime_raw(
+            [*[_runtime_slot(slot) for slot in range(5)], _runtime_slot(5, physical=True)]
+        )
+        if self.failure_mode == "schema_drift":
+            raw["slot_results"][-1]["audit_context"]["adapter_schema"] = "wrong"
+        return raw
+
+    def alpha_legacy_verifier(self, *_args: object, **_kwargs: object) -> None:
+        self.forbidden_calls.append("alpha_legacy_verifier")
+        raise AssertionError("alpha search is forbidden")
+
+    def phase_tie_break(self, *_args: object, **_kwargs: object) -> None:
+        self.forbidden_calls.append("phase_tie_break")
+        raise AssertionError("tie-break is forbidden")
+
+    def timing_replay(self, *_args: object, **_kwargs: object) -> None:
+        self.forbidden_calls.append("timing_replay")
+        raise AssertionError("timing is forbidden")
+
+
+def _lite_case_and_factory(
+    stage: str, *, failure_mode: str | None = None
+) -> tuple[dict[str, object], _LiteFakeRuntime, object]:
+    cases = load_lite_manifest(REPO_ROOT)
+    pair_id = "04" if stage == "A" else "03"
+    case = deepcopy(next(item for item in cases if item["pair_id"] == pair_id))
+    runtime = _LiteFakeRuntime(stage, failure_mode=failure_mode)
+    case["schedule_sha256"] = pilot.canonical_schedule_sha256(
+        runtime.fleet, runtime.schedule
+    )
+    case["bus_phase_time_sha256"] = pilot._canonical_bus_phase_time_sha256(
+        runtime.fleet, runtime.schedule
+    )
+    case["baseline_schedule_sha256"] = pilot.canonical_schedule_sha256(
+        runtime.fleet, runtime.baseline
+    )
+
+    def factory(
+        _repo_root: Path,
+        work_unit: dict[str, object],
+        _pilot_config: dict[str, object],
+    ) -> _LiteFakeRuntime:
+        assert work_unit["feeder"] == "lv906"
+        return runtime
+
+    return case, runtime, factory
+
+
+def test_stage_a_executes_only_boundary_feasible_and_infeasible() -> None:
+    case, runtime, factory = _lite_case_and_factory("A")
+    config = load_lite_config(REPO_ROOT)
+
+    artifact = execute_lite_case(
+        REPO_ROOT, case, config, runtime_factory=factory
+    )
+
+    assert artifact["status"] == "SUCCESS"
+    assert [audit["audit_point"] for audit in artifact["audits"]] == [
+        "BOUNDARY_FEASIBLE",
+        "BOUNDARY_INFEASIBLE",
+    ]
+    assert len(runtime.audit_calls) == 3
+    expected_alphas = [case["alpha_transfer"], case["alpha_transfer"] + 0.002]
+    for call, alpha in zip(runtime.audit_calls[1:], expected_alphas, strict=True):
+        expected = runtime.baseline + alpha * (runtime.schedule - runtime.baseline)
+        np.testing.assert_allclose(call["schedule"], expected, rtol=0.0, atol=0.0)
+    assert [call["stop_on_violation"] for call in runtime.audit_calls] == [
+        False,
+        False,
+        True,
+    ]
+
+
+def test_stage_b_executes_only_boundary_infeasible() -> None:
+    case, runtime, factory = _lite_case_and_factory("B")
+
+    artifact = execute_lite_case(
+        REPO_ROOT, case, load_lite_config(REPO_ROOT), runtime_factory=factory
+    )
+
+    assert [audit["audit_point"] for audit in artifact["audits"]] == [
+        "BOUNDARY_INFEASIBLE"
+    ]
+    assert len(runtime.audit_calls) == 2
+    assert runtime.audit_calls[1]["stop_on_violation"] is True
+
+
+def test_case_reconstructs_once_and_reuses_one_baseline_audit() -> None:
+    case, runtime, factory = _lite_case_and_factory("A")
+
+    execute_lite_case(
+        REPO_ROOT, case, load_lite_config(REPO_ROOT), runtime_factory=factory
+    )
+
+    assert runtime.generate_calls == [(case["source_duration_min"], "balanced")]
+    assert runtime.cache_calls == 1
+    assert runtime.audit_calls[0]["baseline_slot_count"] is None
+    assert [call["baseline_slot_count"] for call in runtime.audit_calls[1:]] == [
+        96,
+        96,
+    ]
+
+
+def test_case_never_uses_control_full_offer_search_optimizer_or_tie_break() -> None:
+    case, runtime, factory = _lite_case_and_factory("A")
+
+    artifact = execute_lite_case(
+        REPO_ROOT, case, load_lite_config(REPO_ROOT), runtime_factory=factory
+    )
+
+    assert artifact["member"]["feeder"] == "lv906"
+    assert all(audit["audit_point"] != "FULL_OFFER" for audit in artifact["audits"])
+    assert runtime.forbidden_calls == []
+
+
+def test_case_preserves_all_simultaneous_first_slot_witnesses() -> None:
+    case, _, factory = _lite_case_and_factory("A")
+
+    artifact = execute_lite_case(
+        REPO_ROOT, case, load_lite_config(REPO_ROOT), runtime_factory=factory
+    )
+
+    selected = artifact["audits"][1]["selected_slot"]
+    assert selected["slot"] == 5
+    assert {
+        row["constraint_family"] for row in selected["simultaneous_violations"]
+    } == {"VMIN", "VUF"}
+    assert all(
+        row["is_physical_violation"] is True
+        for row in selected["constraint_rows"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("failure_mode", "expected_code"),
+    [
+        ("feasible_drift", "BOUNDARY_FEASIBLE_REQUIRED"),
+        ("numerical", "AUDIT_EVIDENCE_INVALID"),
+        ("missing_witness", "BOUNDARY_INFEASIBLE_REQUIRED"),
+        ("schema_drift", "AUDIT_SCHEMA_MISMATCH"),
+    ],
+)
+def test_case_stops_on_boundary_drift_numerical_failure_or_missing_witness(
+    failure_mode: str, expected_code: str
+) -> None:
+    case, _, factory = _lite_case_and_factory("A", failure_mode=failure_mode)
+
+    with pytest.raises(LiteAuditStop) as caught:
+        execute_lite_case(
+            REPO_ROOT,
+            case,
+            load_lite_config(REPO_ROOT),
+            runtime_factory=factory,
+        )
+
+    assert caught.value.rule_code == expected_code
