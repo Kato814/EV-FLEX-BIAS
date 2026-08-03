@@ -1,0 +1,130 @@
+{
+  "audits": [
+    {
+      "alpha": 0.612,
+      "alpha_label": "0.612",
+      "audit_point": "BOUNDARY_INFEASIBLE",
+      "audited_schedule_sha256": "46aec87fa963d82a218dea0d2a501452e3646e657a41d8aa47006b45655424be",
+      "checked_intervals": 76,
+      "complete_coverage": false,
+      "converged_checks": 76,
+      "coverage_counts": {
+        "all_bus_count": 907,
+        "enabled_transformer_count": 1,
+        "energized_voltage_node_count": 2721,
+        "feeder_rating_multiplier": 1.0,
+        "line_count": 905,
+        "line_thermal_in_scope": false,
+        "monitored_bus_count": 907,
+        "monitored_voltage_node_count": 2721,
+        "monitored_vuf_bus_count": 907,
+        "rated_transformer_count": 1,
+        "three_phase_bus_count": 907,
+        "transformer_power_basis": "SYSTEM_TOTAL_TERMINAL_POWER",
+        "transformer_rating_basis": "NATIVE_SYSTEM_TOTAL_KVA",
+        "transformer_rating_coverage": 1.0,
+        "transformer_rating_multiplier": 1.0,
+        "transformer_ratings_kva": {
+          "tr1": 800.0
+        },
+        "transformer_raw_ratings_kva": {
+          "tr1": 800.0
+        }
+      },
+      "coverage_ratio": 0.7916666666666666,
+      "explicit_physical_witness": true,
+      "failure_class": "PHYSICAL_CONSTRAINT",
+      "feasible": false,
+      "feeder_loading_max": 0.07831667259881843,
+      "first_failure_slot": 75,
+      "formal_constraints": {
+        "feeder_loading_limit_pu": 1.0,
+        "line_thermal_in_scope": false,
+        "transformer_loading_limit_pu": 1.0,
+        "vmax_pu": 1.06,
+        "vmin_pu": 0.95,
+        "vuf_limit_pct": 2.0
+      },
+      "line_thermal_in_scope": false,
+      "nonconverged_checks": 0,
+      "numerical_failure_checks": 0,
+      "physical_violation_checks": 1,
+      "selected_slot": {
+        "constraint_rows": [
+          {
+            "constraint_family": "VMAX",
+            "direction": "hi",
+            "exceedance": 4.3442480217814605e-05,
+            "is_physical_violation": true,
+            "limit": 1.06,
+            "metric_id": "V:780.3",
+            "object_id": "780.3",
+            "signed_headroom": -4.3442480217814605e-05,
+            "slot": 75,
+            "value": 1.0600434424802179
+          }
+        ],
+        "simultaneous_violations": [
+          {
+            "constraint_family": "VMAX",
+            "direction": "hi",
+            "exceedance": 4.3442480217814605e-05,
+            "is_physical_violation": true,
+            "limit": 1.06,
+            "metric_id": "V:780.3",
+            "object_id": "780.3",
+            "signed_headroom": -4.3442480217814605e-05,
+            "slot": 75,
+            "value": 1.0600434424802179
+          }
+        ],
+        "slot": 75
+      },
+      "sequence_index": 0,
+      "source_evaluation_id": "v20_core_lv906_0600_02__dec__60m",
+      "transformer_loading_max": 0.07831667259882089,
+      "vmax": 1.0600434424802179,
+      "vmin": 1.0223973852683743,
+      "vufmax": 0.4435100977367531
+    }
+  ],
+  "execution_order": 12,
+  "formal_v2_1_run_authorized": false,
+  "line_thermal_in_scope": false,
+  "member": {
+    "alpha_transfer": 0.61,
+    "baseline_schedule_sha256": "0413df92fe9a7567109e99156d3d079e668f4a6063ad6b67c7fef5c689c934ac",
+    "bus_phase_time_sha256": "d6184863bf490fa07d24077c3cea7129b9d84c6dab9502405156524eb7224b70",
+    "call_time": "06:00",
+    "direction": "dec",
+    "duration_min": 60,
+    "evaluation_id": "v20_core_lv906_0600_02__dec__60m",
+    "execution_order": 12,
+    "feeder": "lv906",
+    "pair_id": "12",
+    "scenario_cluster": "lv906_0600_02",
+    "scenario_id": "lv906_0600_02",
+    "scenario_seed": 2026072301,
+    "schedule_sha256": "44024a727160870392a4dfac05a267af1b4cea9383d5e8a7aaffcf58c0f083c6",
+    "source_duration_min": 60,
+    "stage": "B",
+    "work_unit_id": "v20_work_lv906_0600_02__dec"
+  },
+  "pair_id": "12",
+  "protocol_version": "EV-FLEX-BIAS-V2.1-D1R-LITE",
+  "resource_policy": {
+    "numeric_threads": {
+      "BLIS_NUM_THREADS": 1,
+      "MKL_NUM_THREADS": 1,
+      "NUMEXPR_NUM_THREADS": 1,
+      "OMP_NUM_THREADS": 1,
+      "OPENBLAS_NUM_THREADS": 1,
+      "VECLIB_MAXIMUM_THREADS": 1
+    },
+    "workers": 1
+  },
+  "scenario_cluster": "lv906_0600_02",
+  "source_commit": "e1740f912a351b1822b5ee019f9e4f05b6b71c6f",
+  "stage": "B",
+  "status": "SUCCESS"
+}
