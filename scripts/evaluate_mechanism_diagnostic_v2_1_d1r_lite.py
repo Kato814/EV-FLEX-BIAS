@@ -506,6 +506,7 @@ def _render_markdown(report: Mapping[str, Any]) -> bytes:
             "本次精简筛查删除了 IEEE13 对照、全报价审计和约束数量匹配，以压缩工作量。",
             "证据仅适用于归档样本中的 LV906 固定 EV 调度轨迹及其边界外 0.002 插值点。",
             "首失效显式证据的越限幅度如下；这些数值仅作描述，不参与冻结门槛改判：",
+            "",
             *[
                 (
                     f"- {item['constraint_family']}：{item['case_count']} 个案例，"
@@ -516,6 +517,7 @@ def _render_markdown(report: Mapping[str, Any]) -> bytes:
                 )
                 for item in report["boundary_exceedance_by_family"]
             ],
+            "",
             "本研究未进行三相重新优化，因此不能声称重新调度仍不可行。",
             "所有结果保持 `line_thermal_in_scope=false`，因此不包含线路热约束结论。",
             "达到共同候选门槛只表示样本内重复出现，仍受场景和固定轨迹混杂影响，不是唯一机制或因果机制。",

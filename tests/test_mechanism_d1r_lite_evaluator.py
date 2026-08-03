@@ -317,6 +317,8 @@ def test_evaluator_writes_conservative_chinese_scope_and_byte_verifies(
         "NO_GO_REASSESS_BROAD_TOPIC",
     ):
         assert required in markdown
+    assert "\n\n- VMIN" in markdown
+    assert " pu。\n\n本研究未进行三相重新优化" in markdown
 
     verified = _evaluate(
         evaluator, tmp_path, config, cases, verify_existing=True
