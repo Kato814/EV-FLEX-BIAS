@@ -14,10 +14,13 @@ from evflex import pilot
 from evflex.mechanism_diagnostic_d1r_lite import (
     LiteAuditStop,
     execute_lite_case,
+    final_gate,
     load_lite_config,
     load_lite_manifest,
+    stage_a_gate,
     stage_a_case_ids,
     stage_b_case_ids,
+    validate_lite_case_artifact,
     validate_raw_audit_identity,
     verify_lite_sources,
 )
@@ -759,3 +762,188 @@ def test_case_stops_on_boundary_drift_numerical_failure_or_missing_witness(
         )
 
     assert caught.value.rule_code == expected_code
+
+
+def _gate_constraint_row(
+    family: str, *, slot: int = 5, suffix: str = ""
+) -> dict[str, object]:
+    identity = {
+        "VMIN": (f"V:bus{suffix or '1'}.1", f"bus{suffix or '1'}.1", 0.94, 0.95, "lo"),
+        "VMAX": (f"V:bus{suffix or '1'}.1", f"bus{suffix or '1'}.1", 1.07, 1.06, "hi"),
+        "VUF": (f"U:bus{suffix or '1'}", f"bus{suffix or '1'}", 2.2, 2.0, "hi"),
+        "TRANSFORMER": (
+            f"S:transformer:t{suffix or '1'}",
+            f"t{suffix or '1'}",
+            1.1,
+            1.0,
+            "hi",
+        ),
+        "FEEDER": ("S:feeder", "feeder", 1.1, 1.0, "hi"),
+    }
+    metric_id, object_id, value, limit, direction = identity[family]
+    headroom = value - limit if direction == "lo" else limit - value
+    return {
+        "slot": slot,
+        "constraint_family": family,
+        "metric_id": metric_id,
+        "object_id": object_id,
+        "value": value,
+        "limit": limit,
+        "direction": direction,
+        "signed_headroom": headroom,
+        "exceedance": max(0.0, -headroom),
+        "is_physical_violation": True,
+    }
+
+
+def _gate_artifact(
+    case: dict[str, object],
+    families: set[str],
+    *,
+    duplicate_family_metric: str | None = None,
+) -> dict[str, object]:
+    template_case, _, factory = _lite_case_and_factory(str(case["stage"]))
+    artifact = execute_lite_case(
+        REPO_ROOT,
+        template_case,
+        load_lite_config(REPO_ROOT),
+        runtime_factory=factory,
+    )
+    artifact.update(
+        {
+            "pair_id": case["pair_id"],
+            "stage": case["stage"],
+            "execution_order": case["execution_order"],
+            "scenario_cluster": case["scenario_cluster"],
+            "member": deepcopy(case),
+        }
+    )
+    family_order = ["VMIN", "VMAX", "VUF", "TRANSFORMER", "FEEDER"]
+    for audit in artifact["audits"]:
+        audit["source_evaluation_id"] = case["evaluation_id"]
+        alpha = float(case["alpha_transfer"])
+        if audit["audit_point"] == "BOUNDARY_INFEASIBLE":
+            alpha = float(f"{alpha + 0.002:.3f}")
+        audit["alpha"] = alpha
+        audit["alpha_label"] = f"{alpha:.3f}"
+    boundary = artifact["audits"][-1]
+    rows = [_gate_constraint_row(family) for family in family_order if family in families]
+    if duplicate_family_metric is not None:
+        rows.append(_gate_constraint_row(duplicate_family_metric, suffix="2"))
+        rows.sort(key=lambda row: (family_order.index(str(row["constraint_family"])), str(row["metric_id"])))
+    boundary["selected_slot"]["constraint_rows"] = deepcopy(rows)
+    boundary["selected_slot"]["simultaneous_violations"] = deepcopy(rows)
+    return artifact
+
+
+def _artifacts_with_support(
+    support: dict[str, set[str]],
+) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, object]]:
+    cases = load_lite_manifest(REPO_ROOT)
+    artifacts = [
+        _gate_artifact(case, support.get(str(case["pair_id"]), {"FEEDER"}))
+        for case in cases
+    ]
+    return artifacts, cases, load_lite_config(REPO_ROOT)
+
+
+def test_stage_a_gate_stops_without_family_in_three_clusters() -> None:
+    artifacts, cases, config = _artifacts_with_support(
+        {"01": {"VMIN"}, "04": {"VMIN"}, "07": {"VUF"}, "10": {"VUF"}}
+    )
+
+    result = stage_a_gate(artifacts[:4], cases, config)
+
+    assert result["decision"] == "STOP_HETEROGENEOUS_SCREEN"
+    assert result["qualifying_families"] == []
+    assert result["evaluated_case_count"] == 4
+    assert result["evaluated_target_audit_count"] == 8
+
+
+def test_stage_a_gate_expands_with_every_family_in_three_or_four_clusters() -> None:
+    artifacts, cases, config = _artifacts_with_support(
+        {
+            "01": {"VMIN", "VUF"},
+            "04": {"VMIN", "VUF"},
+            "07": {"VMIN", "VUF"},
+            "10": {"VMIN", "FEEDER"},
+        }
+    )
+
+    result = stage_a_gate(artifacts[:4], cases, config)
+
+    assert result["decision"] == "EXPAND_STAGE_B"
+    assert result["qualifying_families"] == ["VMIN", "VUF"]
+    support = {item["constraint_family"]: item for item in result["family_support"]}
+    assert support["VMIN"]["case_count"] == 4
+    assert support["VUF"]["case_count"] == 3
+    assert support["FEEDER"]["case_count"] == 1
+
+
+def test_final_gate_requires_eight_cases_and_three_clusters() -> None:
+    vmin_ids = {"01", "02", "03", "04", "05", "07", "08", "10"}
+    transformer_ids = {"01", "02", "03", "04", "07", "10", "11"}
+    support = {
+        pair_id: ({"VMIN"} if pair_id in vmin_ids else {"FEEDER"})
+        | ({"TRANSFORMER"} if pair_id in transformer_ids else set())
+        for pair_id in [f"{index:02d}" for index in range(1, 13)]
+    }
+    artifacts, cases, config = _artifacts_with_support(support)
+
+    result = final_gate(artifacts, cases, config)
+
+    assert result["decision"] == "COMMON_CANDIDATE_CONFOUNDED"
+    assert result["qualifying_families"] == ["VMIN"]
+    family_support = {
+        item["constraint_family"]: item for item in result["family_support"]
+    }
+    assert family_support["VMIN"]["case_count"] == 8
+    assert family_support["VMIN"]["scenario_cluster_count"] >= 3
+    assert family_support["TRANSFORMER"]["case_count"] == 7
+    assert family_support["TRANSFORMER"]["scenario_cluster_count"] == 4
+    assert family_support["TRANSFORMER"]["qualifies"] is False
+
+
+def test_gate_counts_case_presence_not_number_of_metrics() -> None:
+    artifacts, cases, config = _artifacts_with_support(
+        {"01": {"VMIN"}, "04": {"VMIN"}, "07": {"VMIN"}, "10": {"VUF"}}
+    )
+    artifacts[0] = _gate_artifact(
+        cases[0], {"VMIN"}, duplicate_family_metric="VMIN"
+    )
+
+    result = stage_a_gate(artifacts[:4], cases, config)
+
+    vmin = next(
+        item for item in result["family_support"] if item["constraint_family"] == "VMIN"
+    )
+    assert vmin["case_count"] == 3
+    assert vmin["metric_witness_count"] == 4
+
+
+def test_validate_case_artifact_requires_exact_stage_a_or_b_audit_count() -> None:
+    cases = load_lite_manifest(REPO_ROOT)
+    config = load_lite_config(REPO_ROOT)
+    stage_a = _gate_artifact(cases[0], {"VMIN"})
+    stage_b = _gate_artifact(cases[4], {"VMIN"})
+    validate_lite_case_artifact(stage_a, cases[0], config)
+    validate_lite_case_artifact(stage_b, cases[4], config)
+
+    missing = deepcopy(stage_a)
+    missing["audits"].pop()
+    with pytest.raises(ValueError, match="exactly two"):
+        validate_lite_case_artifact(missing, cases[0], config)
+
+    extra = deepcopy(stage_b)
+    extra["audits"].append(deepcopy(extra["audits"][0]))
+    with pytest.raises(ValueError, match="exactly one"):
+        validate_lite_case_artifact(extra, cases[4], config)
+
+
+def test_stage_b_artifact_is_invalid_before_expansion_gate() -> None:
+    artifacts, cases, config = _artifacts_with_support(
+        {"01": {"VMIN"}, "04": {"VMIN"}, "07": {"VUF"}, "10": {"VUF"}}
+    )
+
+    with pytest.raises(ValueError, match="before expansion"):
+        final_gate(artifacts, cases, config)

@@ -924,3 +924,692 @@ def execute_lite_case(
         "member": deepcopy(dict(case)),
         "audits": audits,
     }
+
+
+_LITE_COMMON_ARTIFACT_KEYS = {
+    "protocol_version",
+    "status",
+    "pair_id",
+    "stage",
+    "execution_order",
+    "scenario_cluster",
+    "source_commit",
+    "line_thermal_in_scope",
+    "formal_v2_1_run_authorized",
+    "resource_policy",
+    "member",
+    "audits",
+}
+_LITE_AUDIT_KEYS = {
+    "sequence_index",
+    "audit_point",
+    "alpha",
+    "alpha_label",
+    "source_evaluation_id",
+    "audited_schedule_sha256",
+    "formal_constraints",
+    "line_thermal_in_scope",
+    "feasible",
+    "checked_intervals",
+    "coverage_ratio",
+    "complete_coverage",
+    "converged_checks",
+    "nonconverged_checks",
+    "numerical_failure_checks",
+    "physical_violation_checks",
+    "failure_class",
+    "first_failure_slot",
+    "explicit_physical_witness",
+    "selected_slot",
+    "coverage_counts",
+    "vmin",
+    "vmax",
+    "vufmax",
+    "transformer_loading_max",
+    "feeder_loading_max",
+}
+_LITE_SELECTED_KEYS = {"slot", "constraint_rows", "simultaneous_violations"}
+_LITE_CONSTRAINT_ROW_KEYS = {
+    "slot",
+    "constraint_family",
+    "metric_id",
+    "object_id",
+    "value",
+    "limit",
+    "direction",
+    "signed_headroom",
+    "exceedance",
+    "is_physical_violation",
+}
+_LITE_COVERAGE_KEYS = {
+    "all_bus_count",
+    "monitored_bus_count",
+    "energized_voltage_node_count",
+    "monitored_voltage_node_count",
+    "three_phase_bus_count",
+    "monitored_vuf_bus_count",
+    "enabled_transformer_count",
+    "rated_transformer_count",
+    "transformer_rating_coverage",
+    "line_count",
+    "line_thermal_in_scope",
+    "feeder_rating_multiplier",
+    "transformer_ratings_kva",
+    "transformer_raw_ratings_kva",
+    "transformer_rating_multiplier",
+    "transformer_rating_basis",
+    "transformer_power_basis",
+}
+_LITE_FORMAL_CONSTRAINTS = {
+    "vmin_pu": 0.95,
+    "vmax_pu": 1.06,
+    "vuf_limit_pct": 2.0,
+    "transformer_loading_limit_pu": 1.0,
+    "feeder_loading_limit_pu": 1.0,
+    "line_thermal_in_scope": False,
+}
+
+
+def _validate_finite_artifact_tree(value: Any, label: str) -> None:
+    if isinstance(value, Mapping):
+        if not all(isinstance(key, str) for key in value):
+            _fail(f"{label} mapping keys must be strings")
+        for key, item in value.items():
+            _validate_finite_artifact_tree(item, f"{label}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_finite_artifact_tree(item, f"{label}[{index}]")
+    elif isinstance(value, float) and not math.isfinite(value):
+        _fail(f"{label} contains a non-finite number")
+
+
+def _artifact_mapping(value: Any, label: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        _fail(f"{label} must be a mapping")
+    return value
+
+
+def _artifact_int(value: Any, label: str, *, minimum: int = 0) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        _fail(f"{label} must be an integer >= {minimum}")
+    return value
+
+
+def _artifact_number(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        _fail(f"{label} must be a finite JSON number")
+    number = float(value)
+    if not math.isfinite(number):
+        _fail(f"{label} must be a finite JSON number")
+    return number
+
+
+def _validate_lite_coverage(value: Any, label: str) -> None:
+    coverage = _artifact_mapping(value, label)
+    if set(coverage) != _LITE_COVERAGE_KEYS:
+        _fail(f"{label} has unexpected or missing fields")
+    count_names = (
+        "all_bus_count",
+        "monitored_bus_count",
+        "energized_voltage_node_count",
+        "monitored_voltage_node_count",
+        "three_phase_bus_count",
+        "monitored_vuf_bus_count",
+        "enabled_transformer_count",
+        "rated_transformer_count",
+        "line_count",
+    )
+    counts = {
+        name: _artifact_int(coverage.get(name), f"{label}.{name}")
+        for name in count_names
+    }
+    ratings = _artifact_mapping(
+        coverage.get("transformer_ratings_kva"),
+        f"{label}.transformer_ratings_kva",
+    )
+    raw_ratings = _artifact_mapping(
+        coverage.get("transformer_raw_ratings_kva"),
+        f"{label}.transformer_raw_ratings_kva",
+    )
+    multiplier = _artifact_number(
+        coverage.get("transformer_rating_multiplier"),
+        f"{label}.transformer_rating_multiplier",
+    )
+    expected_basis = (
+        "MAKEPOSSEQ_PER_PHASE_KVA_NORMALIZED_TO_SYSTEM_TOTAL"
+        if multiplier == 3.0
+        else "NATIVE_SYSTEM_TOTAL_KVA"
+    )
+    if (
+        counts["all_bus_count"] <= 0
+        or counts["all_bus_count"] != counts["monitored_bus_count"]
+        or counts["energized_voltage_node_count"] <= 0
+        or counts["energized_voltage_node_count"]
+        != counts["monitored_voltage_node_count"]
+        or counts["three_phase_bus_count"]
+        != counts["monitored_vuf_bus_count"]
+        or counts["enabled_transformer_count"]
+        != counts["rated_transformer_count"]
+        or counts["rated_transformer_count"] != len(ratings)
+        or set(map(str.lower, map(str, ratings)))
+        != set(map(str.lower, map(str, raw_ratings)))
+        or coverage.get("line_thermal_in_scope") is not False
+        or _artifact_number(
+            coverage.get("transformer_rating_coverage"),
+            f"{label}.transformer_rating_coverage",
+        )
+        != 1.0
+        or _artifact_number(
+            coverage.get("feeder_rating_multiplier"),
+            f"{label}.feeder_rating_multiplier",
+        )
+        != 1.0
+        or multiplier not in {1.0, 3.0}
+        or coverage.get("transformer_rating_basis") != expected_basis
+        or coverage.get("transformer_power_basis")
+        != "SYSTEM_TOTAL_TERMINAL_POWER"
+    ):
+        _fail(f"{label} is not complete formal coverage")
+    for name, rating in ratings.items():
+        observed = _artifact_number(rating, f"{label}.rating.{name}")
+        raw = _artifact_number(
+            raw_ratings.get(name), f"{label}.raw_rating.{name}"
+        )
+        if observed <= 0.0 or raw <= 0.0 or not math.isclose(
+            observed, raw * multiplier, rel_tol=1e-12, abs_tol=1e-12
+        ):
+            _fail(f"{label} contains inconsistent transformer ratings")
+
+
+def _validate_lite_constraint_rows(
+    selected: Mapping[str, Any], config: Mapping[str, Any]
+) -> tuple[set[str], int]:
+    if set(selected) != _LITE_SELECTED_KEYS:
+        _fail("selected audit evidence has unexpected or missing fields")
+    slot = _artifact_int(selected.get("slot"), "selected slot")
+    if slot > 95:
+        _fail("selected slot must be between zero and 95")
+    rows = selected.get("constraint_rows")
+    simultaneous = selected.get("simultaneous_violations")
+    if not isinstance(rows, list) or not rows or not isinstance(simultaneous, list):
+        _fail("selected physical evidence must contain nonempty row lists")
+    family_order = list(config["audit"]["family_order"])
+    family_index = {family: index for index, family in enumerate(family_order)}
+    previous: tuple[int, str, str] | None = None
+    seen_objects: set[tuple[str, str]] = set()
+    retained: list[dict[str, Any]] = []
+    families: set[str] = set()
+    limits = {
+        "VMIN": _LITE_FORMAL_CONSTRAINTS["vmin_pu"],
+        "VMAX": _LITE_FORMAL_CONSTRAINTS["vmax_pu"],
+        "VUF": _LITE_FORMAL_CONSTRAINTS["vuf_limit_pct"],
+        "TRANSFORMER": _LITE_FORMAL_CONSTRAINTS[
+            "transformer_loading_limit_pu"
+        ],
+        "FEEDER": _LITE_FORMAL_CONSTRAINTS["feeder_loading_limit_pu"],
+    }
+    for row_index, value in enumerate(rows):
+        row = _artifact_mapping(value, f"constraint row {row_index}")
+        if set(row) != _LITE_CONSTRAINT_ROW_KEYS or row.get("slot") != slot:
+            _fail("constraint row fields or slot are invalid")
+        family = row.get("constraint_family")
+        metric_id = row.get("metric_id")
+        object_id = row.get("object_id")
+        direction = row.get("direction")
+        if (
+            family not in family_index
+            or not isinstance(metric_id, str)
+            or not metric_id
+            or not isinstance(object_id, str)
+            or not object_id
+            or direction not in {"lo", "hi"}
+            or row.get("is_physical_violation") is not True
+        ):
+            _fail("constraint row identity is invalid")
+        object_key = (str(family), object_id)
+        if object_key in seen_objects:
+            _fail("duplicate constraint object within a family")
+        seen_objects.add(object_key)
+        expected_direction = "lo" if family == "VMIN" else "hi"
+        prefix_valid = bool(
+            (family in {"VMIN", "VMAX"} and metric_id == f"V:{object_id}")
+            or (family == "VUF" and metric_id == f"U:{object_id}")
+            or (
+                family == "TRANSFORMER"
+                and metric_id == f"S:transformer:{object_id}"
+            )
+            or (
+                family == "FEEDER"
+                and metric_id == "S:feeder"
+                and object_id == "feeder"
+            )
+        )
+        numeric = {
+            name: _artifact_number(row.get(name), f"constraint row {name}")
+            for name in ("value", "limit", "signed_headroom", "exceedance")
+        }
+        expected_headroom = (
+            numeric["value"] - numeric["limit"]
+            if direction == "lo"
+            else numeric["limit"] - numeric["value"]
+        )
+        if (
+            direction != expected_direction
+            or not prefix_valid
+            or numeric["limit"] != limits[str(family)]
+            or not math.isclose(
+                numeric["signed_headroom"],
+                expected_headroom,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+            or not math.isclose(
+                numeric["exceedance"],
+                max(0.0, -expected_headroom),
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+            or numeric["exceedance"] <= 0.0
+        ):
+            _fail("constraint row value, limit, or margin is inconsistent")
+        order_key = (family_index[str(family)], metric_id, str(direction))
+        if previous is not None and order_key < previous:
+            _fail("constraint rows are not in frozen order")
+        previous = order_key
+        families.add(str(family))
+        retained.append(dict(row))
+    if [dict(row) for row in simultaneous] != retained:
+        _fail("simultaneous violations differ from retained physical rows")
+    return families, len(retained)
+
+
+def _validate_lite_audit(
+    audit: Mapping[str, Any],
+    *,
+    case: Mapping[str, Any],
+    config: Mapping[str, Any],
+    index: int,
+) -> bool:
+    if set(audit) != _LITE_AUDIT_KEYS:
+        _fail("audit artifact has unexpected or missing fields")
+    expected_points = (
+        config["audit"]["stage_a_point_order"]
+        if case["stage"] == "A"
+        else config["audit"]["stage_b_point_order"]
+    )
+    if index >= len(expected_points):
+        _fail("audit artifact exceeds the frozen stage sequence")
+    expected_point = expected_points[index]
+    expected_alpha = Decimal(str(case["alpha_transfer"]))
+    if expected_point == "BOUNDARY_INFEASIBLE":
+        expected_alpha += Decimal(str(config["audit"]["delta"]))
+    identity_valid = bool(
+        audit.get("sequence_index") == index
+        and audit.get("audit_point") == expected_point
+        and audit.get("source_evaluation_id") == case["evaluation_id"]
+        and audit.get("alpha_label") == format(expected_alpha, ".3f")
+        and _artifact_number(audit.get("alpha"), "audit alpha")
+        == float(expected_alpha)
+        and audit.get("formal_constraints") == _LITE_FORMAL_CONSTRAINTS
+        and audit.get("line_thermal_in_scope") is False
+    )
+    if not identity_valid:
+        _fail("audit identity, alpha, or formal constraints differ")
+    schedule_hash = audit.get("audited_schedule_sha256")
+    if not isinstance(schedule_hash, str) or _SHA256_RE.fullmatch(schedule_hash) is None:
+        _fail("audited schedule hash must be a lowercase SHA-256")
+    flags = (
+        audit.get("feasible"),
+        audit.get("complete_coverage"),
+        audit.get("explicit_physical_witness"),
+    )
+    if not all(isinstance(value, bool) for value in flags):
+        _fail("audit feasibility flags must be boolean")
+    checked = _artifact_int(
+        audit.get("checked_intervals"), "audit checked intervals", minimum=1
+    )
+    converged = _artifact_int(audit.get("converged_checks"), "audit convergence")
+    nonconverged = _artifact_int(
+        audit.get("nonconverged_checks"), "audit nonconvergence"
+    )
+    numerical = _artifact_int(
+        audit.get("numerical_failure_checks"), "audit numerical failures"
+    )
+    physical = _artifact_int(
+        audit.get("physical_violation_checks"), "audit physical failures"
+    )
+    ratio = _artifact_number(audit.get("coverage_ratio"), "audit coverage ratio")
+    complete = bool(audit["complete_coverage"])
+    if (
+        checked > 96
+        or converged != checked
+        or nonconverged != 0
+        or numerical != 0
+        or complete is not (checked == 96)
+        or not math.isclose(ratio, checked / 96.0, rel_tol=0.0, abs_tol=1e-15)
+    ):
+        _fail("audit coverage or convergence counters are inconsistent")
+    _validate_lite_coverage(audit.get("coverage_counts"), "audit formal coverage")
+    for name in (
+        "vmin",
+        "vmax",
+        "vufmax",
+        "transformer_loading_max",
+        "feeder_loading_max",
+    ):
+        _artifact_number(audit.get(name), f"audit {name}")
+    feasible = bool(audit["feasible"])
+    selected = audit.get("selected_slot")
+    if feasible:
+        structurally_valid = bool(
+            checked == 96
+            and physical == 0
+            and audit.get("failure_class") == "NONE"
+            and audit.get("first_failure_slot") is None
+            and audit.get("explicit_physical_witness") is False
+            and selected is None
+        )
+    else:
+        first = _artifact_int(
+            audit.get("first_failure_slot"), "audit first failure slot"
+        )
+        selected_mapping = _artifact_mapping(selected, "selected audit evidence")
+        _validate_lite_constraint_rows(selected_mapping, config)
+        structurally_valid = bool(
+            first <= 95
+            and checked == first + 1
+            and physical == 1
+            and audit.get("failure_class") == "PHYSICAL_CONSTRAINT"
+            and audit.get("explicit_physical_witness") is True
+            and selected_mapping.get("slot") == first
+        )
+    if not structurally_valid:
+        _fail("audit feasibility and physical witness evidence are inconsistent")
+    return feasible is (expected_point == "BOUNDARY_FEASIBLE")
+
+
+def validate_lite_case_artifact(
+    artifact: Mapping[str, Any],
+    case: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> None:
+    """Strictly validate one terminal D1-R-Lite case artifact."""
+
+    if not isinstance(artifact, Mapping):
+        _fail("case artifact must be a mapping")
+    _validate_finite_artifact_tree(artifact, "case artifact")
+    if dict(config) != _expected_config():
+        _fail("case validation requires the frozen config")
+    status = artifact.get("status")
+    if status not in {"SUCCESS", "STOP_IMPLEMENTATION", "UNHANDLED_FAILURE"}:
+        _fail("case artifact status is not terminal")
+    expected_keys = set(_LITE_COMMON_ARTIFACT_KEYS)
+    if status != "SUCCESS":
+        expected_keys.add("failure")
+    if set(artifact) != expected_keys:
+        _fail("case artifact has unexpected or missing fields")
+    identity = {
+        "protocol_version": config["protocol_version"],
+        "pair_id": case.get("pair_id"),
+        "stage": case.get("stage"),
+        "execution_order": case.get("execution_order"),
+        "scenario_cluster": case.get("scenario_cluster"),
+        "source_commit": config["source_commit"],
+        "line_thermal_in_scope": False,
+        "formal_v2_1_run_authorized": False,
+        "resource_policy": config["resource_policy"],
+        "member": dict(case),
+    }
+    if any(artifact.get(name) != value for name, value in identity.items()):
+        _fail("case identity, provenance, resource policy, or scope differs")
+    audits = artifact.get("audits")
+    if not isinstance(audits, list) or not all(
+        isinstance(audit, Mapping) for audit in audits
+    ):
+        _fail("case audits must be a mapping list")
+    expected_count = 2 if case.get("stage") == "A" else 1
+    if status == "SUCCESS" and len(audits) != expected_count:
+        label = "two" if expected_count == 2 else "one"
+        _fail(f"successful Stage {case.get('stage')} case must contain exactly {label} audits")
+    if status != "SUCCESS" and len(audits) > expected_count:
+        _fail("failure case exceeds its continuous audit prefix")
+    matches = [
+        _validate_lite_audit(
+            audit,
+            case=case,
+            config=config,
+            index=index,
+        )
+        for index, audit in enumerate(audits)
+    ]
+    if status == "SUCCESS":
+        if not all(matches):
+            _fail("successful case contradicts a frozen boundary rule")
+        return
+    failure = _artifact_mapping(artifact.get("failure"), "terminal failure")
+    if status == "STOP_IMPLEMENTATION":
+        if set(failure) != {"kind", "rule_code", "detail", "sequence_index"}:
+            _fail("STOP_IMPLEMENTATION failure fields are invalid")
+        sequence_index = failure.get("sequence_index")
+        rule_code = failure.get("rule_code")
+        if (
+            failure.get("kind") != "FROZEN_RULE_CONTRADICTION"
+            or not isinstance(rule_code, str)
+            or re.fullmatch(r"[A-Z][A-Z0-9_]*", rule_code) is None
+            or not isinstance(failure.get("detail"), str)
+            or not failure.get("detail")
+            or (
+                sequence_index is not None
+                and (
+                    isinstance(sequence_index, bool)
+                    or not isinstance(sequence_index, int)
+                    or sequence_index < 0
+                )
+            )
+        ):
+            _fail("STOP_IMPLEMENTATION failure identity is invalid")
+        valid_stop = bool(
+            (not audits and sequence_index is None)
+            or (
+                sequence_index == len(audits)
+                and all(matches)
+                and len(audits) < expected_count
+            )
+            or (
+                audits
+                and sequence_index == len(audits) - 1
+                and all(matches[:-1])
+                and not matches[-1]
+            )
+        )
+        if not valid_stop:
+            _fail("STOP_IMPLEMENTATION is not the first failed frozen rule")
+    else:
+        if set(failure) != {
+            "kind",
+            "exception_type",
+            "message",
+            "sequence_index",
+        }:
+            _fail("UNHANDLED_FAILURE fields are invalid")
+        if (
+            failure.get("kind") != "UNHANDLED_EXCEPTION"
+            or failure.get("sequence_index") != len(audits)
+            or not all(matches)
+            or not isinstance(failure.get("exception_type"), str)
+            or not failure.get("exception_type")
+            or not isinstance(failure.get("message"), str)
+        ):
+            _fail("UNHANDLED_FAILURE is not a valid continuous audit prefix")
+
+
+def _ordered_cases(
+    cases: Sequence[Mapping[str, Any]], config: Mapping[str, Any]
+) -> list[Mapping[str, Any]]:
+    if isinstance(cases, (str, bytes)) or not isinstance(cases, Sequence):
+        _fail("cases must be a sequence")
+    ordered = list(cases)
+    pair_ids = [
+        case.get("pair_id") if isinstance(case, Mapping) else None
+        for case in ordered
+    ]
+    if pair_ids != config["selection"]["execution_order"]:
+        _fail("case order differs from the frozen manifest")
+    if len(ordered) != config["expected_counts"]["maximum_cases"]:
+        _fail("case count differs from the frozen manifest")
+    return ordered
+
+
+def _family_support(
+    artifacts: Sequence[Mapping[str, Any]],
+    config: Mapping[str, Any],
+    *,
+    minimum_cases: int,
+    minimum_clusters: int,
+) -> list[dict[str, Any]]:
+    family_order = list(config["audit"]["family_order"])
+    pair_support = {family: [] for family in family_order}
+    cluster_support = {family: [] for family in family_order}
+    metric_counts = {family: 0 for family in family_order}
+    for artifact in artifacts:
+        audit = artifact["audits"][-1]
+        selected = _artifact_mapping(
+            audit.get("selected_slot"), "selected audit evidence"
+        )
+        rows = selected["simultaneous_violations"]
+        present: set[str] = set()
+        for row in rows:
+            family = str(row["constraint_family"])
+            metric_counts[family] += 1
+            present.add(family)
+        for family in family_order:
+            if family not in present:
+                continue
+            pair_support[family].append(str(artifact["pair_id"]))
+            cluster = str(artifact["scenario_cluster"])
+            if cluster not in cluster_support[family]:
+                cluster_support[family].append(cluster)
+    return [
+        {
+            "constraint_family": family,
+            "case_count": len(pair_support[family]),
+            "scenario_cluster_count": len(cluster_support[family]),
+            "metric_witness_count": metric_counts[family],
+            "pair_ids": pair_support[family],
+            "scenario_clusters": cluster_support[family],
+            "qualifies": bool(
+                len(pair_support[family]) >= minimum_cases
+                and len(cluster_support[family]) >= minimum_clusters
+            ),
+        }
+        for family in family_order
+    ]
+
+
+def stage_a_gate(
+    artifacts: Sequence[Mapping[str, Any]],
+    cases: Sequence[Mapping[str, Any]],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply the frozen four-representative expansion gate."""
+
+    if dict(config) != _expected_config():
+        _fail("Stage A gate requires the frozen config")
+    ordered_cases = _ordered_cases(cases, config)
+    expected_cases = ordered_cases[: config["expected_counts"]["stage_a_cases"]]
+    if isinstance(artifacts, (str, bytes)) or not isinstance(artifacts, Sequence):
+        _fail("Stage A artifacts must be a sequence")
+    retained = list(artifacts)
+    if len(retained) != len(expected_cases):
+        _fail("Stage A gate requires exactly four case artifacts")
+    for artifact, case in zip(retained, expected_cases, strict=True):
+        validate_lite_case_artifact(artifact, case, config)
+        if artifact.get("status") != "SUCCESS":
+            _fail("Stage A gate requires four successful cases")
+    support = _family_support(
+        retained,
+        config,
+        minimum_cases=config["gates"]["stage_a_minimum_cases"],
+        minimum_clusters=1,
+    )
+    qualifying = [
+        item["constraint_family"] for item in support if item["qualifies"]
+    ]
+    return {
+        "protocol_version": config["protocol_version"],
+        "stage": "A",
+        "decision": (
+            "EXPAND_STAGE_B" if qualifying else "STOP_HETEROGENEOUS_SCREEN"
+        ),
+        "evaluated_case_count": len(retained),
+        "evaluated_target_audit_count": sum(
+            len(artifact["audits"]) for artifact in retained
+        ),
+        "threshold": {
+            "minimum_cases": config["gates"]["stage_a_minimum_cases"],
+            "total_cases": config["gates"]["stage_a_total_cases"],
+        },
+        "family_support": support,
+        "qualifying_families": qualifying,
+        "formal_v2_1_run_authorized": False,
+    }
+
+
+def final_gate(
+    artifacts: Sequence[Mapping[str, Any]],
+    cases: Sequence[Mapping[str, Any]],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply the frozen 8/12 and 3/4-cluster common-candidate gate."""
+
+    if dict(config) != _expected_config():
+        _fail("final gate requires the frozen config")
+    ordered_cases = _ordered_cases(cases, config)
+    if isinstance(artifacts, (str, bytes)) or not isinstance(artifacts, Sequence):
+        _fail("final artifacts must be a sequence")
+    retained = list(artifacts)
+    if len(retained) != len(ordered_cases):
+        _fail("final gate requires exactly twelve case artifacts")
+    stage_result = stage_a_gate(retained[:4], ordered_cases, config)
+    if stage_result["decision"] != "EXPAND_STAGE_B":
+        _fail("Stage B artifacts are forbidden before expansion gate")
+    for artifact, case in zip(retained, ordered_cases, strict=True):
+        validate_lite_case_artifact(artifact, case, config)
+        if artifact.get("status") != "SUCCESS":
+            _fail("final gate requires twelve successful cases")
+    support = _family_support(
+        retained,
+        config,
+        minimum_cases=config["gates"]["final_minimum_cases"],
+        minimum_clusters=config["gates"]["final_minimum_scenario_clusters"],
+    )
+    qualifying = [
+        item["constraint_family"] for item in support if item["qualifies"]
+    ]
+    return {
+        "protocol_version": config["protocol_version"],
+        "stage": "FINAL",
+        "stage_a_decision": stage_result["decision"],
+        "decision": (
+            "COMMON_CANDIDATE_CONFOUNDED"
+            if qualifying
+            else "HETEROGENEOUS_12_CASES"
+        ),
+        "evaluated_case_count": len(retained),
+        "evaluated_target_audit_count": sum(
+            len(artifact["audits"]) for artifact in retained
+        ),
+        "threshold": {
+            "minimum_cases": config["gates"]["final_minimum_cases"],
+            "total_cases": config["gates"]["final_total_cases"],
+            "minimum_scenario_clusters": config["gates"][
+                "final_minimum_scenario_clusters"
+            ],
+            "total_scenario_clusters": config["gates"][
+                "final_total_scenario_clusters"
+            ],
+        },
+        "family_support": support,
+        "qualifying_families": qualifying,
+        "formal_v2_1_run_authorized": False,
+    }
