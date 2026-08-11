@@ -218,4 +218,3 @@ def test_cli_emits_one_strict_json_object_on_error(
         "formal_v2_1_run_started": False,
         "status": "RUNNER_ERROR",
     }
-
