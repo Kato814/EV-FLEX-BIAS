@@ -487,3 +487,421 @@ def load_replay_source(
             item["path"]: item["sha256"] for item in config["frozen_sources"]
         },
     }
+
+
+_OBSERVATION_KEYS = {
+    "setting_label",
+    "requested_solver_settings",
+    "observed_solver_settings",
+    "selected_slot",
+    "load_scale",
+    "audited_schedule_sha256",
+    "power_vector_sha256",
+    "metric_id",
+    "metric_value",
+    "limit",
+    "direction",
+    "exceedance",
+    "physical_violation",
+    "physical_violation_metrics",
+    "converged",
+    "numerical_failure",
+    "iterations",
+    "vmin",
+    "vmax",
+    "line_thermal_in_scope",
+    "independent_context",
+}
+_OBSERVED_SETTING_KEYS = {
+    "convergence_tolerance",
+    "max_iterations",
+    "max_control_iterations",
+}
+_CASE_ARTIFACT_KEYS = {
+    "protocol_version",
+    "status",
+    "pair_id",
+    "scenario_cluster",
+    "selection",
+    "source_evidence_commit",
+    "source_n0_commit",
+    "runtime_version",
+    "target_replay_evaluations",
+    "observations",
+    "assessment",
+    "formal_v2_1_run_started",
+    "formal_v2_1_run_authorized",
+    "line_thermal_in_scope",
+    "resource_policy",
+}
+
+
+def _validate_finite_tree(value: Any, label: str) -> None:
+    if isinstance(value, Mapping):
+        if not all(isinstance(key, str) for key in value):
+            _fail(f"{label} mapping keys must be strings")
+        for key, item in value.items():
+            _validate_finite_tree(item, f"{label}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_finite_tree(item, f"{label}[{index}]")
+    elif isinstance(value, float) and not math.isfinite(value):
+        _fail(f"{label} contains a non-finite number")
+
+
+def _mapping(value: Any, label: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        _fail(f"{label} must be a mapping")
+    return value
+
+
+def _json_number(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        _fail(f"{label} must be a finite JSON number")
+    number = float(value)
+    if not math.isfinite(number):
+        _fail(f"{label} must be a finite JSON number")
+    return number
+
+
+def _json_int(value: Any, label: str, *, minimum: int = 0) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        _fail(f"{label} must be an integer >= {minimum}")
+    return value
+
+
+def _frozen_selection(
+    selection: Mapping[str, Any], config: Mapping[str, Any]
+) -> dict[str, Any]:
+    if not isinstance(selection, Mapping):
+        _fail("selection must be a mapping")
+    matches = [
+        item
+        for item in config["selected_cases"]
+        if item["pair_id"] == selection.get("pair_id")
+    ]
+    if len(matches) != 1 or dict(selection) != matches[0]:
+        _fail("selection differs from the frozen representative case")
+    return matches[0]
+
+
+def _validate_observation(
+    observation: Mapping[str, Any],
+    *,
+    selection: Mapping[str, Any],
+    setting: Mapping[str, Any],
+    physical_margin: float,
+) -> dict[str, Any]:
+    row = _mapping(observation, "replay observation")
+    if set(row) != _OBSERVATION_KEYS:
+        _fail("replay observation has unexpected or missing fields")
+    if row.get("setting_label") != setting["label"]:
+        _fail("replay observation setting order or label differs")
+    requested = _mapping(
+        row.get("requested_solver_settings"), "requested solver settings"
+    )
+    if dict(requested) != dict(setting):
+        _fail("requested solver settings differ from the frozen setting")
+    observed = _mapping(
+        row.get("observed_solver_settings"), "observed solver settings"
+    )
+    if set(observed) != _OBSERVED_SETTING_KEYS:
+        _fail("observed solver settings have unexpected or missing fields")
+    observed_tolerance = _json_number(
+        observed.get("convergence_tolerance"), "observed convergence tolerance"
+    )
+    observed_max_iterations = _json_int(
+        observed.get("max_iterations"), "observed maximum iterations", minimum=1
+    )
+    observed_max_control_iterations = _json_int(
+        observed.get("max_control_iterations"),
+        "observed maximum control iterations",
+        minimum=1,
+    )
+    if observed_tolerance <= 0.0:
+        _fail("observed convergence tolerance must be positive")
+
+    if row.get("selected_slot") != selection["selected_slot"]:
+        _fail("replay observation selected slot differs")
+    load_scale = _json_number(row.get("load_scale"), "replay load scale")
+    if load_scale <= 0.0:
+        _fail("replay load scale must be positive")
+    if row.get("audited_schedule_sha256") != selection["audited_schedule_sha256"]:
+        _fail("replay observation schedule hash differs")
+    power_hash = row.get("power_vector_sha256")
+    if not isinstance(power_hash, str) or _SHA256_RE.fullmatch(power_hash) is None:
+        _fail("replay power-vector hash is invalid")
+
+    metric_id = row.get("metric_id")
+    if not isinstance(metric_id, str) or re.fullmatch(r"V:[^;\s]+", metric_id) is None:
+        _fail("replay metric ID is invalid")
+    direction = row.get("direction")
+    if direction not in {"hi", "lo"}:
+        _fail("replay direction must be hi or lo")
+    value = _json_number(row.get("metric_value"), "replay metric value")
+    limit = _json_number(row.get("limit"), "replay metric limit")
+    exceedance = _json_number(row.get("exceedance"), "replay exceedance")
+    if exceedance < 0.0:
+        _fail("replay exceedance must be nonnegative")
+    expected_exceedance = max(
+        0.0, value - limit if direction == "hi" else limit - value
+    )
+    if not math.isclose(exceedance, expected_exceedance, rel_tol=0.0, abs_tol=1e-12):
+        _fail("replay exceedance is inconsistent with value, limit, and direction")
+    physical = row.get("physical_violation")
+    if not isinstance(physical, bool):
+        _fail("replay physical-violation flag must be Boolean")
+    expected_physical = bool(
+        value > limit + physical_margin
+        if direction == "hi"
+        else value < limit - physical_margin
+    )
+    if physical is not expected_physical:
+        _fail("replay physical-violation flag is inconsistent")
+    metrics = row.get("physical_violation_metrics")
+    if (
+        not isinstance(metrics, list)
+        or not all(isinstance(item, str) and item for item in metrics)
+        or len(metrics) != len(set(metrics))
+    ):
+        _fail("replay physical-violation metrics are invalid")
+    if (metric_id in metrics) is not physical:
+        _fail("selected replay metric presence contradicts its physical flag")
+
+    for name in ("converged", "numerical_failure", "independent_context"):
+        if not isinstance(row.get(name), bool):
+            _fail(f"replay {name} must be Boolean")
+    if row.get("independent_context") is not True:
+        _fail("replay setting was not evaluated in an independent context")
+    if row.get("line_thermal_in_scope") is not False:
+        _fail("replay observation expands the frozen scope")
+    iterations = _json_int(row.get("iterations"), "replay iterations")
+    vmin = _json_number(row.get("vmin"), "replay minimum voltage")
+    vmax = _json_number(row.get("vmax"), "replay maximum voltage")
+    if vmin > vmax:
+        _fail("replay voltage extrema are inconsistent")
+
+    settings_ok = bool(
+        observed_tolerance == float(setting["convergence_tolerance"])
+        and observed_max_iterations == setting["max_iterations"]
+        and observed_max_control_iterations == setting["max_control_iterations"]
+    )
+    return {
+        "value": value,
+        "limit": limit,
+        "metric_id": metric_id,
+        "direction": direction,
+        "physical": physical,
+        "physical_metrics": list(metrics),
+        "settings_ok": settings_ok,
+        "converged": row["converged"],
+        "numerical_failure_free": row["numerical_failure"] is False,
+        "iterations": iterations,
+    }
+
+
+def assess_case_replay(
+    selection: Mapping[str, Any],
+    observations: Sequence[Mapping[str, Any]],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply the frozen N1 identity, persistence, and drift rules to one case."""
+
+    if dict(config) != _expected_config():
+        _fail("case assessment requires the frozen replay config")
+    frozen = _frozen_selection(selection, config)
+    if isinstance(observations, (str, bytes)) or not isinstance(observations, Sequence):
+        _fail("replay observations must be a sequence")
+    retained = list(observations)
+    settings = config["solver_settings"]
+    if len(retained) != len(settings):
+        _fail("case replay requires exactly three observations")
+    threshold = config["thresholds"]
+    normalized = [
+        _validate_observation(
+            observation,
+            selection=frozen,
+            setting=setting,
+            physical_margin=float(threshold["physical_violation_margin_pu"]),
+        )
+        for observation, setting in zip(retained, settings, strict=True)
+    ]
+    labels = [str(setting["label"]) for setting in settings]
+    solver_settings_ok = {
+        label: item["settings_ok"] for label, item in zip(labels, normalized, strict=True)
+    }
+    convergence_ok = {
+        label: item["converged"] for label, item in zip(labels, normalized, strict=True)
+    }
+    numerical_failure_free = {
+        label: item["numerical_failure_free"]
+        for label, item in zip(labels, normalized, strict=True)
+    }
+    solver_failure = not (
+        all(solver_settings_ok.values())
+        and all(convergence_ok.values())
+        and all(numerical_failure_free.values())
+    )
+
+    native = normalized[0]
+    native_abs_diff = abs(native["value"] - float(frozen["value"]))
+    native_identity = bool(
+        native["metric_id"] == frozen["metric_id"]
+        and native["direction"] == frozen["direction"]
+        and native["limit"] == float(frozen["limit"])
+        and native["physical"]
+        and frozen["metric_id"] in native["physical_metrics"]
+        and native_abs_diff <= float(threshold["native_replay_identity_pu"])
+    )
+
+    tight_labels = labels[1:]
+    witness_persists: dict[str, bool] = {}
+    native_to_tight_drift: dict[str, float] = {}
+    native_to_tight_ok: dict[str, bool] = {}
+    for label, item in zip(tight_labels, normalized[1:], strict=True):
+        witness_persists[label] = bool(
+            item["metric_id"] == frozen["metric_id"]
+            and item["direction"] == frozen["direction"]
+            and item["limit"] == float(frozen["limit"])
+            and item["physical"]
+            and frozen["metric_id"] in item["physical_metrics"]
+        )
+        drift = abs(item["value"] - native["value"])
+        native_to_tight_drift[label] = drift
+        native_to_tight_ok[label] = bool(
+            drift <= float(threshold["native_to_tight_drift_pu"])
+        )
+    plateau_drift = abs(normalized[2]["value"] - normalized[1]["value"])
+    plateau_ok = bool(
+        plateau_drift <= float(threshold["tight_plateau_drift_pu"])
+    )
+
+    if solver_failure:
+        decision = "STOP_SOLVER_FAILURE"
+    elif not native_identity:
+        decision = "STOP_REPLAY_IDENTITY_MISMATCH"
+    elif (
+        all(witness_persists.values())
+        and all(native_to_tight_ok.values())
+        and plateau_ok
+    ):
+        decision = "NUMERICALLY_STABLE_WITNESS"
+    else:
+        decision = "NUMERICAL_SENSITIVITY_DETECTED"
+    return {
+        "case_decision": decision,
+        "native_replay_abs_diff_pu": native_abs_diff,
+        "native_replay_identity_ok": native_identity,
+        "solver_settings_ok": solver_settings_ok,
+        "convergence_ok": convergence_ok,
+        "numerical_failure_free": numerical_failure_free,
+        "witness_persists": witness_persists,
+        "native_to_tight_drift_pu": native_to_tight_drift,
+        "native_to_tight_drift_ok": native_to_tight_ok,
+        "tight_plateau_drift_pu": plateau_drift,
+        "tight_plateau_ok": plateau_ok,
+        "all_solver_settings_ok": all(solver_settings_ok.values()),
+        "all_converged": all(convergence_ok.values()),
+        "all_numerical_failure_free": all(numerical_failure_free.values()),
+    }
+
+
+def validate_replay_case_artifact(
+    artifact: Mapping[str, Any],
+    selection: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> None:
+    """Strictly validate one terminal N1 case artifact and rederive its result."""
+
+    if not isinstance(artifact, Mapping):
+        _fail("case artifact must be a mapping")
+    _validate_finite_tree(artifact, "case artifact")
+    if dict(config) != _expected_config():
+        _fail("case validation requires the frozen replay config")
+    frozen = _frozen_selection(selection, config)
+    if set(artifact) != _CASE_ARTIFACT_KEYS:
+        _fail("case artifact has unexpected or missing fields")
+    status = artifact.get("status")
+    if status not in {"SUCCESS", "STOP_REPLAY"}:
+        _fail("case artifact status is not terminal")
+    identity = {
+        "protocol_version": config["protocol_version"],
+        "pair_id": frozen["pair_id"],
+        "scenario_cluster": frozen["scenario_cluster"],
+        "selection": dict(frozen),
+        "source_evidence_commit": config["source_evidence_commit"],
+        "source_n0_commit": config["source_n0_commit"],
+        "runtime_version": config["runtime_requirement"]["version"],
+        "target_replay_evaluations": len(config["solver_settings"]),
+        "formal_v2_1_run_started": False,
+        "formal_v2_1_run_authorized": False,
+        "line_thermal_in_scope": False,
+        "resource_policy": config["resource_policy"],
+    }
+    if any(artifact.get(name) != value for name, value in identity.items()):
+        _fail("case identity, provenance, resource policy, or scope differs")
+    observations = artifact.get("observations")
+    if (
+        not isinstance(observations, list)
+        or not all(isinstance(item, Mapping) for item in observations)
+    ):
+        _fail("case observations must be a mapping list")
+    expected_assessment = assess_case_replay(frozen, observations, config)
+    if artifact.get("assessment") != expected_assessment:
+        _fail("case assessment differs from the rederived result")
+    expected_status = (
+        "STOP_REPLAY"
+        if expected_assessment["case_decision"].startswith("STOP_")
+        else "SUCCESS"
+    )
+    if status != expected_status:
+        _fail("case status contradicts the rederived result")
+
+
+def assess_replay_gate(
+    case_artifacts: Sequence[Mapping[str, Any]],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Aggregate an ordered terminal prefix of the four N1 replay cases."""
+
+    if dict(config) != _expected_config():
+        _fail("replay gate requires the frozen replay config")
+    if isinstance(case_artifacts, (str, bytes)) or not isinstance(
+        case_artifacts, Sequence
+    ):
+        _fail("replay case artifacts must be a sequence")
+    retained = list(case_artifacts)
+    selected = config["selected_cases"]
+    if not retained or len(retained) > len(selected):
+        _fail("replay gate requires a nonempty ordered case prefix")
+    for index, (artifact, selection) in enumerate(
+        zip(retained, selected, strict=False)
+    ):
+        validate_replay_case_artifact(artifact, selection, config)
+        is_stop = artifact["assessment"]["case_decision"].startswith("STOP_")
+        if is_stop and index != len(retained) - 1:
+            _fail("a stopped replay case must terminate the artifact prefix")
+    decisions = [artifact["assessment"]["case_decision"] for artifact in retained]
+    stops = [decision for decision in decisions if decision.startswith("STOP_")]
+    if len(stops) > 1:
+        _fail("replay prefix contains more than one terminal stop")
+    if stops:
+        decision = stops[0]
+    elif len(retained) != len(selected):
+        _fail("a non-stopped replay gate requires all four cases")
+    elif all(decision == "NUMERICALLY_STABLE_WITNESS" for decision in decisions):
+        decision = "NUMERICALLY_STABLE_SELECTED_WITNESSES"
+    else:
+        decision = "NUMERICAL_SENSITIVITY_DETECTED"
+    return {
+        "protocol_version": config["protocol_version"],
+        "decision": decision,
+        "completed_case_count": len(retained),
+        "stable_case_count": decisions.count("NUMERICALLY_STABLE_WITNESS"),
+        "sensitive_case_count": decisions.count("NUMERICAL_SENSITIVITY_DETECTED"),
+        "pair_ids": [str(artifact["pair_id"]) for artifact in retained],
+        "target_replay_evaluations": sum(
+            int(artifact["target_replay_evaluations"]) for artifact in retained
+        ),
+        "formal_v2_1_run_authorized": False,
+    }
