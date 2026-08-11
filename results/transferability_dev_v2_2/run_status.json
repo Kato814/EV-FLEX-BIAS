@@ -1,0 +1,26 @@
+{
+  "formal_holdout_opened": false,
+  "protocol_version": "EV-FLEX-BIAS-V2.2-TRANSFERABILITY-DEV",
+  "resource_policy": {
+    "environment": {
+      "BLIS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    },
+    "numeric_threads": 1,
+    "workers": 1
+  },
+  "resume": true,
+  "runner_errors": [],
+  "started_at_utc": "2026-08-11T08:12:31.087981Z",
+  "status_counts": {
+    "SUCCESS": 32
+  },
+  "updated_at_utc": "2026-08-11T09:33:11.042924Z",
+  "work_units_selected": 32,
+  "work_units_terminal": 32,
+  "work_units_total": 32
+}
