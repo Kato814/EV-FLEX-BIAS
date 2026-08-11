@@ -316,3 +316,182 @@ def fit_constrained_quantile(
         scales={name: float(scales[index]) for index, name in enumerate(FEATURE_NAMES)},
         training_n=sample_count,
     )
+
+
+def _validated_target_risk(target_risk: float) -> float:
+    value = _required_finite(target_risk, "target_risk")
+    if not 0.0 < value < 1.0:
+        raise ValueError("target_risk must lie strictly between zero and one")
+    return value
+
+
+def calibration_rank_status(
+    *, sample_n: int, target_risk: float
+) -> dict[str, int | float | str]:
+    """Describe whether a finite-sample one-sided rank is nontrivial."""
+
+    if not isinstance(sample_n, int) or isinstance(sample_n, bool) or sample_n <= 0:
+        raise ValueError("sample_n must be a positive integer")
+    risk = _validated_target_risk(target_risk)
+    rank = math.ceil((sample_n + 1) * (1.0 - risk))
+    minimum_sample_n = max(1, math.ceil(1.0 / risk) - 1)
+    return {
+        "status": (
+            "EVALUABLE_NONTRIVIAL"
+            if rank <= sample_n
+            else "NOT_EVALUABLE_NONTRIVIAL_95_PERCENT"
+        ),
+        "sample_n": sample_n,
+        "target_risk": risk,
+        "rank": rank,
+        "minimum_sample_n": minimum_sample_n,
+    }
+
+
+def one_sided_correction(
+    scores: Sequence[float], *, target_risk: float
+) -> tuple[float, int]:
+    """Return the upper finite-sample score quantile used for a lower bound."""
+
+    if not scores:
+        raise ValueError("at least one calibration score is required")
+    risk = _validated_target_risk(target_risk)
+    ordered = sorted(
+        _required_finite(value, f"calibration score {index}")
+        for index, value in enumerate(scores)
+    )
+    rank = math.ceil((len(ordered) + 1) * (1.0 - risk))
+    return ordered[min(rank, len(ordered)) - 1], rank
+
+
+def _pinball_loss(observed: float, predicted: float, quantile: float) -> float:
+    residual = observed - predicted
+    return quantile * residual if residual >= 0.0 else (quantile - 1.0) * residual
+
+
+def _scenario_macro_pinball_loss(
+    rows: Sequence[Mapping[str, Any]],
+    observed: Sequence[float],
+    predicted: Sequence[float],
+    *,
+    quantile: float,
+) -> float:
+    by_scenario: dict[str, list[float]] = defaultdict(list)
+    for row, actual, estimate in zip(rows, observed, predicted, strict=True):
+        scenario_id = row["scenario_id"]
+        by_scenario[str(scenario_id)].append(
+            _pinball_loss(float(actual), float(estimate), quantile)
+        )
+    scenario_means = [sum(values) / len(values) for values in by_scenario.values()]
+    return sum(scenario_means) / len(scenario_means)
+
+
+def cross_fit(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    feeder_kva: Mapping[str, float],
+    penalties: Sequence[float],
+    n_splits: int,
+    quantile: float,
+    target_risk: float,
+) -> dict[str, Any]:
+    """Select shrinkage by scenario-grouped OOF loss and calibrate a lower bound."""
+
+    if not rows:
+        raise ValueError("cross_fit requires at least one row")
+    quantile_value = _required_finite(quantile, "quantile")
+    if not 0.0 < quantile_value < 1.0:
+        raise ValueError("quantile must lie strictly between zero and one")
+    risk = _validated_target_risk(target_risk)
+    penalty_values = tuple(
+        _required_finite(value, f"penalty {index}")
+        for index, value in enumerate(penalties)
+    )
+    if not penalty_values or any(value < 0.0 for value in penalty_values):
+        raise ValueError("penalties must contain nonnegative values")
+    if len(set(penalty_values)) != len(penalty_values):
+        raise ValueError("penalties must be unique")
+
+    features = [build_feature_row(row, feeder_kva=feeder_kva) for row in rows]
+    targets = [
+        _required_finite(row.get("alpha_transfer"), f"row {index} alpha_transfer")
+        for index, row in enumerate(rows)
+    ]
+    if any(not 0.0 <= value <= 1.0 for value in targets):
+        raise ValueError("alpha_transfer values must lie in [0, 1]")
+    folds = deterministic_group_folds(rows, n_splits=n_splits)
+    scenario_overlap_count = 0
+    for train_indices, test_indices in folds:
+        train_scenarios = {str(rows[index]["scenario_id"]) for index in train_indices}
+        test_scenarios = {str(rows[index]["scenario_id"]) for index in test_indices}
+        scenario_overlap_count += len(train_scenarios & test_scenarios)
+
+    candidate_predictions: dict[float, list[float]] = {}
+    candidate_counts: dict[float, list[int]] = {}
+    candidate_losses: dict[float, float] = {}
+    for penalty_value in penalty_values:
+        predictions = [math.nan] * len(rows)
+        counts = [0] * len(rows)
+        for train_indices, test_indices in folds:
+            model = fit_constrained_quantile(
+                [features[index] for index in train_indices],
+                [targets[index] for index in train_indices],
+                quantile=quantile_value,
+                penalty=penalty_value,
+            )
+            fold_predictions = model.predict(
+                [features[index] for index in test_indices]
+            )
+            for index, prediction in zip(
+                test_indices, fold_predictions, strict=True
+            ):
+                predictions[index] = prediction
+                counts[index] += 1
+        if counts != [1] * len(rows) or any(
+            not math.isfinite(value) for value in predictions
+        ):
+            raise RuntimeError("cross-fitting did not produce one finite prediction per row")
+        candidate_predictions[penalty_value] = predictions
+        candidate_counts[penalty_value] = counts
+        candidate_losses[penalty_value] = _scenario_macro_pinball_loss(
+            rows,
+            targets,
+            predictions,
+            quantile=quantile_value,
+        )
+
+    selected_penalty = min(
+        sorted(penalty_values, reverse=True),
+        key=lambda value: candidate_losses[value],
+    )
+    oof_predictions = candidate_predictions[selected_penalty]
+    scores = [
+        prediction - observed
+        for prediction, observed in zip(oof_predictions, targets, strict=True)
+    ]
+    correction, correction_rank = one_sided_correction(scores, target_risk=risk)
+    oof_lower_bounds = [
+        float(np.clip(prediction - correction, 0.0, 1.0))
+        for prediction in oof_predictions
+    ]
+    final_model = fit_constrained_quantile(
+        features,
+        targets,
+        quantile=quantile_value,
+        penalty=selected_penalty,
+    )
+    return {
+        "selected_penalty": selected_penalty,
+        "candidate_scenario_macro_pinball_loss": candidate_losses,
+        "oof_quantile_predictions": oof_predictions,
+        "oof_lower_bounds": oof_lower_bounds,
+        "prediction_counts": candidate_counts[selected_penalty],
+        "scenario_overlap_count": scenario_overlap_count,
+        "calibration_scores": scores,
+        "correction": correction,
+        "correction_rank": correction_rank,
+        "row_calibration_rank_status": calibration_rank_status(
+            sample_n=len(rows), target_risk=risk
+        ),
+        "final_model": final_model,
+    }

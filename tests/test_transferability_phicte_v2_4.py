@@ -7,8 +7,11 @@ import pytest
 from evflex.transferability_phicte_v2_4 import (
     FEATURE_NAMES,
     build_feature_row,
+    calibration_rank_status,
+    cross_fit,
     deterministic_group_folds,
     fit_constrained_quantile,
+    one_sided_correction,
     penalty_weight,
 )
 
@@ -165,3 +168,60 @@ def test_interactions_are_shrunk_more_than_main_effects() -> None:
     assert penalty_weight("offer_stress") == 1.0
     assert penalty_weight("feeder_lv906") == 1.0
     assert penalty_weight("intercept") == 0.0
+
+
+def _cross_fit_rows() -> list[dict[str, object]]:
+    rows = []
+    for scenario_index in range(8):
+        feeder = "ieee13" if scenario_index < 4 else "lv906"
+        for duration in (15, 30, 60):
+            stress = 0.05 + scenario_index / 20.0 + duration / 1000.0
+            rows.append(
+                _feature_source(
+                    evaluation_id=f"evaluation_{scenario_index}_{duration}",
+                    scenario_id=f"scenario_{scenario_index}",
+                    feeder=feeder,
+                    direction="inc" if scenario_index % 2 else "dec",
+                    duration_min=duration,
+                    f_bal_kw=stress * (500.0 if feeder == "ieee13" else 100.0),
+                    alpha_transfer=max(0.05, 0.95 - 0.8 * stress),
+                )
+            )
+    return rows
+
+
+def test_cross_fit_predicts_each_row_once_without_scenario_overlap() -> None:
+    rows = _cross_fit_rows()
+
+    result = cross_fit(
+        rows,
+        feeder_kva={"ieee13": 500.0, "lv906": 100.0},
+        penalties=(0.0005, 0.002, 0.01),
+        n_splits=4,
+        quantile=0.10,
+        target_risk=0.05,
+    )
+
+    assert result["prediction_counts"] == [1] * len(rows)
+    assert result["scenario_overlap_count"] == 0
+    assert len(result["oof_quantile_predictions"]) == len(rows)
+    assert len(result["oof_lower_bounds"]) == len(rows)
+    assert result["selected_penalty"] in {0.0005, 0.002, 0.01}
+    assert result["final_model"].training_n == len(rows)
+
+
+def test_one_sided_correction_uses_finite_sample_rank() -> None:
+    correction, rank = one_sided_correction(
+        [0.1, -0.1, 0.2, 0.0], target_risk=0.20
+    )
+
+    assert rank == 4
+    assert correction == pytest.approx(0.2)
+
+
+def test_sixteen_scenarios_cannot_support_nontrivial_95_percent_rank() -> None:
+    status = calibration_rank_status(sample_n=16, target_risk=0.05)
+
+    assert status["status"] == "NOT_EVALUABLE_NONTRIVIAL_95_PERCENT"
+    assert status["rank"] == 17
+    assert status["minimum_sample_n"] == 19
