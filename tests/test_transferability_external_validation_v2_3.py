@@ -19,8 +19,16 @@ def test_locked_external_design_acknowledges_prior_open_and_uses_id_extremes() -
     config, frame = load_external_validation_design(REPO_ROOT)
 
     assert config["protocol_version"] == (
-        "EV-FLEX-BIAS-V2.3-TRANSFERABILITY-LOCKED-EXTERNAL-VALIDATION"
+        "EV-FLEX-BIAS-V2.3A-TRANSFERABILITY-LOCKED-EXTERNAL-VALIDATION"
     )
+    assert config["primary_duration_min"] == 15
+    assert config["longer_duration_policy"] == (
+        "descriptive_offer_coverage_only"
+    )
+    assert config["protocol_amendment"]["previous_stopped_commit"] == (
+        "994ca668e32815b24c0db62a08e7341d74648313"
+    )
+    assert config["protocol_amendment"]["previous_completed_units"] == 16
     assert config["blind_holdout_claim"] is False
     assert config["prior_v2_0_holdout_open_count"] == 1
     assert config["selection_rule"] == (
@@ -119,6 +127,23 @@ def _evaluation_rows(role: str, *, external_all_safe: bool = False):
     return rows
 
 
+def _mark_inactive(row):
+    row.update(
+        {
+            "active_offer": False,
+            "eligible_for_scientific_denominator": False,
+            "alpha_transfer": None,
+            "status": "INACTIVE_OFFER",
+            "scientific_status": "NOT_APPLICABLE_INACTIVE",
+            "alpha_path_scientific_valid": None,
+            "alpha_path_status": None,
+            "alpha_path_audit": None,
+            "schedule_sha256": row.get("schedule_sha256"),
+        }
+    )
+    return row
+
+
 def test_external_summary_applies_predeclared_cell_pattern_thresholds() -> None:
     from evflex.transferability_external_validation_v2_3 import (
         build_external_validation_summary,
@@ -139,14 +164,16 @@ def test_external_summary_applies_predeclared_cell_pattern_thresholds() -> None:
         "SUPPORTED_ON_LOCKED_RETROSPECTIVE_EXTERNAL_COHORT"
     )
     assert summary["blind_holdout_claim"] is False
-    assert summary["counts"] == {
-        "development_evaluations": 96,
-        "external_evaluations": 96,
-        "comparison_cells": 16,
-        "development_failing_cells": 12,
-        "external_failing_cells": 12,
-        "external_numerical_failure_audits": 0,
-    }
+    assert summary["counts"]["development_evaluations"] == 96
+    assert summary["counts"]["external_evaluations"] == 96
+    assert summary["counts"]["development_primary_evaluations"] == 32
+    assert summary["counts"]["external_primary_evaluations"] == 32
+    assert summary["counts"]["external_active_evaluations"] == 96
+    assert summary["counts"]["external_inactive_offers"] == 0
+    assert summary["counts"]["comparison_cells"] == 16
+    assert summary["counts"]["development_failing_cells"] == 12
+    assert summary["counts"]["external_failing_cells"] == 12
+    assert summary["counts"]["external_numerical_failure_audits"] == 0
     comparison = summary["cell_pattern_comparison"]
     assert comparison["failure_status_agreement"] == pytest.approx(1.0)
     assert comparison["median_alpha_spearman_rho"] == pytest.approx(1.0)
@@ -155,6 +182,71 @@ def test_external_summary_applies_predeclared_cell_pattern_thresholds() -> None:
     assert all(comparison["threshold_checks"].values())
     assert len(summary["cells"]) == 16
     assert len(summary["evaluations"]) == 96
+
+
+def test_external_summary_keeps_inactive_longer_offers_outside_primary_gate() -> None:
+    from evflex.transferability_external_validation_v2_3 import (
+        build_external_validation_summary,
+        load_external_validation_design,
+    )
+
+    config, _ = load_external_validation_design(REPO_ROOT)
+    external = _evaluation_rows("locked_external_validation")
+    inactive = [
+        row for row in external if row["duration_min"] in {30, 60}
+    ][:2]
+    for row in inactive:
+        _mark_inactive(row)
+
+    summary = build_external_validation_summary(
+        _evaluation_rows("development_transferability"),
+        external,
+        config=config,
+        code_commit="1" * 40,
+        generated_at_utc="2026-08-11T00:00:00Z",
+    )
+
+    assert summary["machine_execution_gate"] == "PASS"
+    assert summary["scientific_support_status"] == (
+        "SUPPORTED_ON_LOCKED_RETROSPECTIVE_EXTERNAL_COHORT"
+    )
+    assert summary["counts"]["external_primary_evaluations"] == 32
+    assert summary["counts"]["external_active_evaluations"] == 94
+    assert summary["counts"]["external_inactive_offers"] == 2
+    assert summary["offer_coverage"]["by_duration_min"]["15"]["active"] == 32
+    assert summary["offer_coverage"]["by_duration_min"]["30"]["inactive"] == 1
+    assert summary["offer_coverage"]["by_duration_min"]["60"]["inactive"] == 1
+
+
+def test_external_summary_does_not_evaluate_incomplete_primary_coverage() -> None:
+    from evflex.transferability_external_validation_v2_3 import (
+        build_external_validation_summary,
+        load_external_validation_design,
+    )
+
+    config, _ = load_external_validation_design(REPO_ROOT)
+    external = _evaluation_rows("locked_external_validation")
+    _mark_inactive(next(row for row in external if row["duration_min"] == 15))
+
+    summary = build_external_validation_summary(
+        _evaluation_rows("development_transferability"),
+        external,
+        config=config,
+        code_commit="1" * 40,
+        generated_at_utc="2026-08-11T00:00:00Z",
+    )
+
+    assert summary["machine_execution_gate"] == "PASS"
+    assert summary["scientific_support_status"] == (
+        "NOT_EVALUABLE_PRIMARY_COVERAGE"
+    )
+    assert summary["counts"]["external_primary_evaluations"] == 31
+    assert all(
+        value is False
+        for value in summary["cell_pattern_comparison"][
+            "threshold_checks"
+        ].values()
+    )
 
 
 def test_external_summary_does_not_pass_when_validation_is_all_safe() -> None:
@@ -243,6 +335,54 @@ def test_execute_external_unit_records_nonblind_provenance() -> None:
     assert result["resource_policy"]["numeric_threads"] == 1
 
 
+def test_execute_external_unit_accepts_semantic_inactive_offer() -> None:
+    from evflex.transferability_external_validation_v2_3 import (
+        execute_external_validation_unit,
+        load_external_validation_design,
+    )
+
+    config, frame = load_external_validation_design(REPO_ROOT)
+    unit = frame.iloc[0].to_dict()
+    expected_ids = json.loads(unit["evaluation_ids"])
+
+    def fake_evaluator(root, current, *, config):
+        rows = _evaluation_rows("locked_external_validation")[:3]
+        for row, evaluation_id, duration in zip(
+            rows, expected_ids, (15, 30, 60), strict=True
+        ):
+            row.update(
+                {
+                    "evaluation_id": evaluation_id,
+                    "work_unit_id": unit["work_unit_id"],
+                    "scenario_id": unit["scenario_id"],
+                    "scenario_seed": int(unit["scenario_seed"]),
+                    "protocol_version": config["protocol_version"],
+                    "feeder": unit["feeder"],
+                    "call_time": unit["call_time"],
+                    "direction": unit["direction"],
+                    "duration_min": duration,
+                    "requested_duration_min": duration,
+                    "source_duration_min": duration,
+                }
+            )
+        _mark_inactive(rows[1])
+        return rows
+
+    result = execute_external_validation_unit(
+        REPO_ROOT,
+        unit,
+        config,
+        evaluator=fake_evaluator,
+        code_commit="1" * 40,
+    )
+
+    assert result["status"] == "SUCCESS"
+    assert result["evaluation_status_counts"] == {
+        "INACTIVE_OFFER": 1,
+        "SUCCESS": 2,
+    }
+
+
 def test_write_external_artifacts_retains_only_json_and_csv(tmp_path: Path) -> None:
     from evflex.transferability_external_validation_v2_3 import (
         build_external_validation_summary,
@@ -251,9 +391,11 @@ def test_write_external_artifacts_retains_only_json_and_csv(tmp_path: Path) -> N
     )
 
     config, _ = load_external_validation_design(REPO_ROOT)
+    external = _evaluation_rows("locked_external_validation")
+    _mark_inactive(next(row for row in external if row["duration_min"] == 30))
     summary = build_external_validation_summary(
         _evaluation_rows("development_transferability"),
-        _evaluation_rows("locked_external_validation"),
+        external,
         config=config,
         code_commit="1" * 40,
         generated_at_utc="2026-08-11T00:00:00Z",
@@ -272,7 +414,10 @@ def test_write_external_artifacts_retains_only_json_and_csv(tmp_path: Path) -> N
     with paths["csv"].open("r", encoding="utf-8", newline="") as stream:
         csv_rows = list(csv.DictReader(stream))
     assert loaded["counts"]["external_evaluations"] == 96
+    assert loaded["counts"]["external_inactive_offers"] == 1
     assert len(csv_rows) == 96
+    inactive = next(row for row in csv_rows if row["status"] == "INACTIVE_OFFER")
+    assert inactive["alpha_transfer"] == ""
 
 
 def test_workers_other_than_one_are_rejected_before_design_access(tmp_path: Path) -> None:

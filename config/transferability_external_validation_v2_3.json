@@ -1,5 +1,5 @@
 {
-  "protocol_version": "EV-FLEX-BIAS-V2.3-TRANSFERABILITY-LOCKED-EXTERNAL-VALIDATION",
+  "protocol_version": "EV-FLEX-BIAS-V2.3A-TRANSFERABILITY-LOCKED-EXTERNAL-VALIDATION",
   "source_protocol_version": "EV-FLEX-BIAS-V2.0",
   "source_manifest": "manifests/core_work_units_v2_0.csv",
   "source_manifest_sha256": "856431b21d240010b44f0125de92ab7447bcef924c9d6987cf3caf12c2a6ce69",
@@ -10,6 +10,22 @@
   "blind_holdout_claim": false,
   "design_role": "locked_external_validation",
   "selection_rule": "within each feeder-call_time cell, select the smallest and largest scenario suffix from the prior V2.0 holdout cohort; no outcome field used",
+  "primary_duration_min": 15,
+  "longer_duration_policy": "descriptive_offer_coverage_only",
+  "protocol_amendment": {
+    "reason": "V2.3 stopped when a legitimate inactive longer-duration offer was incorrectly treated as an execution failure",
+    "previous_stopped_commit": "994ca668e32815b24c0db62a08e7341d74648313",
+    "previous_config_sha256": "9f342a1c5ae4af082a0b62f99962e370ddc2e7524fb34ccde8b3baf9aba01875",
+    "previous_checkpoint_sha256": "f537c46c95d1c2c6c065df858c4acf132c536a876605a07bfd8c642d3cf3cb9a",
+    "previous_completed_units": 16,
+    "trigger_work_unit_id": "v23_external_lv906_1900_25__inc",
+    "trigger_evaluation_id": "v23_external_lv906_1900_25__inc__30m",
+    "observed_status": "INACTIVE_OFFER",
+    "source_outcomes_used_to_change_selection": false,
+    "selection_changed": false,
+    "scientific_thresholds_changed": false,
+    "restart_from_zero": true
+  },
   "scenario_ids": [
     "ieee13_1900_25",
     "ieee13_1900_32",

@@ -32,7 +32,7 @@ import pandas as pd
 
 
 PROTOCOL_VERSION = (
-    "EV-FLEX-BIAS-V2.3-TRANSFERABILITY-LOCKED-EXTERNAL-VALIDATION"
+    "EV-FLEX-BIAS-V2.3A-TRANSFERABILITY-LOCKED-EXTERNAL-VALIDATION"
 )
 CONFIG_RELATIVE_PATH = Path(
     "config/transferability_external_validation_v2_3.json"
@@ -72,6 +72,24 @@ def _validate_config(config: dict[str, Any]) -> None:
         raise ValueError("external-validation directions are not frozen")
     if config.get("durations_min") != [15, 30, 60]:
         raise ValueError("external-validation durations are not frozen")
+    if config.get("primary_duration_min") != 15:
+        raise ValueError("external-validation primary duration must remain 15 minutes")
+    if config.get("longer_duration_policy") != (
+        "descriptive_offer_coverage_only"
+    ):
+        raise ValueError("external-validation longer-duration policy differs")
+    amendment = config.get("protocol_amendment")
+    if (
+        not isinstance(amendment, dict)
+        or amendment.get("previous_stopped_commit")
+        != "994ca668e32815b24c0db62a08e7341d74648313"
+        or amendment.get("previous_completed_units") != 16
+        or amendment.get("observed_status") != "INACTIVE_OFFER"
+        or amendment.get("selection_changed") is not False
+        or amendment.get("scientific_thresholds_changed") is not False
+        or amendment.get("restart_from_zero") is not True
+    ):
+        raise ValueError("external-validation protocol amendment is not frozen")
     if config.get("feeders") != ["ieee13", "lv906"]:
         raise ValueError("external-validation feeders are not frozen")
     if config.get("call_times") != ["19:00", "00:00", "02:00", "06:00"]:
@@ -180,6 +198,7 @@ def _validated_evaluations(
     evaluations: list[dict[str, Any]] | tuple[dict[str, Any], ...],
     *,
     role: str,
+    allow_inactive: bool = False,
 ) -> list[dict[str, Any]]:
     rows = [deepcopy(dict(row)) for row in evaluations]
     ids = [str(row.get("evaluation_id")) for row in rows]
@@ -188,21 +207,36 @@ def _validated_evaluations(
     for row in rows:
         alpha = row.get("alpha_transfer")
         audit = row.get("alpha_path_audit")
-        if (
-            row.get("data_role") != role
-            or row.get("status") != "SUCCESS"
-            or row.get("scientific_status") != "VALID"
-            or row.get("alpha_path_scientific_valid") is not True
-            or row.get("alpha_path_status") != "VALID"
-            or isinstance(alpha, bool)
-            or not isinstance(alpha, (int, float))
-            or not math.isfinite(float(alpha))
-            or not 0.0 <= float(alpha) <= 1.0
-            or not isinstance(audit, dict)
-            or audit.get("numerical_failure_audits") != 0
-        ):
+        valid_active = bool(
+            row.get("data_role") == role
+            and row.get("status") == "SUCCESS"
+            and row.get("scientific_status") == "VALID"
+            and row.get("alpha_path_scientific_valid") is True
+            and row.get("alpha_path_status") == "VALID"
+            and not isinstance(alpha, bool)
+            and isinstance(alpha, (int, float))
+            and math.isfinite(float(alpha))
+            and 0.0 <= float(alpha) <= 1.0
+            and isinstance(audit, dict)
+            and audit.get("numerical_failure_audits") == 0
+        )
+        valid_inactive = bool(
+            allow_inactive
+            and row.get("data_role") == role
+            and row.get("status") == "INACTIVE_OFFER"
+            and row.get("scientific_status") == "NOT_APPLICABLE_INACTIVE"
+            and row.get("active_offer") is False
+            and row.get("eligible_for_scientific_denominator") is False
+            and alpha is None
+            and row.get("alpha_path_scientific_valid") is None
+            and row.get("alpha_path_status") is None
+            and audit is None
+        )
+        if not valid_active and not valid_inactive:
             raise ValueError(f"{role} comparison row is invalid: {row.get('evaluation_id')}")
-        row["alpha_transfer"] = float(alpha)
+        row["_comparison_eligible"] = valid_active
+        if valid_active:
+            row["alpha_transfer"] = float(alpha)
     cell_counts = pd.DataFrame(rows).groupby(
         ["feeder", "direction", "call_time"]
     )["evaluation_id"].count()
@@ -226,7 +260,9 @@ def build_external_validation_summary(
         development_evaluations, role="development_transferability"
     )
     external = _validated_evaluations(
-        external_evaluations, role="locked_external_validation"
+        external_evaluations,
+        role="locked_external_validation",
+        allow_inactive=True,
     )
     if len(code_commit) != 40 or any(
         character not in "0123456789abcdef" for character in code_commit
@@ -256,58 +292,98 @@ def build_external_validation_summary(
             for key, values in grouped.items()
         }
 
-    development_cells = cells(development)
-    external_cells = cells(external)
-    if set(development_cells) != set(external_cells) or len(external_cells) != 16:
-        raise ValueError("development and external comparison cells differ")
+    primary_duration = int(config["primary_duration_min"])
+    development_primary = [
+        row
+        for row in development
+        if int(row["duration_min"]) == primary_duration
+        and row["_comparison_eligible"]
+    ]
+    external_primary = [
+        row
+        for row in external
+        if int(row["duration_min"]) == primary_duration
+        and row["_comparison_eligible"]
+    ]
+    development_cells = cells(development_primary)
+    external_cells = cells(external_primary)
+    primary_coverage_complete = bool(
+        len(development_primary) == 32
+        and len(external_primary) == 32
+        and len(development_cells) == 16
+        and len(external_cells) == 16
+        and set(development_cells) == set(external_cells)
+        and {value["n"] for value in development_cells.values()} == {2}
+        and {value["n"] for value in external_cells.values()} == {2}
+    )
     keys = sorted(development_cells)
-    development_medians = [development_cells[key]["median_alpha"] for key in keys]
-    external_medians = [external_cells[key]["median_alpha"] for key in keys]
-    agreement = sum(
-        development_cells[key]["has_bad"] == external_cells[key]["has_bad"]
-        for key in keys
-    ) / len(keys)
-    development_ranks = pd.Series(development_medians).rank(method="average")
-    external_ranks = pd.Series(external_medians).rank(method="average")
-    if development_ranks.nunique() < 2 or external_ranks.nunique() < 2:
-        rho = 0.0
+    if primary_coverage_complete:
+        development_medians = [
+            development_cells[key]["median_alpha"] for key in keys
+        ]
+        external_medians = [external_cells[key]["median_alpha"] for key in keys]
+        agreement = sum(
+            development_cells[key]["has_bad"]
+            == external_cells[key]["has_bad"]
+            for key in keys
+        ) / len(keys)
+        development_ranks = pd.Series(development_medians).rank(method="average")
+        external_ranks = pd.Series(external_medians).rank(method="average")
+        if development_ranks.nunique() < 2 or external_ranks.nunique() < 2:
+            rho = 0.0
+        else:
+            raw_rho = development_ranks.corr(external_ranks)
+            rho = float(raw_rho) if pd.notna(raw_rho) else 0.0
+        median_alpha_mae = sum(
+            abs(
+                development_cells[key]["median_alpha"]
+                - external_cells[key]["median_alpha"]
+            )
+            for key in keys
+        ) / len(keys)
     else:
-        raw_rho = development_ranks.corr(external_ranks)
-        rho = float(raw_rho) if pd.notna(raw_rho) else 0.0
-    median_alpha_mae = sum(
-        abs(development_cells[key]["median_alpha"] - external_cells[key]["median_alpha"])
-        for key in keys
-    ) / len(keys)
+        agreement = None
+        rho = None
+        median_alpha_mae = None
     safe_and_bad_each_feeder = all(
         any(
             row["feeder"] == feeder and float(row["alpha_transfer"]) < 0.95
-            for row in external
+            for row in external_primary
         )
         and any(
             row["feeder"] == feeder
             and math.isclose(
                 float(row["alpha_transfer"]), 1.0, rel_tol=0.0, abs_tol=1e-12
             )
-            for row in external
+            for row in external_primary
         )
         for feeder in ("ieee13", "lv906")
-    )
+    ) if primary_coverage_complete else False
 
     thresholds = config["scientific_validation_thresholds"]
     threshold_checks = {
         "cell_failure_status_agreement": (
-            agreement >= thresholds["cell_failure_status_agreement_min"]
+            primary_coverage_complete
+            and agreement is not None
+            and agreement >= thresholds["cell_failure_status_agreement_min"]
         ),
         "cell_median_spearman_rho": (
-            rho >= thresholds["cell_median_spearman_rho_min"]
+            primary_coverage_complete
+            and rho is not None
+            and rho >= thresholds["cell_median_spearman_rho_min"]
         ),
         "cell_median_alpha_mae": (
-            median_alpha_mae <= thresholds["cell_median_alpha_mae_max"]
+            primary_coverage_complete
+            and median_alpha_mae is not None
+            and median_alpha_mae <= thresholds["cell_median_alpha_mae_max"]
         ),
         "safe_and_bad_present_each_feeder": (
-            safe_and_bad_each_feeder
-            if thresholds["require_safe_and_bad_each_feeder"]
-            else True
+            primary_coverage_complete
+            and (
+                safe_and_bad_each_feeder
+                if thresholds["require_safe_and_bad_each_feeder"]
+                else True
+            )
         ),
     }
     cell_rows = [
@@ -317,27 +393,56 @@ def build_external_validation_summary(
             "direction": key[1],
             "call_time": key[2],
             "development": development_cells[key],
-            "external": external_cells[key],
+            "external": external_cells.get(key),
             "failure_status_agrees": (
                 development_cells[key]["has_bad"]
                 == external_cells[key]["has_bad"]
+                if key in external_cells
+                else None
             ),
-            "median_alpha_absolute_difference": abs(
-                development_cells[key]["median_alpha"]
-                - external_cells[key]["median_alpha"]
+            "median_alpha_absolute_difference": (
+                abs(
+                    development_cells[key]["median_alpha"]
+                    - external_cells[key]["median_alpha"]
+                )
+                if key in external_cells
+                else None
             ),
         }
         for key in keys
     ]
     support = (
-        "SUPPORTED_ON_LOCKED_RETROSPECTIVE_EXTERNAL_COHORT"
-        if all(threshold_checks.values())
-        else "NOT_FULLY_SUPPORTED"
+        "NOT_EVALUABLE_PRIMARY_COVERAGE"
+        if not primary_coverage_complete
+        else (
+            "SUPPORTED_ON_LOCKED_RETROSPECTIVE_EXTERNAL_COHORT"
+            if all(threshold_checks.values())
+            else "NOT_FULLY_SUPPORTED"
+        )
     )
     numerical_failures = sum(
         int(row["alpha_path_audit"]["numerical_failure_audits"])
         for row in external
+        if row["_comparison_eligible"]
     )
+    coverage_by_duration: dict[str, dict[str, Any]] = {}
+    for duration in config["durations_min"]:
+        duration_rows = [
+            row for row in external if int(row["duration_min"]) == int(duration)
+        ]
+        active_count = sum(row["_comparison_eligible"] for row in duration_rows)
+        inactive_count = sum(
+            row["status"] == "INACTIVE_OFFER" for row in duration_rows
+        )
+        coverage_by_duration[str(duration)] = {
+            "planned": len(duration_rows),
+            "active": active_count,
+            "inactive": inactive_count,
+            "active_fraction": active_count / len(duration_rows),
+        }
+    external_output = deepcopy(external)
+    for row in external_output:
+        row.pop("_comparison_eligible", None)
     return {
         "protocol_version": PROTOCOL_VERSION,
         "status": "SUCCESS",
@@ -349,12 +454,30 @@ def build_external_validation_summary(
         "limitations": [
             "The source cohort belonged to the previously opened V2.0 holdout.",
             "This is independent of V2.2 development selection but is not an untouched blind holdout.",
+            "After the first legitimate inactive longer-duration offer stopped V2.3, V2.3A restarted from zero and restricted the primary comparison to 15 minutes.",
+            "The unchanged thresholds apply only to the complete 15-minute primary comparison; 30- and 60-minute offers are descriptive coverage only.",
             "Mechanism-family prevalence is outside this validation stage.",
         ],
+        "protocol_amendment": deepcopy(config["protocol_amendment"]),
         "selection_design": {
             "rule": config["selection_rule"],
             "source_outcome_fields_used": False,
             "scenario_suffixes": [25, 32],
+        },
+        "primary_estimand": {
+            "duration_min": primary_duration,
+            "planned_evaluations": 32,
+            "planned_rows_per_cell": 2,
+            "coverage_complete": primary_coverage_complete,
+            "longer_duration_policy": config["longer_duration_policy"],
+        },
+        "offer_coverage": {
+            "planned": len(external),
+            "active": sum(row["_comparison_eligible"] for row in external),
+            "inactive": sum(
+                row["status"] == "INACTIVE_OFFER" for row in external
+            ),
+            "by_duration_min": coverage_by_duration,
         },
         "scientific_validation_thresholds": deepcopy(thresholds),
         "cell_pattern_comparison": {
@@ -367,6 +490,14 @@ def build_external_validation_summary(
         "counts": {
             "development_evaluations": len(development),
             "external_evaluations": len(external),
+            "development_primary_evaluations": len(development_primary),
+            "external_primary_evaluations": len(external_primary),
+            "external_active_evaluations": sum(
+                row["_comparison_eligible"] for row in external
+            ),
+            "external_inactive_offers": sum(
+                row["status"] == "INACTIVE_OFFER" for row in external
+            ),
             "comparison_cells": len(keys),
             "development_failing_cells": sum(
                 bool(value["has_bad"]) for value in development_cells.values()
@@ -392,7 +523,7 @@ def build_external_validation_summary(
             "gpu_reason": "OpenDSS three-phase power flow uses the CPU path",
         },
         "cells": cell_rows,
-        "evaluations": external,
+        "evaluations": external_output,
     }
 
 
@@ -449,21 +580,38 @@ def execute_external_validation_unit(
         or [row.get("evaluation_id") for row in evaluations] != expected_ids
     ):
         raise ValueError("external-validation evaluator returned different identities")
+    status_counts: dict[str, int] = {}
     for row in evaluations:
-        if (
-            row.get("work_unit_id") != unit["work_unit_id"]
-            or row.get("protocol_version") != config["protocol_version"]
-            or row.get("data_role") != config["design_role"]
-            or row.get("status") != "SUCCESS"
-            or row.get("scientific_status") != "VALID"
-            or row.get("alpha_path_scientific_valid") is not True
-            or row.get("alpha_path_status") != "VALID"
-            or row.get("alpha_path_audit", {}).get("numerical_failure_audits") != 0
-        ):
+        identity_valid = bool(
+            row.get("work_unit_id") == unit["work_unit_id"]
+            and row.get("protocol_version") == config["protocol_version"]
+            and row.get("data_role") == config["design_role"]
+        )
+        status = str(row.get("status"))
+        valid_active = bool(
+            status == "SUCCESS"
+            and row.get("scientific_status") == "VALID"
+            and row.get("alpha_path_scientific_valid") is True
+            and row.get("alpha_path_status") == "VALID"
+            and isinstance(row.get("alpha_path_audit"), Mapping)
+            and row["alpha_path_audit"].get("numerical_failure_audits") == 0
+        )
+        valid_inactive = bool(
+            status == "INACTIVE_OFFER"
+            and row.get("scientific_status") == "NOT_APPLICABLE_INACTIVE"
+            and row.get("active_offer") is False
+            and row.get("eligible_for_scientific_denominator") is False
+            and row.get("alpha_transfer") is None
+            and row.get("alpha_path_scientific_valid") is None
+            and row.get("alpha_path_status") is None
+            and row.get("alpha_path_audit") is None
+        )
+        if not identity_valid or (not valid_active and not valid_inactive):
             raise ValueError(
                 "external-validation evaluation is invalid: "
                 f"{row.get('evaluation_id')}"
             )
+        status_counts[status] = status_counts.get(status, 0) + 1
     commit = code_commit or _git_commit(root)
     return {
         "protocol_version": PROTOCOL_VERSION,
@@ -472,6 +620,7 @@ def execute_external_validation_unit(
         "scenario_id": str(unit["scenario_id"]),
         "scenario_seed": int(unit["scenario_seed"]),
         "data_role": str(unit["data_role"]),
+        "evaluation_status_counts": dict(sorted(status_counts.items())),
         "resource_policy": {
             "workers": 1,
             "numeric_threads": 1,
@@ -497,10 +646,16 @@ def _csv_rows(summary: Mapping[str, Any]) -> list[dict[str, Any]]:
         raise ValueError("external summary must contain 96 evaluations")
     rows: list[dict[str, Any]] = []
     for evaluation in evaluations:
-        audit = evaluation.get("alpha_path_audit")
-        if not isinstance(evaluation, Mapping) or not isinstance(audit, Mapping):
+        if not isinstance(evaluation, Mapping):
             raise ValueError("external summary evaluation is invalid")
-        alpha = float(evaluation["alpha_transfer"])
+        audit = evaluation.get("alpha_path_audit")
+        alpha_value = evaluation.get("alpha_transfer")
+        alpha = (
+            float(alpha_value)
+            if isinstance(alpha_value, (int, float))
+            and not isinstance(alpha_value, bool)
+            else None
+        )
         rows.append(
             {
                 "evaluation_id": evaluation.get("evaluation_id"),
@@ -513,15 +668,24 @@ def _csv_rows(summary: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "duration_min": evaluation.get("duration_min"),
                 "source_duration_min": evaluation.get("source_duration_min"),
                 "alpha_transfer": alpha,
-                "bad_alpha_lt_0_95": alpha < 0.95,
-                "full_transfer_alpha_eq_1": math.isclose(
-                    alpha, 1.0, rel_tol=0.0, abs_tol=1e-12
+                "bad_alpha_lt_0_95": (
+                    alpha < 0.95 if alpha is not None else None
                 ),
+                "full_transfer_alpha_eq_1": (
+                    math.isclose(
+                        alpha, 1.0, rel_tol=0.0, abs_tol=1e-12
+                    )
+                    if alpha is not None
+                    else None
+                ),
+                "active_offer": evaluation.get("active_offer"),
                 "status": evaluation.get("status"),
                 "scientific_status": evaluation.get("scientific_status"),
                 "alpha_path_status": evaluation.get("alpha_path_status"),
-                "numerical_failure_audits": audit.get(
-                    "numerical_failure_audits"
+                "numerical_failure_audits": (
+                    audit.get("numerical_failure_audits")
+                    if isinstance(audit, Mapping)
+                    else None
                 ),
                 "schedule_sha256": evaluation.get("schedule_sha256"),
                 "bus_phase_time_sha256": evaluation.get(
