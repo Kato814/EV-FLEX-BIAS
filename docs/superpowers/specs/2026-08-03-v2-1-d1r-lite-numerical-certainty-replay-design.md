@@ -139,7 +139,7 @@ Neither outcome proves all 12 cases, cross-feeder causality, unique mechanism, l
 - Replay table: `reports/numerical_certainty_replay_v2_1_d1r_lite.csv`
 - Evidence hashes: `reports/numerical_certainty_replay_hashes_v2_1_d1r_lite.csv`
 
-Case artifacts are written atomically and support immutable-prefix resume. The evaluator is deterministic and supports byte-for-byte `--verify-existing` without writing.
+Case artifacts are written atomically and support immutable-prefix resume. The evaluator requires all four artifacts for a stable/sensitivity result, but can report a shorter continuous prefix only when its last artifact is a controlled `STOP_*`. It is deterministic and supports byte-for-byte `--verify-existing` without writing.
 
 ## Resource and failure policy
 

@@ -291,7 +291,7 @@ def evaluate_numerical_certainty_replay(
 ) -> dict[str, Any]: ...
 ```
 
-Require exactly four valid terminal artifacts in frozen order. Generate canonical JSON, Chinese Markdown, one CSV row per case/setting, and a hash CSV containing frozen sources and four case artifacts. Record requested/observed settings, metric values, exceedances, iteration counts, every drift, case decisions, aggregate decision, 12 target evaluations, unknown internal setup-solve count, false formal authorization, and scope limitations. Use temporary files plus `os.replace`; verify mode must compare all four outputs byte-for-byte without writing.
+Require a nonempty valid terminal prefix in frozen order. A prefix shorter than four is reportable only when its last artifact is a controlled `STOP_*`; stable or sensitivity decisions require all four artifacts. Generate canonical JSON, Chinese Markdown, one CSV row per completed case/setting, and a hash CSV containing frozen sources and the completed case artifacts. Record requested/observed settings, metric values, exceedances, iteration counts, every drift, case decisions, aggregate decision, the actual target-evaluation count (12 for a complete four-case replay), unknown internal setup-solve count, false formal authorization, and scope limitations. Use temporary files plus `os.replace`; verify mode must compare all four outputs byte-for-byte without writing.
 
 - [ ] **Step 4: Run GREEN and commit**
 
