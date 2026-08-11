@@ -231,7 +231,7 @@ def execute_replay_case(
 ) -> dict[str, Any]: ...
 ```
 
-Use existing `reconstruct_case` first, before any solver intervention, so archived schedule hashes remain authoritative. For each setting create a new `runtime.corrected_core.Network`, apply and read back `Solution.Convergence` and `Solution.MaxIterations`, aggregate the exact witness-slot fleet power, evaluate once with controls already off, and record the archived metric plus solver/convergence metadata. Release each context before the next setting and each case before the next case.
+Use existing `reconstruct_case` first, before any solver intervention, so archived schedule hashes remain authoritative. For each setting create a new `runtime.corrected_core.Network`; under native settings replay the archived baseline solves and earlier changed boundary-prefix solves that touched the selected load-scale context; then apply and read back the requested `Solution.Convergence`, `Solution.MaxIterations`, and `Solution.MaxControlIterations` only for the target solve. Aggregate the exact witness-slot fleet power, evaluate once with controls already off, and record the archived metric plus solver/convergence metadata. Release each context before the next setting and each case before the next case. The deterministic pre-target setup solves reproduce identity and are not counted among the 12 target replay evaluations.
 
 - [ ] **Step 4: Implement runner persistence**
 

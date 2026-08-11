@@ -69,13 +69,14 @@ For each selected case, processed sequentially:
 2. Form the exact D1-R-Lite boundary-infeasible schedule using `baseline + (alpha_transfer + 0.002) * (source_schedule - baseline)`.
 3. Extract only the archived witness slot and its frozen native load scale.
 4. Build three independent corrected three-phase network objects using the same feeder, static fleet frame, topology, load scale, formal constraints, and archived control initialization.
-5. Keep controls off for the target evaluation, as in the archived audit. Change only the final solve convergence tolerance and maximum iteration cap.
-6. Aggregate the same fleet-by-slot EV powers to the network groups and evaluate the same power vector.
-7. Read the same archived voltage metric, global voltage extrema, convergence flag, numerical-failure evidence, iteration count, and observed solver settings.
+5. In each fresh context, reproduce the archived pre-target solve state under the native solver settings: replay every baseline slot sharing the selected load scale, then replay only earlier changed boundary-schedule slots sharing that scale. Exact baseline columns remain reused without a solve, matching the archived audit.
+6. Keep controls off for the target evaluation, as in the archived audit. After the common pre-target state is reconstructed, change only the final solve convergence tolerance and maximum iteration cap.
+7. Aggregate the same fleet-by-slot EV powers to the network groups and evaluate the same target power vector.
+8. Read the same archived voltage metric, global voltage extrema, convergence flag, numerical-failure evidence, iteration count, and observed solver settings.
 
 No schedule optimization, phase reassignment, alpha refinement, control redesign, IEEE13 evaluation, or full-trajectory classification is permitted.
 
-Each tolerance receives a fresh OpenDSS context so a tighter evaluation cannot warm-start a later one. Network construction uses the archived native initialization behavior; the sensitivity intervention is deliberately limited to the final controls-off solve.
+Each tolerance receives a fresh OpenDSS context so a tighter evaluation cannot warm-start a later one. The three contexts receive the same deterministic archived pre-target history under `NATIVE_1E4`; the sensitivity intervention is deliberately limited to the final controls-off target solve. This pre-target reconstruction is required because a direct cold-context replay of pair 01 differed from the archive by `4.360789773727447e-08 pu`, while reproducing the archived context history reduced the difference to `4.440892098500626e-16 pu`. The setup solves are identity reconstruction, not additional target evaluations.
 
 ## Solver settings
 

@@ -5,12 +5,13 @@ from __future__ import annotations
 import csv
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
+import gc
 import hashlib
 from importlib.metadata import PackageNotFoundError, version
 import math
 from pathlib import Path
 import re
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from evflex.mechanism_diagnostic import strict_json_file
 from evflex.mechanism_margin_sensitivity_d1r_lite import (
@@ -905,3 +906,421 @@ def assess_replay_gate(
         ),
         "formal_v2_1_run_authorized": False,
     }
+
+
+def _read_solver_setting(network: Any) -> dict[str, Any]:
+    try:
+        solution = network.ctx.Solution
+        tolerance = float(solution.Convergence())
+        max_iterations = int(solution.MaxIterations())
+        max_control_iterations = int(solution.MaxControlIterations())
+    except (AttributeError, TypeError, ValueError, OverflowError) as exc:
+        _fail(f"cannot read OpenDSS solver settings ({exc})")
+    if (
+        not math.isfinite(tolerance)
+        or tolerance <= 0.0
+        or max_iterations <= 0
+        or max_control_iterations <= 0
+    ):
+        _fail("OpenDSS solver setting readback is invalid")
+    return {
+        "convergence_tolerance": tolerance,
+        "max_iterations": max_iterations,
+        "max_control_iterations": max_control_iterations,
+    }
+
+
+def apply_solver_setting(
+    network: Any, setting: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Set and read back the three frozen OpenDSS final-solve controls."""
+
+    if not isinstance(setting, Mapping) or set(setting) != {
+        "label",
+        "convergence_tolerance",
+        "max_iterations",
+        "max_control_iterations",
+    }:
+        _fail("solver setting has unexpected or missing fields")
+    label = setting.get("label")
+    if not isinstance(label, str) or not label:
+        _fail("solver setting label must be a nonempty string")
+    tolerance = _json_number(
+        setting.get("convergence_tolerance"), "requested convergence tolerance"
+    )
+    max_iterations = _json_int(
+        setting.get("max_iterations"), "requested maximum iterations", minimum=1
+    )
+    max_control_iterations = _json_int(
+        setting.get("max_control_iterations"),
+        "requested maximum control iterations",
+        minimum=1,
+    )
+    if tolerance <= 0.0:
+        _fail("requested convergence tolerance must be positive")
+    try:
+        solution = network.ctx.Solution
+        solution.Convergence(tolerance)
+        solution.MaxIterations(max_iterations)
+        solution.MaxControlIterations(max_control_iterations)
+    except (AttributeError, TypeError, ValueError, OverflowError) as exc:
+        _fail(f"cannot apply OpenDSS solver settings ({exc})")
+    return _read_solver_setting(network)
+
+
+def _canonical_schedule_hash(fleet: Sequence[Any], schedule: Any) -> str:
+    from evflex import pilot
+
+    return str(pilot.canonical_schedule_sha256(fleet, schedule))
+
+
+def _power_vector_sha256(power: Any) -> str:
+    import numpy as np
+
+    values = np.asarray(power, dtype=np.float64)
+    if values.ndim != 1 or not values.size or not np.isfinite(values).all():
+        _fail("group power vector must be a nonempty finite vector")
+    normalized = np.ascontiguousarray(values, dtype="<f8")
+    return hashlib.sha256(
+        b"evflex.d1r-lite.n1.group-power.v1\0"
+        + int(values.size).to_bytes(8, "little", signed=False)
+        + normalized.tobytes(order="C")
+    ).hexdigest()
+
+
+def _default_network_factory(
+    *,
+    runtime: Any,
+    fleet_frame: Any,
+    feeder: str,
+    model: str,
+    load_scale: float,
+) -> Any:
+    try:
+        constructor = runtime.corrected_core.Network
+    except AttributeError as exc:
+        _fail("reconstructed runtime lacks the corrected network class")
+    return constructor(feeder, fleet_frame, model, load_scale)
+
+
+def _group_power(
+    group_vector: Callable[..., Any],
+    fleet: Sequence[Any],
+    schedule: Any,
+    slot: int,
+    groups: Sequence[Any],
+) -> Any:
+    import numpy as np
+
+    power = np.asarray(
+        group_vector(list(fleet), schedule[:, slot], groups, "3ph"),
+        dtype=float,
+    )
+    if power.shape != (len(groups),) or not np.isfinite(power).all():
+        _fail("replay group power does not match the network groups")
+    return power
+
+
+def _require_clean_setup_evaluation(evaluation: Any, *, label: str) -> None:
+    result = _mapping(evaluation, f"{label} setup evaluation")
+    violations = result.get("violations")
+    if (
+        result.get("converged") is not True
+        or result.get("numerical_failure") is not False
+        or not isinstance(violations, list)
+        or violations
+    ):
+        _fail(f"{label} setup state is not a clean feasible solve")
+
+
+def _reconstruct_archived_presolve_state(
+    network: Any,
+    *,
+    native_setting: Mapping[str, Any],
+    group_vector: Callable[..., Any],
+    fleet: Sequence[Any],
+    baseline: Any,
+    audited_schedule: Any,
+    load_scales: Any,
+    selected_slot: int,
+) -> None:
+    """Replay only the solves that previously touched the selected scale context."""
+
+    import numpy as np
+
+    groups = getattr(network, "groups", None)
+    if isinstance(groups, (str, bytes)) or not isinstance(groups, Sequence):
+        _fail("replay network groups must be a sequence")
+    selected_scale = float(load_scales[selected_slot])
+    apply_solver_setting(network, native_setting)
+
+    # The archived run first completed its 96-slot baseline audit. It reused one
+    # context for all slots sharing a load scale, so recreate that warm-start path.
+    for slot, raw_scale in enumerate(load_scales):
+        if float(raw_scale) != selected_scale:
+            continue
+        power = _group_power(group_vector, fleet, baseline, slot, groups)
+        _require_clean_setup_evaluation(
+            network.evaluate(power), label=f"baseline slot {slot}"
+        )
+
+    # The boundary audit reused exact baseline columns without solving. Only
+    # earlier changed columns at this same load scale affected the target context.
+    for slot in range(selected_slot):
+        if (
+            float(load_scales[slot]) != selected_scale
+            or np.array_equal(audited_schedule[:, slot], baseline[:, slot])
+        ):
+            continue
+        power = _group_power(group_vector, fleet, audited_schedule, slot, groups)
+        _require_clean_setup_evaluation(
+            network.evaluate(power), label=f"boundary-prefix slot {slot}"
+        )
+
+
+def _selected_case_source(
+    repo_root: Path,
+    selection: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    source = load_replay_source(repo_root, config)
+    matches = [
+        item
+        for item in source["selected_cases"]
+        if item["selection"]["pair_id"] == selection.get("pair_id")
+    ]
+    if len(matches) != 1 or matches[0]["selection"] != dict(selection):
+        _fail("selected replay case is absent from the validated source")
+    return matches[0]
+
+
+def _case_as_reconstruction_member(case: Mapping[str, Any]) -> dict[str, Any]:
+    """Restore the D1 bad-member fields intentionally omitted by the Lite manifest."""
+
+    return {
+        "pair_id": case["pair_id"],
+        "scenario_cluster": case["scenario_cluster"],
+        "role": "bad",
+        "evaluation_id": case["evaluation_id"],
+        "work_unit_id": case["work_unit_id"],
+        "scenario_id": case["scenario_id"],
+        "scenario_seed": case["scenario_seed"],
+        "feeder": case["feeder"],
+        "call_time": case["call_time"],
+        "direction": case["direction"],
+        "duration_min": case["duration_min"],
+        "requested_duration_min": case["duration_min"],
+        "source_duration_min": case["source_duration_min"],
+        "alpha_transfer": case["alpha_transfer"],
+        "schedule_sha256": case["schedule_sha256"],
+        "bus_phase_time_sha256": case["bus_phase_time_sha256"],
+        "baseline_schedule_sha256": case["baseline_schedule_sha256"],
+    }
+
+
+def execute_replay_case(
+    repo_root: str | Path,
+    selection: Mapping[str, Any],
+    config: Mapping[str, Any],
+    *,
+    reconstruct_fn: Callable[..., Mapping[str, Any]] | None = None,
+    network_factory: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    """Reconstruct once and replay one frozen witness slot in three fresh contexts."""
+
+    import numpy as np
+    from evflex.mechanism_diagnostic import reconstruct_case
+
+    root = Path(repo_root).resolve(strict=True)
+    if dict(config) != _expected_config():
+        _fail("case execution requires the frozen replay config")
+    frozen = _frozen_selection(selection, config)
+    selected_source = _selected_case_source(root, frozen, config)
+    reconstruct = reconstruct_fn or reconstruct_case
+    factory = network_factory or _default_network_factory
+    if not callable(reconstruct) or not callable(factory):
+        _fail("reconstruction and network factory must be callable")
+    reconstructed = _mapping(
+        reconstruct(
+            root,
+            _case_as_reconstruction_member(selected_source["case"]),
+        ),
+        "reconstructed replay case",
+    )
+    runtime = reconstructed.get("runtime")
+    fleet = reconstructed.get("fleet")
+    if (
+        isinstance(fleet, (str, bytes))
+        or not isinstance(fleet, Sequence)
+        or not fleet
+    ):
+        _fail("reconstructed replay fleet must be a nonempty sequence")
+    baseline = np.asarray(reconstructed.get("baseline"), dtype=float)
+    schedule = np.asarray(reconstructed.get("schedule"), dtype=float)
+    load_scales = np.asarray(reconstructed.get("load_scales"), dtype=float)
+    if (
+        baseline.shape != schedule.shape
+        or baseline.ndim != 2
+        or baseline.shape != (len(fleet), 96)
+        or load_scales.shape != (96,)
+        or not np.isfinite(baseline).all()
+        or not np.isfinite(schedule).all()
+        or not np.isfinite(load_scales).all()
+    ):
+        _fail("reconstructed replay arrays have invalid shape or values")
+    slot = int(frozen["selected_slot"])
+    alpha = float(frozen["alpha"])
+    audited_schedule = baseline + alpha * (schedule - baseline)
+    schedule_hash = _canonical_schedule_hash(fleet, audited_schedule)
+    if schedule_hash != frozen["audited_schedule_sha256"]:
+        _fail("reconstructed boundary schedule hash differs from the archive")
+    try:
+        engine = runtime.archived_engine
+        make_frame = engine.static_fleet_frame
+        group_vector = engine.group_vector
+    except AttributeError as exc:
+        _fail("reconstructed runtime lacks fixed-fleet aggregation helpers")
+    if not callable(make_frame) or not callable(group_vector):
+        _fail("fixed-fleet aggregation helpers must be callable")
+    fleet_frame = make_frame(list(fleet))
+    load_scale = float(load_scales[slot])
+    if not math.isfinite(load_scale) or load_scale <= 0.0:
+        _fail("selected replay load scale must be finite and positive")
+
+    observations: list[dict[str, Any]] = []
+    for setting in config["solver_settings"]:
+        network: Any | None = None
+        try:
+            network = factory(
+                runtime=runtime,
+                fleet_frame=fleet_frame,
+                feeder=str(selected_source["case"]["feeder"]),
+                model="3ph",
+                load_scale=load_scale,
+            )
+            _reconstruct_archived_presolve_state(
+                network,
+                native_setting=config["solver_settings"][0],
+                group_vector=group_vector,
+                fleet=fleet,
+                baseline=baseline,
+                audited_schedule=audited_schedule,
+                load_scales=load_scales,
+                selected_slot=slot,
+            )
+            apply_solver_setting(network, setting)
+            groups = getattr(network, "groups", None)
+            if isinstance(groups, (str, bytes)) or not isinstance(groups, Sequence):
+                _fail("replay network groups must be a sequence")
+            power = _group_power(
+                group_vector,
+                fleet,
+                audited_schedule,
+                slot,
+                groups,
+            )
+            evaluation = _mapping(network.evaluate(power), "replay evaluation")
+            observed_settings = _read_solver_setting(network)
+            metrics = _mapping(evaluation.get("metrics"), "replay metrics")
+            metric_id = str(frozen["metric_id"])
+            metric_value = _json_number(
+                metrics.get(metric_id), f"replay metric {metric_id}"
+            )
+            limit = float(frozen["limit"])
+            direction = str(frozen["direction"])
+            exceedance = max(
+                0.0,
+                metric_value - limit if direction == "hi" else limit - metric_value,
+            )
+            physical_margin = float(
+                config["thresholds"]["physical_violation_margin_pu"]
+            )
+            physical = bool(
+                metric_value > limit + physical_margin
+                if direction == "hi"
+                else metric_value < limit - physical_margin
+            )
+            violations = evaluation.get("violations")
+            if not isinstance(violations, list):
+                _fail("replay violations must be a list")
+            physical_metrics = sorted(
+                {
+                    str(item["metric"])
+                    for item in violations
+                    if isinstance(item, Mapping)
+                    and item.get("kind") == "physical_constraint"
+                    and isinstance(item.get("metric"), str)
+                    and item.get("metric")
+                }
+            )
+            if physical and metric_id not in physical_metrics:
+                physical_metrics.append(metric_id)
+                physical_metrics.sort()
+            converged = evaluation.get("converged")
+            numerical_failure = evaluation.get("numerical_failure")
+            if not isinstance(converged, bool) or not isinstance(
+                numerical_failure, bool
+            ):
+                _fail("replay convergence flags must be Boolean")
+            if evaluation.get("line_thermal_in_scope") is not False:
+                _fail("replay evaluation expands line-thermal scope")
+            try:
+                iterations = int(network.ctx.Solution.Iterations())
+            except (AttributeError, TypeError, ValueError, OverflowError) as exc:
+                _fail(f"cannot read OpenDSS iteration count ({exc})")
+            if iterations < 0:
+                _fail("OpenDSS iteration count must be nonnegative")
+            observations.append(
+                {
+                    "setting_label": setting["label"],
+                    "requested_solver_settings": deepcopy(dict(setting)),
+                    "observed_solver_settings": observed_settings,
+                    "selected_slot": slot,
+                    "load_scale": load_scale,
+                    "audited_schedule_sha256": schedule_hash,
+                    "power_vector_sha256": _power_vector_sha256(power),
+                    "metric_id": metric_id,
+                    "metric_value": metric_value,
+                    "limit": limit,
+                    "direction": direction,
+                    "exceedance": exceedance,
+                    "physical_violation": physical,
+                    "physical_violation_metrics": physical_metrics,
+                    "converged": converged,
+                    "numerical_failure": numerical_failure,
+                    "iterations": iterations,
+                    "vmin": _json_number(evaluation.get("vmin"), "replay vmin"),
+                    "vmax": _json_number(evaluation.get("vmax"), "replay vmax"),
+                    "line_thermal_in_scope": False,
+                    "independent_context": True,
+                }
+            )
+        finally:
+            if network is not None:
+                del network
+            gc.collect()
+
+    assessment = assess_case_replay(frozen, observations, config)
+    artifact = {
+        "protocol_version": config["protocol_version"],
+        "status": (
+            "STOP_REPLAY"
+            if assessment["case_decision"].startswith("STOP_")
+            else "SUCCESS"
+        ),
+        "pair_id": frozen["pair_id"],
+        "scenario_cluster": frozen["scenario_cluster"],
+        "selection": deepcopy(dict(frozen)),
+        "source_evidence_commit": config["source_evidence_commit"],
+        "source_n0_commit": config["source_n0_commit"],
+        "runtime_version": config["runtime_requirement"]["version"],
+        "target_replay_evaluations": len(observations),
+        "observations": observations,
+        "assessment": assessment,
+        "formal_v2_1_run_started": False,
+        "formal_v2_1_run_authorized": False,
+        "line_thermal_in_scope": False,
+        "resource_policy": deepcopy(config["resource_policy"]),
+    }
+    validate_replay_case_artifact(artifact, frozen, config)
+    return artifact
