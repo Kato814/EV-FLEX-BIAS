@@ -581,12 +581,30 @@ def execute_representative_witness_case(
         raise ValueError("representative witness case is invalid")
     case_id = str(case.get("case_id"))
     cell_id = str(case.get("cell_id"))
+    original_bad = deepcopy(dict(case["bad"]))
+    replay_bad = deepcopy(original_bad)
+    duration = int(original_bad.get("duration_min"))
+    requested_duration = int(original_bad.get("requested_duration_min"))
+    source_duration = int(original_bad.get("source_duration_min"))
+    if requested_duration != duration:
+        raise ValueError("representative requested duration is inconsistent")
+    duration_adapter_applied = source_duration != duration
+    if duration_adapter_applied:
+        if (
+            original_bad.get("canonical_schedule_reused") is not True
+            or original_bad.get("monotonic_closure_promoted") is not True
+        ):
+            raise ValueError(
+                "representative source-duration reuse lacks archived evidence"
+            )
+        replay_bad["duration_min"] = source_duration
+        replay_bad["requested_duration_min"] = source_duration
     boundary_result = execute_witness_pair(
         repo_root,
         {
             "pair_id": case_id,
             "stratum_id": cell_id,
-            "bad": case["bad"],
+            "bad": replay_bad,
             "boundary_infeasible_alpha": case.get(
                 "boundary_infeasible_alpha"
             ),
@@ -609,6 +627,10 @@ def execute_representative_witness_case(
         "cell_id": cell_id,
         "safe_control_evaluated": False,
         "line_thermal_in_scope": False,
+        "source_schedule_reused": bool(
+            original_bad.get("canonical_schedule_reused")
+        ),
+        "reconstruction_duration_adapter_applied": duration_adapter_applied,
         "selection": {
             "rule": str(case.get("selection_rule")),
             "cell_bad_count": int(case.get("cell_bad_count")),
@@ -619,7 +641,12 @@ def execute_representative_witness_case(
                 case.get("distance_to_median"), "distance to median"
             ),
         },
-        "member": deepcopy(boundary_result["members"]["bad"]),
+        "member": _member_from_evaluation(
+            original_bad,
+            pair_id=case_id,
+            stratum_id=cell_id,
+            role="bad",
+        ),
         "audits": deepcopy(boundary_result["audits"]),
     }
 
@@ -749,6 +776,7 @@ def build_representative_witness_summary(
     boundaries: list[Mapping[str, Any]] = []
     rules: set[str] = set()
     source_bad_rows = 0
+    source_duration_reuse_cases = 0
     for case in cases:
         if (
             case.get("safe_control_evaluated") is not False
@@ -756,9 +784,23 @@ def build_representative_witness_summary(
         ):
             raise ValueError("representative scope must exclude controls and line thermal")
         selection = case.get("selection")
+        member = case.get("member")
         case_audits = case.get("audits")
-        if not isinstance(selection, Mapping) or not isinstance(case_audits, list):
+        if (
+            not isinstance(selection, Mapping)
+            or not isinstance(member, Mapping)
+            or not isinstance(case_audits, list)
+        ):
             raise ValueError("representative case is structurally invalid")
+        duration_reused = bool(
+            case.get("reconstruction_duration_adapter_applied")
+        )
+        if duration_reused != (
+            int(member.get("duration_min"))
+            != int(member.get("source_duration_min"))
+        ) or (duration_reused and case.get("source_schedule_reused") is not True):
+            raise ValueError("representative source-duration reuse is inconsistent")
+        source_duration_reuse_cases += int(duration_reused)
         rules.add(str(selection.get("rule")))
         source_bad_rows += int(selection.get("cell_bad_count"))
         if len(case_audits) != 2:
@@ -820,6 +862,7 @@ def build_representative_witness_summary(
             "line_thermal_in_scope": False,
             "safe_controls_evaluated": False,
             "mechanism_labels_used_for_selection": False,
+            "source_duration_reuse_explicitly_recorded": True,
         },
         "selection_design": {
             "unit": "feeder-direction-call_time cell with alpha_transfer < 0.95",
@@ -848,6 +891,7 @@ def build_representative_witness_summary(
             "exact_boundary_witnesses": len(boundaries),
             "numerical_failure_checks": numerical_failures,
             "nonconverged_checks": nonconverged,
+            "source_duration_reuse_cases": source_duration_reuse_cases,
         },
         "primary_boundary_constraint_family_counts": dict(
             sorted(primary_family_counts.items())
@@ -984,6 +1028,10 @@ def flatten_representative_summary_csv_rows(
                     "direction": member.get("direction"),
                     "call_time": member.get("call_time"),
                     "duration_min": member.get("duration_min"),
+                    "source_duration_min": member.get("source_duration_min"),
+                    "source_duration_reuse": case.get(
+                        "reconstruction_duration_adapter_applied"
+                    ),
                     "cell_bad_count": selection.get("cell_bad_count"),
                     "cell_median_alpha": selection.get("cell_median_alpha"),
                     "distance_to_median": selection.get("distance_to_median"),

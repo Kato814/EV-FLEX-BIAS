@@ -343,6 +343,24 @@ def test_execute_ieee13_representative_replays_only_two_boundary_points() -> Non
     assert feasible["tightest_constraint"]["relative_headroom"] >= 0.0
 
 
+def test_representative_reconstructs_an_archived_reused_source_schedule() -> None:
+    rows = load_archived_evaluations(REPO_ROOT)
+    case = select_representative_witnesses(rows)[6]
+
+    assert case["bad"]["duration_min"] == 30
+    assert case["bad"]["source_duration_min"] == 60
+    result = execute_representative_witness_case(REPO_ROOT, case)
+
+    assert result["status"] == "SUCCESS"
+    assert result["member"]["duration_min"] == 30
+    assert result["member"]["source_duration_min"] == 60
+    assert result["source_schedule_reused"] is True
+    assert result["reconstruction_duration_adapter_applied"] is True
+    assert [audit["feasible"] for audit in result["audits"]] == [True, False]
+    assert result["audits"][1]["first_failure_slot"] == 75
+    assert result["audits"][1]["numerical_failure_checks"] == 0
+
+
 def test_build_witness_summary_counts_only_exact_physical_boundaries(
     tmp_path: Path,
 ) -> None:
@@ -512,6 +530,8 @@ def test_representative_summary_retains_only_12_cases_and_24_audits(
                 "cell_id": f"cell_{index:02d}",
                 "safe_control_evaluated": False,
                 "line_thermal_in_scope": False,
+                "source_schedule_reused": False,
+                "reconstruction_duration_adapter_applied": False,
                 "selection": {
                     "rule": "frozen median rule",
                     "cell_bad_count": 4 if index <= 9 else 5,
@@ -524,6 +544,7 @@ def test_representative_summary_retains_only_12_cases_and_24_audits(
                     "direction": "dec" if index % 2 else "inc",
                     "call_time": "06:00",
                     "duration_min": 30,
+                    "source_duration_min": 30,
                 },
                 "audits": [
                     {
@@ -582,6 +603,7 @@ def test_representative_summary_retains_only_12_cases_and_24_audits(
         "exact_boundary_witnesses": 12,
         "numerical_failure_checks": 0,
         "nonconverged_checks": 0,
+        "source_duration_reuse_cases": 0,
     }
     assert summary["primary_boundary_constraint_family_counts"] == {
         "VMAX": 8,
@@ -589,6 +611,8 @@ def test_representative_summary_retains_only_12_cases_and_24_audits(
     }
     assert len(csv_rows) == 24
     assert csv_rows[1]["constraint_family"] == "VMAX"
+    assert csv_rows[1]["source_duration_min"] == 30
+    assert csv_rows[1]["source_duration_reuse"] is False
 
     paths = write_representative_summary_artifacts(tmp_path, summary)
     assert paths["json"].parent.name == (
