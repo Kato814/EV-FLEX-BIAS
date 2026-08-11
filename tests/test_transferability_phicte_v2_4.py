@@ -8,6 +8,8 @@ from evflex.transferability_phicte_v2_4 import (
     FEATURE_NAMES,
     build_feature_row,
     deterministic_group_folds,
+    fit_constrained_quantile,
+    penalty_weight,
 )
 
 
@@ -112,3 +114,54 @@ def test_grouped_folds_never_split_scenarios() -> None:
         tested.extend(test)
     assert sorted(tested) == list(range(len(rows)))
     assert deterministic_group_folds(rows, n_splits=4) == folds
+
+
+def _model_feature(**overrides: float) -> dict[str, float]:
+    feature = {name: 0.0 for name in FEATURE_NAMES}
+    feature.update(overrides)
+    return feature
+
+
+def test_model_respects_physical_signs_and_uses_training_scaler() -> None:
+    features = []
+    targets = []
+    for index in range(24):
+        position = index / 23.0
+        features.append(
+            _model_feature(
+                offer_stress=position,
+                voltage_margin=1.0 - position,
+                vuf_margin=0.5 + (index % 4) / 10.0,
+                transformer_margin=0.2 + (index % 3) / 10.0,
+                feeder_margin=0.4 + (index % 5) / 10.0,
+                feeder_lv906=float(index % 2),
+                direction_inc=float((index // 2) % 2),
+                lv906_x_inc=float(index % 4 == 3),
+            )
+        )
+        targets.append(0.2 + 0.7 * position)
+
+    model = fit_constrained_quantile(
+        features, targets, quantile=0.10, penalty=0.002
+    )
+
+    assert model.coefficient("offer_stress") <= 1e-10
+    for name in (
+        "voltage_margin",
+        "vuf_margin",
+        "transformer_margin",
+        "feeder_margin",
+    ):
+        assert model.coefficient(name) >= -1e-10
+    assert model.centers["offer_stress"] == pytest.approx(0.5)
+    predictions = model.predict(features)
+    assert len(predictions) == len(features)
+    assert all(math.isfinite(value) for value in predictions)
+
+
+def test_interactions_are_shrunk_more_than_main_effects() -> None:
+    assert penalty_weight("lv906_x_inc") == 4.0
+    assert penalty_weight("inc_x_duration_60") == 4.0
+    assert penalty_weight("offer_stress") == 1.0
+    assert penalty_weight("feeder_lv906") == 1.0
+    assert penalty_weight("intercept") == 0.0

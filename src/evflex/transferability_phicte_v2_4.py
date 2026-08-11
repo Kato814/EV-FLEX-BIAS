@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 import math
 from typing import Any, Mapping, Sequence
+
+import numpy as np
+from scipy.optimize import linprog
 
 
 FEATURE_NAMES = (
@@ -24,6 +28,15 @@ FEATURE_NAMES = (
     "inc_x_duration_30",
     "inc_x_duration_60",
 )
+
+CONTINUOUS_FEATURE_NAMES = FEATURE_NAMES[:5]
+PHYSICAL_NONPOSITIVE_COEFFICIENTS = {"offer_stress"}
+PHYSICAL_NONNEGATIVE_COEFFICIENTS = {
+    "voltage_margin",
+    "vuf_margin",
+    "transformer_margin",
+    "feeder_margin",
+}
 
 
 def _required_finite(value: Any, field: str) -> float:
@@ -143,3 +156,163 @@ def deterministic_group_folds(
         train = sorted(all_indices.difference(test))
         folds.append((train, test))
     return folds
+
+
+def penalty_weight(term: str) -> float:
+    """Return the fixed hierarchical L1 weight for a model term."""
+
+    if term == "intercept":
+        return 0.0
+    if term not in FEATURE_NAMES:
+        raise ValueError(f"unknown model term: {term}")
+    return 4.0 if "_x_" in term else 1.0
+
+
+def _feature_matrix(features: Sequence[Mapping[str, float]]) -> np.ndarray:
+    if not features:
+        raise ValueError("at least one feature row is required")
+    matrix = np.empty((len(features), len(FEATURE_NAMES)), dtype=float)
+    for row_index, feature in enumerate(features):
+        for column_index, name in enumerate(FEATURE_NAMES):
+            value = feature.get(name)
+            matrix[row_index, column_index] = _required_finite(
+                value, f"feature row {row_index} {name}"
+            )
+    return matrix
+
+
+@dataclass(frozen=True)
+class ConstrainedQuantileModel:
+    """A fitted sign-constrained quantile model and its training-only scaler."""
+
+    quantile: float
+    penalty: float
+    standardized_intercept: float
+    standardized_coefficients: tuple[float, ...]
+    centers: Mapping[str, float]
+    scales: Mapping[str, float]
+    training_n: int
+
+    def coefficient(self, name: str) -> float:
+        if name not in FEATURE_NAMES:
+            raise ValueError(f"unknown feature: {name}")
+        index = FEATURE_NAMES.index(name)
+        return self.standardized_coefficients[index] / self.scales[name]
+
+    @property
+    def intercept(self) -> float:
+        adjustment = sum(
+            self.standardized_coefficients[index]
+            * self.centers[name]
+            / self.scales[name]
+            for index, name in enumerate(FEATURE_NAMES)
+        )
+        return self.standardized_intercept - adjustment
+
+    def predict(self, features: Sequence[Mapping[str, float]]) -> list[float]:
+        raw = _feature_matrix(features)
+        center = np.asarray([self.centers[name] for name in FEATURE_NAMES])
+        scale = np.asarray([self.scales[name] for name in FEATURE_NAMES])
+        standardized = (raw - center) / scale
+        coefficients = np.asarray(self.standardized_coefficients)
+        predicted = self.standardized_intercept + standardized @ coefficients
+        return [float(value) for value in predicted]
+
+
+def fit_constrained_quantile(
+    features: Sequence[Mapping[str, float]],
+    targets: Sequence[float],
+    *,
+    quantile: float,
+    penalty: float,
+) -> ConstrainedQuantileModel:
+    """Fit the PHiCTE sign-constrained, hierarchically shrunk quantile model."""
+
+    raw = _feature_matrix(features)
+    if len(targets) != len(features):
+        raise ValueError("targets and features must have the same length")
+    y = np.asarray(
+        [_required_finite(value, f"target {index}") for index, value in enumerate(targets)],
+        dtype=float,
+    )
+    if np.any((y < 0.0) | (y > 1.0)):
+        raise ValueError("targets must lie in [0, 1]")
+    quantile_value = _required_finite(quantile, "quantile")
+    if not 0.0 < quantile_value < 1.0:
+        raise ValueError("quantile must lie strictly between zero and one")
+    penalty_value = _required_finite(penalty, "penalty")
+    if penalty_value < 0.0:
+        raise ValueError("penalty must be nonnegative")
+
+    centers = np.zeros(len(FEATURE_NAMES), dtype=float)
+    scales = np.ones(len(FEATURE_NAMES), dtype=float)
+    for name in CONTINUOUS_FEATURE_NAMES:
+        index = FEATURE_NAMES.index(name)
+        centers[index] = float(np.mean(raw[:, index]))
+        candidate_scale = float(np.std(raw[:, index]))
+        scales[index] = candidate_scale if candidate_scale > 1e-12 else 1.0
+    standardized = (raw - centers) / scales
+    design = np.column_stack([np.ones(len(raw), dtype=float), standardized])
+
+    term_names = ("intercept", *FEATURE_NAMES)
+    term_count = len(term_names)
+    sample_count = len(raw)
+    coefficient_penalties = np.asarray(
+        [penalty_value * penalty_weight(name) for name in term_names], dtype=float
+    )
+    objective = np.concatenate(
+        [
+            coefficient_penalties,
+            coefficient_penalties,
+            np.full(sample_count, quantile_value / sample_count),
+            np.full(sample_count, (1.0 - quantile_value) / sample_count),
+        ]
+    )
+    equality = np.hstack(
+        [
+            design,
+            -design,
+            np.eye(sample_count, dtype=float),
+            -np.eye(sample_count, dtype=float),
+        ]
+    )
+
+    positive_bounds: list[tuple[float, float | None]] = []
+    negative_bounds: list[tuple[float, float | None]] = []
+    for name in term_names:
+        positive_bounds.append(
+            (0.0, 0.0)
+            if name in PHYSICAL_NONPOSITIVE_COEFFICIENTS
+            else (0.0, None)
+        )
+        negative_bounds.append(
+            (0.0, 0.0)
+            if name in PHYSICAL_NONNEGATIVE_COEFFICIENTS
+            else (0.0, None)
+        )
+    bounds = [
+        *positive_bounds,
+        *negative_bounds,
+        *([(0.0, None)] * (2 * sample_count)),
+    ]
+    result = linprog(
+        objective,
+        A_eq=equality,
+        b_eq=y,
+        bounds=bounds,
+        method="highs",
+    )
+    if not result.success or result.x is None:
+        raise RuntimeError(f"constrained quantile fit failed: {result.message}")
+
+    beta = result.x[:term_count] - result.x[term_count : 2 * term_count]
+    beta[np.abs(beta) < 1e-12] = 0.0
+    return ConstrainedQuantileModel(
+        quantile=quantile_value,
+        penalty=penalty_value,
+        standardized_intercept=float(beta[0]),
+        standardized_coefficients=tuple(float(value) for value in beta[1:]),
+        centers={name: float(centers[index]) for index, name in enumerate(FEATURE_NAMES)},
+        scales={name: float(scales[index]) for index, name in enumerate(FEATURE_NAMES)},
+        training_n=sample_count,
+    )
