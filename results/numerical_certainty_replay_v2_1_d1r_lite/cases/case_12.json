@@ -1,0 +1,183 @@
+{
+  "assessment": {
+    "all_converged": true,
+    "all_numerical_failure_free": true,
+    "all_solver_settings_ok": true,
+    "case_decision": "NUMERICALLY_STABLE_WITNESS",
+    "convergence_ok": {
+      "NATIVE_1E4": true,
+      "TIGHT_1E6": true,
+      "ULTRA_1E8": true
+    },
+    "native_replay_abs_diff_pu": 0.0,
+    "native_replay_identity_ok": true,
+    "native_to_tight_drift_ok": {
+      "TIGHT_1E6": true,
+      "ULTRA_1E8": true
+    },
+    "native_to_tight_drift_pu": {
+      "TIGHT_1E6": 7.075985641868954e-08,
+      "ULTRA_1E8": 7.246010524930568e-08
+    },
+    "numerical_failure_free": {
+      "NATIVE_1E4": true,
+      "TIGHT_1E6": true,
+      "ULTRA_1E8": true
+    },
+    "solver_settings_ok": {
+      "NATIVE_1E4": true,
+      "TIGHT_1E6": true,
+      "ULTRA_1E8": true
+    },
+    "tight_plateau_drift_pu": 1.7002488306161467e-09,
+    "tight_plateau_ok": true,
+    "witness_persists": {
+      "TIGHT_1E6": true,
+      "ULTRA_1E8": true
+    }
+  },
+  "formal_v2_1_run_authorized": false,
+  "formal_v2_1_run_started": false,
+  "line_thermal_in_scope": false,
+  "observations": [
+    {
+      "audited_schedule_sha256": "46aec87fa963d82a218dea0d2a501452e3646e657a41d8aa47006b45655424be",
+      "converged": true,
+      "direction": "hi",
+      "exceedance": 4.3442480217814605e-05,
+      "independent_context": true,
+      "iterations": 3,
+      "limit": 1.06,
+      "line_thermal_in_scope": false,
+      "load_scale": 0.74471325,
+      "metric_id": "V:780.3",
+      "metric_value": 1.0600434424802179,
+      "numerical_failure": false,
+      "observed_solver_settings": {
+        "convergence_tolerance": 0.0001,
+        "max_control_iterations": 100,
+        "max_iterations": 15
+      },
+      "physical_violation": true,
+      "physical_violation_metrics": [
+        "V:780.3"
+      ],
+      "power_vector_sha256": "6dcb71e568740359e07983be3b9c946b2fdb3b43b8798211769246e005506aa5",
+      "requested_solver_settings": {
+        "convergence_tolerance": 0.0001,
+        "label": "NATIVE_1E4",
+        "max_control_iterations": 100,
+        "max_iterations": 15
+      },
+      "selected_slot": 75,
+      "setting_label": "NATIVE_1E4",
+      "vmax": 1.0600434424802179,
+      "vmin": 1.0280887115684316
+    },
+    {
+      "audited_schedule_sha256": "46aec87fa963d82a218dea0d2a501452e3646e657a41d8aa47006b45655424be",
+      "converged": true,
+      "direction": "hi",
+      "exceedance": 4.3513240074233295e-05,
+      "independent_context": true,
+      "iterations": 4,
+      "limit": 1.06,
+      "line_thermal_in_scope": false,
+      "load_scale": 0.74471325,
+      "metric_id": "V:780.3",
+      "metric_value": 1.0600435132400743,
+      "numerical_failure": false,
+      "observed_solver_settings": {
+        "convergence_tolerance": 1e-06,
+        "max_control_iterations": 100,
+        "max_iterations": 100
+      },
+      "physical_violation": true,
+      "physical_violation_metrics": [
+        "V:780.3"
+      ],
+      "power_vector_sha256": "6dcb71e568740359e07983be3b9c946b2fdb3b43b8798211769246e005506aa5",
+      "requested_solver_settings": {
+        "convergence_tolerance": 1e-06,
+        "label": "TIGHT_1E6",
+        "max_control_iterations": 100,
+        "max_iterations": 100
+      },
+      "selected_slot": 75,
+      "setting_label": "TIGHT_1E6",
+      "vmax": 1.0600435132400743,
+      "vmin": 1.0280886974810877
+    },
+    {
+      "audited_schedule_sha256": "46aec87fa963d82a218dea0d2a501452e3646e657a41d8aa47006b45655424be",
+      "converged": true,
+      "direction": "hi",
+      "exceedance": 4.351494032306391e-05,
+      "independent_context": true,
+      "iterations": 5,
+      "limit": 1.06,
+      "line_thermal_in_scope": false,
+      "load_scale": 0.74471325,
+      "metric_id": "V:780.3",
+      "metric_value": 1.0600435149403231,
+      "numerical_failure": false,
+      "observed_solver_settings": {
+        "convergence_tolerance": 1e-08,
+        "max_control_iterations": 100,
+        "max_iterations": 100
+      },
+      "physical_violation": true,
+      "physical_violation_metrics": [
+        "V:780.3"
+      ],
+      "power_vector_sha256": "6dcb71e568740359e07983be3b9c946b2fdb3b43b8798211769246e005506aa5",
+      "requested_solver_settings": {
+        "convergence_tolerance": 1e-08,
+        "label": "ULTRA_1E8",
+        "max_control_iterations": 100,
+        "max_iterations": 100
+      },
+      "selected_slot": 75,
+      "setting_label": "ULTRA_1E8",
+      "vmax": 1.0600435149403231,
+      "vmin": 1.0280886971423449
+    }
+  ],
+  "pair_id": "12",
+  "protocol_version": "EV-FLEX-BIAS-V2.1-D1R-LITE-N1-NUMERICAL",
+  "resource_policy": {
+    "numeric_threads": {
+      "BLIS_NUM_THREADS": 1,
+      "MKL_NUM_THREADS": 1,
+      "NUMEXPR_NUM_THREADS": 1,
+      "OMP_NUM_THREADS": 1,
+      "OPENBLAS_NUM_THREADS": 1,
+      "VECLIB_MAXIMUM_THREADS": 1
+    },
+    "workers": 1
+  },
+  "runtime_version": "0.9.4",
+  "scenario_cluster": "lv906_0600_02",
+  "selection": {
+    "alpha": 0.612,
+    "alpha_label": "0.612",
+    "audited_schedule_sha256": "46aec87fa963d82a218dea0d2a501452e3646e657a41d8aa47006b45655424be",
+    "constraint_family": "VMAX",
+    "direction": "hi",
+    "exceedance": 4.3442480217814605e-05,
+    "execution_order": 12,
+    "limit": 1.06,
+    "metric_id": "V:780.3",
+    "object_id": "780.3",
+    "pair_id": "12",
+    "scenario_cluster": "lv906_0600_02",
+    "selected_slot": 75,
+    "source_evaluation_id": "v20_core_lv906_0600_02__dec__60m",
+    "stage": "B",
+    "value": 1.0600434424802179
+  },
+  "source_evidence_commit": "5421ec6c5b6333ba9e8426d4909b4942403b55e7",
+  "source_n0_commit": "73518d928d973d420d4f5f8807f846b1f6c549cd",
+  "status": "SUCCESS",
+  "target_replay_evaluations": 3
+}
