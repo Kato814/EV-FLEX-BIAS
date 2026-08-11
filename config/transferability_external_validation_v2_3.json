@@ -1,0 +1,84 @@
+{
+  "protocol_version": "EV-FLEX-BIAS-V2.3-TRANSFERABILITY-LOCKED-EXTERNAL-VALIDATION",
+  "source_protocol_version": "EV-FLEX-BIAS-V2.0",
+  "source_manifest": "manifests/core_work_units_v2_0.csv",
+  "source_manifest_sha256": "856431b21d240010b44f0125de92ab7447bcef924c9d6987cf3caf12c2a6ce69",
+  "source_data_role": "holdout",
+  "prior_v2_0_holdout_open_record": "state/holdout_unlock_v2_0.json",
+  "prior_v2_0_holdout_open_record_sha256": "789b74b41bb2a17ee791d694babbdad97392ab4c9d123718123515f06bc7c69c",
+  "prior_v2_0_holdout_open_count": 1,
+  "blind_holdout_claim": false,
+  "design_role": "locked_external_validation",
+  "selection_rule": "within each feeder-call_time cell, select the smallest and largest scenario suffix from the prior V2.0 holdout cohort; no outcome field used",
+  "scenario_ids": [
+    "ieee13_1900_25",
+    "ieee13_1900_32",
+    "ieee13_0000_25",
+    "ieee13_0000_32",
+    "ieee13_0200_25",
+    "ieee13_0200_32",
+    "ieee13_0600_25",
+    "ieee13_0600_32",
+    "lv906_1900_25",
+    "lv906_1900_32",
+    "lv906_0000_25",
+    "lv906_0000_32",
+    "lv906_0200_25",
+    "lv906_0200_32",
+    "lv906_0600_25",
+    "lv906_0600_32"
+  ],
+  "feeders": [
+    "ieee13",
+    "lv906"
+  ],
+  "call_times": [
+    "19:00",
+    "00:00",
+    "02:00",
+    "06:00"
+  ],
+  "directions": [
+    "inc",
+    "dec"
+  ],
+  "durations_min": [
+    15,
+    30,
+    60
+  ],
+  "workers": 1,
+  "numeric_threads": 1,
+  "formal_constraints": {
+    "vmin_pu": 0.95,
+    "vmax_pu": 1.06,
+    "vuf_limit_pct": 2.0,
+    "transformer_loading_limit_pu": 1.0,
+    "feeder_loading_limit_pu": 1.0,
+    "line_thermal_in_scope": false
+  },
+  "feeder_kva": {
+    "ieee13": 5000,
+    "lv906": 800
+  },
+  "active_offer": {
+    "rule": "max(minimum_kw, feeder_fraction * feeder_kva)",
+    "minimum_kw": 7.2,
+    "feeder_fraction": 0.005
+  },
+  "alpha_search": {
+    "coarse_step": 0.02,
+    "refine_tolerance": 0.002
+  },
+  "scientific_gate_thresholds": {
+    "warm_timing": {
+      "repeats": 3
+    }
+  },
+  "scientific_validation_thresholds": {
+    "cell_failure_status_agreement_min": 0.75,
+    "cell_median_spearman_rho_min": 0.6,
+    "cell_median_alpha_mae_max": 0.15,
+    "require_safe_and_bad_each_feeder": true
+  }
+}
