@@ -7,12 +7,18 @@ import json
 import pytest
 
 from evflex.transferability_witness_v2_2 import (
+    build_representative_witness_summary,
     build_witness_summary,
+    execute_representative_witness_case,
     execute_witness_pair,
+    flatten_representative_summary_csv_rows,
     flatten_summary_csv_rows,
     load_archived_evaluations,
+    main,
+    select_representative_witnesses,
     select_tightest_constraint,
     select_witness_pairs,
+    write_representative_summary_artifacts,
     write_summary_artifacts,
 )
 
@@ -150,6 +156,71 @@ def test_archived_selection_is_exactly_eight_development_members() -> None:
     ]
 
 
+def test_archived_representatives_freeze_one_median_failure_per_bad_cell() -> None:
+    rows = load_archived_evaluations(REPO_ROOT)
+
+    cases = select_representative_witnesses(rows)
+
+    assert len(cases) == 12
+    assert [case["cell_id"] for case in cases] == [
+        "ieee13__dec__0600",
+        "ieee13__inc__0000",
+        "ieee13__inc__0600",
+        "ieee13__inc__1900",
+        "lv906__dec__0000",
+        "lv906__dec__0200",
+        "lv906__dec__0600",
+        "lv906__dec__1900",
+        "lv906__inc__0000",
+        "lv906__inc__0200",
+        "lv906__inc__0600",
+        "lv906__inc__1900",
+    ]
+    assert [case["bad"]["evaluation_id"] for case in cases] == [
+        "v22_dev_ieee13_0600_05__dec__60m",
+        "v22_dev_ieee13_0000_13__inc__15m",
+        "v22_dev_ieee13_0600_13__inc__60m",
+        "v22_dev_ieee13_1900_05__inc__30m",
+        "v22_dev_lv906_0000_05__dec__30m",
+        "v22_dev_lv906_0200_05__dec__30m",
+        "v22_dev_lv906_0600_05__dec__30m",
+        "v22_dev_lv906_1900_05__dec__30m",
+        "v22_dev_lv906_0000_05__inc__30m",
+        "v22_dev_lv906_0200_05__inc__30m",
+        "v22_dev_lv906_0600_13__inc__30m",
+        "v22_dev_lv906_1900_05__inc__30m",
+    ]
+    assert [case["cell_bad_count"] for case in cases] == [
+        5,
+        3,
+        5,
+        4,
+        6,
+        4,
+        6,
+        6,
+        3,
+        2,
+        5,
+        2,
+    ]
+    assert [case["boundary_infeasible_alpha"] for case in cases] == [
+        0.766,
+        0.818,
+        0.58,
+        0.842,
+        0.052,
+        0.816,
+        0.81,
+        0.634,
+        0.004,
+        0.564,
+        0.724,
+        0.634,
+    ]
+    assert all(case["bad"]["alpha_transfer"] < 0.95 for case in cases)
+
+
 def test_select_tightest_constraint_compares_normalized_headroom() -> None:
     selected = select_tightest_constraint(
         [
@@ -242,6 +313,34 @@ def test_execute_ieee13_witness_pair_replays_exact_archived_boundary() -> None:
     )
     assert feasible["tightest_constraint"]["relative_headroom"] >= 0.0
     assert control["tightest_constraint"]["relative_headroom"] >= 0.0
+
+
+def test_execute_ieee13_representative_replays_only_two_boundary_points() -> None:
+    rows = load_archived_evaluations(REPO_ROOT)
+    case = select_representative_witnesses(rows)[0]
+
+    result = execute_representative_witness_case(REPO_ROOT, case)
+
+    assert result["status"] == "SUCCESS"
+    assert result["cell_id"] == "ieee13__dec__0600"
+    assert result["safe_control_evaluated"] is False
+    assert len(result["audits"]) == 2
+    feasible, infeasible = result["audits"]
+    assert (feasible["audit_point"], feasible["alpha"], feasible["feasible"]) == (
+        "BOUNDARY_FEASIBLE",
+        0.764,
+        True,
+    )
+    assert (
+        infeasible["audit_point"],
+        infeasible["alpha"],
+        infeasible["feasible"],
+    ) == ("BOUNDARY_INFEASIBLE", 0.766, False)
+    assert infeasible["first_failure_slot"] == 75
+    assert infeasible["failure_class"] == "PHYSICAL_CONSTRAINT"
+    assert infeasible["numerical_failure_checks"] == 0
+    assert infeasible["simultaneous_violations"]
+    assert feasible["tightest_constraint"]["relative_headroom"] >= 0.0
 
 
 def test_build_witness_summary_counts_only_exact_physical_boundaries(
@@ -372,3 +471,137 @@ def test_build_witness_summary_counts_only_exact_physical_boundaries(
         csv_payload = list(csv.DictReader(stream))
     assert loaded["counts"]["exact_boundary_witnesses"] == 4
     assert len(csv_payload) == 12
+
+
+def test_representative_summary_retains_only_12_cases_and_24_audits(
+    tmp_path: Path,
+) -> None:
+    cases: list[dict[str, object]] = []
+    for index in range(1, 13):
+        family = "VMAX" if index <= 8 else "VUF"
+        limit = 1.06 if family == "VMAX" else 2.0
+        violation = {
+            "slot": index,
+            "constraint_family": family,
+            "metric_id": f"{family}:{index}",
+            "object_id": str(index),
+            "value": limit + 0.001,
+            "limit": limit,
+            "direction": "hi",
+            "signed_headroom": -0.001,
+            "exceedance": 0.001,
+            "is_physical_violation": True,
+            "relative_exceedance": 0.001 / limit,
+        }
+        tightest = {
+            **violation,
+            "value": limit - 0.001,
+            "signed_headroom": 0.001,
+            "exceedance": 0.0,
+            "is_physical_violation": False,
+            "relative_headroom": 0.001 / limit,
+        }
+        cases.append(
+            {
+                "protocol_version": (
+                    "EV-FLEX-BIAS-V2.2-TRANSFERABILITY-"
+                    "REPRESENTATIVE-WITNESS-DEV"
+                ),
+                "status": "SUCCESS",
+                "case_id": f"{index:02d}",
+                "cell_id": f"cell_{index:02d}",
+                "safe_control_evaluated": False,
+                "line_thermal_in_scope": False,
+                "selection": {
+                    "rule": "frozen median rule",
+                    "cell_bad_count": 4 if index <= 9 else 5,
+                    "cell_median_alpha": 0.5,
+                    "distance_to_median": 0.0,
+                },
+                "member": {
+                    "evaluation_id": f"evaluation_{index:02d}",
+                    "feeder": "ieee13" if index <= 4 else "lv906",
+                    "direction": "dec" if index % 2 else "inc",
+                    "call_time": "06:00",
+                    "duration_min": 30,
+                },
+                "audits": [
+                    {
+                        "role": "bad",
+                        "source_evaluation_id": f"evaluation_{index:02d}",
+                        "audit_point": "BOUNDARY_FEASIBLE",
+                        "alpha": 0.5,
+                        "feasible": True,
+                        "checked_intervals": 96,
+                        "complete_coverage": True,
+                        "failure_class": "NONE",
+                        "first_failure_slot": None,
+                        "numerical_failure_checks": 0,
+                        "nonconverged_checks": 0,
+                        "physical_violation_checks": 0,
+                        "tightest_constraint": tightest,
+                        "simultaneous_violations": [],
+                    },
+                    {
+                        "role": "bad",
+                        "source_evaluation_id": f"evaluation_{index:02d}",
+                        "audit_point": "BOUNDARY_INFEASIBLE",
+                        "alpha": 0.502,
+                        "feasible": False,
+                        "checked_intervals": index + 1,
+                        "complete_coverage": False,
+                        "failure_class": "PHYSICAL_CONSTRAINT",
+                        "first_failure_slot": index,
+                        "numerical_failure_checks": 0,
+                        "nonconverged_checks": 0,
+                        "physical_violation_checks": 1,
+                        "tightest_constraint": None,
+                        "simultaneous_violations": [violation],
+                    },
+                ],
+            }
+        )
+
+    summary = build_representative_witness_summary(
+        cases,
+        code_commit="1" * 40,
+        config_sha256="2" * 64,
+        source_run_code_commit="3" * 40,
+        source_result_hash_aggregate="4" * 64,
+        generated_at_utc="2026-08-11T00:00:00Z",
+    )
+    csv_rows = flatten_representative_summary_csv_rows(summary)
+
+    assert summary["formal_holdout_opened"] is False
+    assert summary["scientific_scope"]["safe_controls_evaluated"] is False
+    assert summary["counts"] == {
+        "cases": 12,
+        "selected_members": 12,
+        "source_failing_rows_covered_by_cells": 51,
+        "audits": 24,
+        "exact_boundary_witnesses": 12,
+        "numerical_failure_checks": 0,
+        "nonconverged_checks": 0,
+    }
+    assert summary["primary_boundary_constraint_family_counts"] == {
+        "VMAX": 8,
+        "VUF": 4,
+    }
+    assert len(csv_rows) == 24
+    assert csv_rows[1]["constraint_family"] == "VMAX"
+
+    paths = write_representative_summary_artifacts(tmp_path, summary)
+    assert paths["json"].parent.name == (
+        "transferability_representative_witness_v2_2"
+    )
+    assert not (tmp_path / "results" / "transferability_witness_v2_2").exists()
+    loaded = json.loads(paths["json"].read_text(encoding="utf-8"))
+    with paths["csv"].open("r", encoding="utf-8", newline="") as stream:
+        csv_payload = list(csv.DictReader(stream))
+    assert loaded["counts"]["exact_boundary_witnesses"] == 12
+    assert len(csv_payload) == 24
+
+
+def test_cli_identifies_unknown_representative_case() -> None:
+    with pytest.raises(SystemExit, match="unknown representative witness case: 99"):
+        main(["--representative-case-id", "99", "--workers", "1"])

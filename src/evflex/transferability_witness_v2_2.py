@@ -4,6 +4,7 @@ import argparse
 from copy import deepcopy
 import csv
 from datetime import datetime, timezone
+from decimal import Decimal
 import gc
 import hashlib
 import json
@@ -219,6 +220,73 @@ def select_witness_pairs(
     return selected
 
 
+def select_representative_witnesses(
+    evaluations: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Freeze one observed median-nearest failure in each failing design cell."""
+
+    bad_cells: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for raw in evaluations:
+        row = dict(raw)
+        alpha = _number(row.get("alpha_transfer"), "alpha_transfer")
+        if alpha >= BAD_ALPHA_THRESHOLD:
+            continue
+        cell = (
+            str(row.get("feeder")),
+            str(row.get("direction")),
+            str(row.get("call_time")),
+        )
+        bad_cells.setdefault(cell, []).append(row)
+    if len(bad_cells) != 12:
+        raise ValueError("representative source must contain exactly 12 failing cells")
+
+    selected: list[dict[str, Any]] = []
+    for index, ((feeder, direction, call_time), rows) in enumerate(
+        sorted(bad_cells.items()), start=1
+    ):
+        alpha_values = sorted(Decimal(str(row["alpha_transfer"])) for row in rows)
+        midpoint = len(alpha_values) // 2
+        if len(alpha_values) % 2:
+            median_alpha = alpha_values[midpoint]
+        else:
+            median_alpha = (
+                alpha_values[midpoint - 1] + alpha_values[midpoint]
+            ) / Decimal(2)
+        representative = min(
+            rows,
+            key=lambda row: (
+                abs(Decimal(str(row["alpha_transfer"])) - median_alpha),
+                abs(int(row["duration_min"]) - 30),
+                str(row["evaluation_id"]),
+            ),
+        )
+        boundary_alpha, failure_slot = _boundary_witness(representative)
+        selected.append(
+            {
+                "case_id": f"{index:02d}",
+                "cell_id": (
+                    f"{feeder}__{direction}__{call_time.replace(':', '')}"
+                ),
+                "bad": deepcopy(representative),
+                "cell_bad_count": len(rows),
+                "cell_median_alpha": float(median_alpha),
+                "distance_to_median": float(
+                    abs(
+                        Decimal(str(representative["alpha_transfer"]))
+                        - median_alpha
+                    )
+                ),
+                "boundary_infeasible_alpha": boundary_alpha,
+                "archived_first_failure_slot": failure_slot,
+                "selection_rule": (
+                    "closest observed alpha_transfer to the exact decimal cell "
+                    "median; ties by distance to 30 minutes, then evaluation_id"
+                ),
+            }
+        )
+    return selected
+
+
 def select_tightest_constraint(
     constraint_rows: Iterable[Mapping[str, Any]],
 ) -> dict[str, Any]:
@@ -290,6 +358,7 @@ def execute_witness_pair(
     *,
     pilot_config: Mapping[str, Any] | None = None,
     runtime_factory: Any = None,
+    _include_control: bool = True,
 ) -> dict[str, Any]:
     """Replay one selected bad boundary and its non-causal safe comparator."""
 
@@ -311,8 +380,10 @@ def execute_witness_pair(
     stratum_id = str(pair.get("stratum_id"))
     bad_row = pair.get("bad")
     control_row = pair.get("control")
-    if not isinstance(bad_row, Mapping) or not isinstance(control_row, Mapping):
-        raise ValueError("witness pair must contain bad and control mappings")
+    if not isinstance(bad_row, Mapping):
+        raise ValueError("witness pair must contain a bad mapping")
+    if _include_control and not isinstance(control_row, Mapping):
+        raise ValueError("witness pair must contain a control mapping")
     config = (
         load_development_design(root)[0]
         if pilot_config is None
@@ -325,14 +396,15 @@ def execute_witness_pair(
     members = {
         "bad": _member_from_evaluation(
             bad_row, pair_id=pair_id, stratum_id=stratum_id, role="bad"
-        ),
-        "control": _member_from_evaluation(
+        )
+    }
+    if _include_control:
+        members["control"] = _member_from_evaluation(
             control_row,
             pair_id=pair_id,
             stratum_id=stratum_id,
             role="control",
-        ),
-    }
+        )
     adapter_identity = {
         "adapter_schema": pilot._PILOT_ADAPTER_SCHEMA,
         "adapter_version": pilot._PILOT_ADAPTER_VERSION,
@@ -347,10 +419,11 @@ def execute_witness_pair(
             ("BOUNDARY_FEASIBLE", bad_alpha, False),
             ("BOUNDARY_INFEASIBLE", infeasible_alpha, True),
         ),
-        "control": (("FULL_OFFER", 1.0, False),),
     }
+    if _include_control:
+        points_by_role["control"] = (("FULL_OFFER", 1.0, False),)
     audits: list[dict[str, Any]] = []
-    for role in ("bad", "control"):
+    for role in members:
         case = reconstruct_case(
             root,
             members[role],
@@ -495,6 +568,62 @@ def execute_witness_pair(
     }
 
 
+def execute_representative_witness_case(
+    repo_root: str | Path,
+    case: Mapping[str, Any],
+    *,
+    pilot_config: Mapping[str, Any] | None = None,
+    runtime_factory: Any = None,
+) -> dict[str, Any]:
+    """Replay only the feasible/infeasible boundary of one frozen representative."""
+
+    if not isinstance(case, Mapping) or not isinstance(case.get("bad"), Mapping):
+        raise ValueError("representative witness case is invalid")
+    case_id = str(case.get("case_id"))
+    cell_id = str(case.get("cell_id"))
+    boundary_result = execute_witness_pair(
+        repo_root,
+        {
+            "pair_id": case_id,
+            "stratum_id": cell_id,
+            "bad": case["bad"],
+            "boundary_infeasible_alpha": case.get(
+                "boundary_infeasible_alpha"
+            ),
+            "archived_first_failure_slot": case.get(
+                "archived_first_failure_slot"
+            ),
+        },
+        pilot_config=pilot_config,
+        runtime_factory=runtime_factory,
+        _include_control=False,
+    )
+    if len(boundary_result["audits"]) != 2:
+        raise ValueError("representative witness must contain exactly two audits")
+    return {
+        "protocol_version": (
+            "EV-FLEX-BIAS-V2.2-TRANSFERABILITY-REPRESENTATIVE-WITNESS-DEV"
+        ),
+        "status": "SUCCESS",
+        "case_id": case_id,
+        "cell_id": cell_id,
+        "safe_control_evaluated": False,
+        "line_thermal_in_scope": False,
+        "selection": {
+            "rule": str(case.get("selection_rule")),
+            "cell_bad_count": int(case.get("cell_bad_count")),
+            "cell_median_alpha": _number(
+                case.get("cell_median_alpha"), "cell median alpha"
+            ),
+            "distance_to_median": _number(
+                case.get("distance_to_median"), "distance to median"
+            ),
+        },
+        "member": deepcopy(boundary_result["members"]["bad"]),
+        "audits": deepcopy(boundary_result["audits"]),
+    }
+
+
 def build_witness_summary(
     pair_results: Iterable[Mapping[str, Any]],
     *,
@@ -581,6 +710,155 @@ def build_witness_summary(
     }
 
 
+def _primary_violation(audit: Mapping[str, Any]) -> Mapping[str, Any]:
+    violations = audit.get("simultaneous_violations")
+    if not isinstance(violations, list) or not violations:
+        raise ValueError("physical boundary must contain at least one violation")
+    return max(
+        violations,
+        key=lambda item: (
+            _number(item.get("relative_exceedance"), "relative exceedance"),
+            str(item.get("constraint_family")),
+            str(item.get("metric_id")),
+        ),
+    )
+
+
+def build_representative_witness_summary(
+    case_results: Iterable[Mapping[str, Any]],
+    *,
+    code_commit: str,
+    config_sha256: str,
+    source_run_code_commit: str,
+    source_result_hash_aggregate: str,
+    generated_at_utc: str,
+) -> dict[str, Any]:
+    """Build the compact 12-cell representative boundary evidence artifact."""
+
+    cases = [deepcopy(dict(case)) for case in case_results]
+    expected_ids = [f"{index:02d}" for index in range(1, 13)]
+    if (
+        len(cases) != 12
+        or [case.get("case_id") for case in cases] != expected_ids
+        or len({case.get("cell_id") for case in cases}) != 12
+        or any(case.get("status") != "SUCCESS" for case in cases)
+    ):
+        raise ValueError("representative summary requires 12 ordered successful cells")
+
+    audits: list[Mapping[str, Any]] = []
+    boundaries: list[Mapping[str, Any]] = []
+    rules: set[str] = set()
+    source_bad_rows = 0
+    for case in cases:
+        if (
+            case.get("safe_control_evaluated") is not False
+            or case.get("line_thermal_in_scope") is not False
+        ):
+            raise ValueError("representative scope must exclude controls and line thermal")
+        selection = case.get("selection")
+        case_audits = case.get("audits")
+        if not isinstance(selection, Mapping) or not isinstance(case_audits, list):
+            raise ValueError("representative case is structurally invalid")
+        rules.add(str(selection.get("rule")))
+        source_bad_rows += int(selection.get("cell_bad_count"))
+        if len(case_audits) != 2:
+            raise ValueError("representative case must contain exactly two audits")
+        feasible, infeasible = case_audits
+        if (
+            not isinstance(feasible, Mapping)
+            or feasible.get("audit_point") != "BOUNDARY_FEASIBLE"
+            or feasible.get("feasible") is not True
+            or feasible.get("complete_coverage") is not True
+            or feasible.get("checked_intervals") != 96
+            or not isinstance(infeasible, Mapping)
+            or infeasible.get("audit_point") != "BOUNDARY_INFEASIBLE"
+            or infeasible.get("feasible") is not False
+            or infeasible.get("failure_class") != "PHYSICAL_CONSTRAINT"
+        ):
+            raise ValueError("representative case contradicts its exact boundary")
+        _primary_violation(infeasible)
+        audits.extend((feasible, infeasible))
+        boundaries.append(infeasible)
+
+    numerical_failures = sum(
+        int(audit.get("numerical_failure_checks", 0)) for audit in audits
+    )
+    nonconverged = sum(int(audit.get("nonconverged_checks", 0)) for audit in audits)
+    if (
+        len(rules) != 1
+        or source_bad_rows != 51
+        or numerical_failures
+        or nonconverged
+    ):
+        raise ValueError("representative summary is incomplete or numerically unclean")
+
+    primary_family_counts: dict[str, int] = {}
+    any_family_case_counts: dict[str, int] = {}
+    for boundary in boundaries:
+        primary_family = str(_primary_violation(boundary)["constraint_family"])
+        primary_family_counts[primary_family] = (
+            primary_family_counts.get(primary_family, 0) + 1
+        )
+        families = {
+            str(violation.get("constraint_family"))
+            for violation in boundary["simultaneous_violations"]
+        }
+        for family in families:
+            any_family_case_counts[family] = any_family_case_counts.get(family, 0) + 1
+
+    return {
+        "protocol_version": (
+            "EV-FLEX-BIAS-V2.2-TRANSFERABILITY-REPRESENTATIVE-WITNESS-DEV"
+        ),
+        "status": "SUCCESS",
+        "generated_at_utc": generated_at_utc,
+        "formal_holdout_opened": False,
+        "scientific_scope": {
+            "development_only": True,
+            "fixed_schedule_transfer_only": True,
+            "three_phase_reoptimization_in_scope": False,
+            "line_thermal_in_scope": False,
+            "safe_controls_evaluated": False,
+            "mechanism_labels_used_for_selection": False,
+        },
+        "selection_design": {
+            "unit": "feeder-direction-call_time cell with alpha_transfer < 0.95",
+            "bad_alpha_threshold": BAD_ALPHA_THRESHOLD,
+            "rule": next(iter(rules)),
+            "target_duration_min_for_ties": 30,
+        },
+        "resource_policy": {
+            "workers": 1,
+            "independent_child_process_per_case": True,
+            "numeric_threads": {name: 1 for name in _THREAD_VARIABLES},
+            "gpu_used": False,
+            "gpu_reason": "OpenDSS three-phase power flow uses the CPU path",
+        },
+        "provenance": {
+            "code_commit": code_commit,
+            "config_sha256": config_sha256,
+            "source_run_code_commit": source_run_code_commit,
+            "source_result_hash_aggregate_sha256": source_result_hash_aggregate,
+        },
+        "counts": {
+            "cases": len(cases),
+            "selected_members": len(cases),
+            "source_failing_rows_covered_by_cells": source_bad_rows,
+            "audits": len(audits),
+            "exact_boundary_witnesses": len(boundaries),
+            "numerical_failure_checks": numerical_failures,
+            "nonconverged_checks": nonconverged,
+        },
+        "primary_boundary_constraint_family_counts": dict(
+            sorted(primary_family_counts.items())
+        ),
+        "any_boundary_constraint_family_case_counts": dict(
+            sorted(any_family_case_counts.items())
+        ),
+        "cases": cases,
+    }
+
+
 def flatten_summary_csv_rows(summary: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Flatten the compact JSON summary to one human-readable row per audit."""
 
@@ -655,20 +933,101 @@ def flatten_summary_csv_rows(summary: Mapping[str, Any]) -> list[dict[str, Any]]
     return rows
 
 
-def write_summary_artifacts(
-    repo_root: str | Path, summary: Mapping[str, Any]
-) -> dict[str, Path]:
-    """Atomically write the only two retained witness artifacts."""
+def flatten_representative_summary_csv_rows(
+    summary: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Flatten representative evidence to one row per boundary audit point."""
 
+    cases = summary.get("cases")
+    if not isinstance(cases, list):
+        raise ValueError("representative summary cases must be a list")
+    rows: list[dict[str, Any]] = []
+    for case in cases:
+        if not isinstance(case, Mapping):
+            raise ValueError("representative summary case is invalid")
+        member = case.get("member")
+        selection = case.get("selection")
+        audits = case.get("audits")
+        if (
+            not isinstance(member, Mapping)
+            or not isinstance(selection, Mapping)
+            or not isinstance(audits, list)
+        ):
+            raise ValueError("representative summary case is incomplete")
+        for audit in audits:
+            if not isinstance(audit, Mapping):
+                raise ValueError("representative summary audit is invalid")
+            violations = audit.get("simultaneous_violations")
+            if not isinstance(violations, list):
+                raise ValueError("representative audit violations must be a list")
+            primary: Mapping[str, Any] | None
+            relative_margin: float | None
+            if violations:
+                primary = _primary_violation(audit)
+                relative_margin = -_number(
+                    primary.get("relative_exceedance"), "relative exceedance"
+                )
+            else:
+                tightest = audit.get("tightest_constraint")
+                primary = tightest if isinstance(tightest, Mapping) else None
+                relative_margin = (
+                    _number(primary.get("relative_headroom"), "relative headroom")
+                    if primary is not None
+                    else None
+                )
+            rows.append(
+                {
+                    "case_id": case.get("case_id"),
+                    "cell_id": case.get("cell_id"),
+                    "source_evaluation_id": member.get("evaluation_id"),
+                    "feeder": member.get("feeder"),
+                    "direction": member.get("direction"),
+                    "call_time": member.get("call_time"),
+                    "duration_min": member.get("duration_min"),
+                    "cell_bad_count": selection.get("cell_bad_count"),
+                    "cell_median_alpha": selection.get("cell_median_alpha"),
+                    "distance_to_median": selection.get("distance_to_median"),
+                    "audit_point": audit.get("audit_point"),
+                    "alpha": audit.get("alpha"),
+                    "feasible": audit.get("feasible"),
+                    "checked_intervals": audit.get("checked_intervals"),
+                    "failure_class": audit.get("failure_class"),
+                    "first_failure_slot": audit.get("first_failure_slot"),
+                    "numerical_failure_checks": audit.get(
+                        "numerical_failure_checks"
+                    ),
+                    "simultaneous_violation_count": len(violations),
+                    "constraint_family": (
+                        primary.get("constraint_family") if primary else None
+                    ),
+                    "metric_id": primary.get("metric_id") if primary else None,
+                    "object_id": primary.get("object_id") if primary else None,
+                    "constraint_slot": primary.get("slot") if primary else None,
+                    "value": primary.get("value") if primary else None,
+                    "limit": primary.get("limit") if primary else None,
+                    "relative_margin": relative_margin,
+                    "safe_control_evaluated": False,
+                }
+            )
+    return rows
+
+
+def _write_compact_summary_artifacts(
+    repo_root: str | Path,
+    summary: Mapping[str, Any],
+    *,
+    output_name: str,
+    rows: list[dict[str, Any]],
+) -> dict[str, Path]:
     from evflex.runner import atomic_write_json
 
+    if not rows:
+        raise ValueError("summary CSV rows must not be empty")
     root = Path(repo_root).resolve(strict=False)
-    output = root / "results" / "transferability_witness_v2_2"
+    output = root / "results" / output_name
     json_path = output / "summary.json"
     csv_path = output / "summary.csv"
     atomic_write_json(json_path, summary)
-
-    rows = flatten_summary_csv_rows(summary)
     output.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(
         prefix=csv_path.name,
@@ -687,6 +1046,32 @@ def write_summary_artifacts(
     finally:
         temporary.unlink(missing_ok=True)
     return {"json": json_path, "csv": csv_path}
+
+
+def write_summary_artifacts(
+    repo_root: str | Path, summary: Mapping[str, Any]
+) -> dict[str, Path]:
+    """Atomically write the only two retained witness artifacts."""
+
+    return _write_compact_summary_artifacts(
+        repo_root,
+        summary,
+        output_name="transferability_witness_v2_2",
+        rows=flatten_summary_csv_rows(summary),
+    )
+
+
+def write_representative_summary_artifacts(
+    repo_root: str | Path, summary: Mapping[str, Any]
+) -> dict[str, Path]:
+    """Atomically retain only one JSON and one CSV for representative evidence."""
+
+    return _write_compact_summary_artifacts(
+        repo_root,
+        summary,
+        output_name="transferability_representative_witness_v2_2",
+        rows=flatten_representative_summary_csv_rows(summary),
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -827,11 +1212,97 @@ def run_all_witnesses(repo_root: str | Path) -> dict[str, Any]:
     return summary
 
 
+def run_all_representative_witnesses(repo_root: str | Path) -> dict[str, Any]:
+    """Run 12 isolated representative boundaries and retain one JSON plus one CSV."""
+
+    root = Path(repo_root).resolve(strict=True)
+    _require_clean_worktree(root)
+    output = root / "results" / "transferability_representative_witness_v2_2"
+    if (output / "summary.json").exists() or (output / "summary.csv").exists():
+        raise FileExistsError("representative witness artifacts already exist")
+
+    config, _ = load_development_design(root)
+    cases = select_representative_witnesses(load_archived_evaluations(root))
+    case_results: list[dict[str, Any]] = []
+    environment = {**os.environ, **{name: "1" for name in _THREAD_VARIABLES}}
+    for index, case in enumerate(cases, start=1):
+        case_id = str(case["case_id"])
+        print(f"[{index}/12] {case['cell_id']} ({case_id})", flush=True)
+        child = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "evflex.transferability_witness_v2_2",
+                "--representative-case-id",
+                case_id,
+                "--workers",
+                "1",
+            ],
+            cwd=root,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if child.returncode != 0:
+            detail = "\n".join((child.stderr or child.stdout).splitlines()[-30:])
+            raise RuntimeError(
+                f"representative witness child {case_id} failed:\n{detail}"
+            )
+        lines = [
+            line.removeprefix("REPRESENTATIVE_WITNESS_JSON=")
+            for line in child.stdout.splitlines()
+            if line.startswith("REPRESENTATIVE_WITNESS_JSON=")
+        ]
+        if len(lines) != 1:
+            raise ValueError(
+                f"representative witness child {case_id} did not emit one result"
+            )
+        result = json.loads(lines[0])
+        if result.get("case_id") != case_id or result.get("status") != "SUCCESS":
+            raise ValueError(
+                f"representative witness child {case_id} returned an invalid result"
+            )
+        case_results.append(result)
+        boundary = result["audits"][1]
+        families = sorted(
+            {
+                item["constraint_family"]
+                for item in boundary["simultaneous_violations"]
+            }
+        )
+        print(
+            f"  boundary slot={boundary['first_failure_slot']} "
+            f"family={'+'.join(families)}",
+            flush=True,
+        )
+
+    source_commit, source_hash = _source_provenance(root)
+    generated = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    summary = build_representative_witness_summary(
+        case_results,
+        code_commit=_git_commit(root),
+        config_sha256=str(config["_config_sha256"]),
+        source_run_code_commit=source_commit,
+        source_result_hash_aggregate=source_hash,
+        generated_at_utc=generated,
+    )
+    paths = write_representative_summary_artifacts(root, summary)
+    print(f"WROTE {paths['json'].relative_to(root)}", flush=True)
+    print(f"WROTE {paths['csv'].relative_to(root)}", flush=True)
+    return summary
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the compact V2.2 fixed-schedule boundary witness audit."
     )
-    parser.add_argument("--pair-id")
+    target = parser.add_mutually_exclusive_group()
+    target.add_argument("--pair-id")
+    target.add_argument("--representative-case-id")
+    target.add_argument("--representative-all", action="store_true")
     parser.add_argument("--workers", type=int, default=1)
     return parser
 
@@ -855,6 +1326,47 @@ def main(argv: list[str] | None = None) -> int:
                 sort_keys=True,
                 separators=(",", ":"),
                 allow_nan=False,
+            ),
+            flush=True,
+        )
+        return 0
+    if args.representative_case_id:
+        cases = select_representative_witnesses(load_archived_evaluations(root))
+        matches = [
+            case
+            for case in cases
+            if case["case_id"] == args.representative_case_id
+        ]
+        if len(matches) != 1:
+            raise SystemExit(
+                "unknown representative witness case: "
+                f"{args.representative_case_id}"
+            )
+        result = execute_representative_witness_case(root, matches[0])
+        print(
+            "REPRESENTATIVE_WITNESS_JSON="
+            + json.dumps(
+                result,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ),
+            flush=True,
+        )
+        return 0
+    if args.representative_all:
+        summary = run_all_representative_witnesses(root)
+        print(
+            json.dumps(
+                {
+                    "status": summary["status"],
+                    "cases": summary["counts"]["cases"],
+                    "exact_boundary_witnesses": summary["counts"][
+                        "exact_boundary_witnesses"
+                    ],
+                },
+                sort_keys=True,
             ),
             flush=True,
         )
