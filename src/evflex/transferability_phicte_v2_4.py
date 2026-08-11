@@ -1,12 +1,34 @@
 from __future__ import annotations
 
+import argparse
 from collections import defaultdict
+import csv
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
 import math
+from pathlib import Path
+import subprocess
 from typing import Any, Mapping, Sequence
 
 import numpy as np
 from scipy.optimize import linprog
+
+from evflex.transferability_baseline_comparison_v2_3 import (
+    POLICY_SPECS,
+    apply_fitted_policy,
+    fit_policy,
+    is_material_false_safe,
+    load_project_evaluations,
+    validate_evaluation_rows,
+    wilson_interval,
+)
+
+
+ANALYSIS_VERSION = "EV-FLEX-BIAS-V2.4-PHICTE-RETROSPECTIVE-EXPLORATORY"
+DEFAULT_PENALTIES = (0.0005, 0.002, 0.01)
+DEFAULT_QUANTILE = 0.10
+DEFAULT_TARGET_RISK = 0.05
 
 
 FEATURE_NAMES = (
@@ -495,3 +517,620 @@ def cross_fit(
         ),
         "final_model": final_model,
     }
+
+
+def evaluate_predictions(
+    rows: Sequence[Mapping[str, Any]],
+    factors: Sequence[float | None],
+) -> dict[str, Any]:
+    """Evaluate risk and three retention weightings with explicit abstention."""
+
+    if len(rows) != len(factors):
+        raise ValueError("rows and factors must have the same length")
+    validate_evaluation_rows(rows, dataset_name="PHiCTE evaluation")
+    active: list[tuple[Mapping[str, Any], float]] = []
+    for index, (row, factor) in enumerate(zip(rows, factors, strict=True)):
+        if not bool(row["active_offer"]):
+            if factor is not None:
+                raise ValueError(f"inactive row {index} must have no factor")
+            continue
+        factor_value = _required_finite(factor, f"factor {index}")
+        if not 0.0 <= factor_value <= 1.0:
+            raise ValueError("active factors must lie in [0, 1]")
+        active.append((row, factor_value))
+
+    prescribed = [(row, factor) for row, factor in active if factor > 0.0]
+    material_n = sum(
+        is_material_false_safe(float(row["alpha_transfer"]), factor)
+        for row, factor in prescribed
+    )
+    exceeds_n = sum(
+        factor > float(row["alpha_transfer"]) + 1e-12
+        for row, factor in prescribed
+    )
+    risk_n = len(prescribed)
+    if risk_n:
+        material_rate = material_n / risk_n
+        exceeds_rate = exceeds_n / risk_n
+        wilson_low, wilson_high = wilson_interval(material_n, risk_n)
+    else:
+        material_rate = None
+        exceeds_rate = None
+        wilson_low = None
+        wilson_high = None
+
+    active_n = len(active)
+    equal_retention = (
+        sum(factor for _, factor in active) / active_n if active_n else None
+    )
+    feeder_totals: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
+    pooled_retained = 0.0
+    pooled_offer = 0.0
+    for row, factor in active:
+        offer = abs(float(row["f_bal_kw"]))
+        feeder = str(row["feeder"])
+        feeder_totals[feeder][0] += factor * offer
+        feeder_totals[feeder][1] += offer
+        pooled_retained += factor * offer
+        pooled_offer += offer
+    if any(total <= 0.0 for _, total in feeder_totals.values()):
+        raise ValueError("each active feeder must have positive absolute offer kW")
+    feeder_macro = (
+        sum(retained / total for retained, total in feeder_totals.values())
+        / len(feeder_totals)
+        if feeder_totals
+        else None
+    )
+    pooled_retention = pooled_retained / pooled_offer if pooled_offer > 0.0 else None
+
+    return {
+        "planned_n": len(rows),
+        "active_n": active_n,
+        "inactive_n": len(rows) - active_n,
+        "offer_coverage": active_n / len(rows) if rows else None,
+        "risk_denominator_n": risk_n,
+        "prescribed_n": risk_n,
+        "abstention_n": active_n - risk_n,
+        "decision_coverage": risk_n / active_n if active_n else None,
+        "material_false_safe_n": material_n,
+        "material_false_safe_rate": material_rate,
+        "material_false_safe_wilson95_low": wilson_low,
+        "material_false_safe_wilson95_high": wilson_high,
+        "exceeds_verified_bound_n": exceeds_n,
+        "exceeds_verified_bound_rate": exceeds_rate,
+        "equal_case_retention": equal_retention,
+        "feeder_macro_kw_retention": feeder_macro,
+        "pooled_kw_retention_sensitivity": pooled_retention,
+        "empirical_material_risk_target_met": (
+            material_rate is not None and material_rate <= 0.05 + 1e-12
+        ),
+        "wilson95_upper_risk_target_met": (
+            wilson_high is not None and wilson_high <= 0.05 + 1e-12
+        ),
+    }
+
+
+def build_decision(
+    phicte_metrics: Mapping[str, Any],
+    feeder_only_metrics: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply the frozen exploratory risk and dual-retention decision rule."""
+
+    required = (
+        "material_false_safe_rate",
+        "equal_case_retention",
+        "feeder_macro_kw_retention",
+        "pooled_kw_retention_sensitivity",
+    )
+    values: dict[str, float] = {}
+    for prefix, metrics in (
+        ("phicte", phicte_metrics),
+        ("feeder_only", feeder_only_metrics),
+    ):
+        for name in required:
+            value = metrics.get(name)
+            if value is None:
+                return {
+                    "status": "NOT_EVALUABLE",
+                    "blind_holdout_claim": False,
+                    "confirmatory_risk_guarantee": False,
+                    "basis": "required retrospective metric is unavailable",
+                }
+            values[f"{prefix}_{name}"] = _required_finite(
+                value, f"{prefix} {name}"
+            )
+
+    equal_delta = (
+        values["phicte_equal_case_retention"]
+        - values["feeder_only_equal_case_retention"]
+    )
+    feeder_macro_delta = (
+        values["phicte_feeder_macro_kw_retention"]
+        - values["feeder_only_feeder_macro_kw_retention"]
+    )
+    pooled_delta = (
+        values["phicte_pooled_kw_retention_sensitivity"]
+        - values["feeder_only_pooled_kw_retention_sensitivity"]
+    )
+    risk_met = values["phicte_material_false_safe_rate"] <= 0.05 + 1e-12
+    dual_gain = equal_delta > 1e-12 and feeder_macro_delta > 1e-12
+    if not risk_met:
+        status = "NO_EXPLORATORY_SIGNAL_RISK_TARGET_NOT_MET"
+    elif not dual_gain:
+        status = "NO_EXPLORATORY_SIGNAL_NO_DUAL_RETENTION_GAIN"
+    else:
+        status = "EXPLORATORY_POSITIVE_SIGNAL"
+    return {
+        "status": status,
+        "blind_holdout_claim": False,
+        "confirmatory_risk_guarantee": False,
+        "empirical_material_risk_target_met": risk_met,
+        "positive_equal_case_gain": equal_delta > 1e-12,
+        "positive_feeder_macro_kw_gain": feeder_macro_delta > 1e-12,
+        "retention_delta_vs_feeder_only": {
+            "equal_case": equal_delta,
+            "feeder_macro_kw": feeder_macro_delta,
+            "pooled_kw_sensitivity": pooled_delta,
+        },
+        "basis": (
+            "exploratory signal requires empirical material false-safe risk <= 5% "
+            "and positive retention deltas versus feeder-only under both equal-case "
+            "and feeder-macro-kW weighting; pooled-kW is sensitivity only"
+        ),
+    }
+
+
+def _phicte_factors(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    model: ConstrainedQuantileModel,
+    correction: float,
+    feeder_kva: Mapping[str, float],
+) -> tuple[list[float | None], list[float | None]]:
+    active_indices = [
+        index for index, row in enumerate(rows) if bool(row["active_offer"])
+    ]
+    features = [
+        build_feature_row(rows[index], feeder_kva=feeder_kva)
+        for index in active_indices
+    ]
+    active_predictions = model.predict(features) if features else []
+    quantile_predictions: list[float | None] = [None] * len(rows)
+    factors: list[float | None] = [None] * len(rows)
+    for index, prediction in zip(active_indices, active_predictions, strict=True):
+        quantile_predictions[index] = prediction
+        factors[index] = float(np.clip(prediction - correction, 0.0, 1.0))
+    return quantile_predictions, factors
+
+
+def _baseline_policies(
+    development_rows: Sequence[Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    policies: dict[str, dict[str, Any]] = {
+        "raw_balanced_offer": {"grouping_fields": None, "fixed_factor": 1.0}
+    }
+    for name, grouping_fields in POLICY_SPECS.items():
+        if name == "raw_balanced_offer":
+            continue
+        assert grouping_fields is not None
+        policies[name] = fit_policy(
+            development_rows,
+            grouping_fields=grouping_fields,
+            maximum_risk=DEFAULT_TARGET_RISK,
+        )
+    return policies
+
+
+def _apply_baseline_policy(
+    rows: Sequence[Mapping[str, Any]], policy: Mapping[str, Any]
+) -> list[float | None]:
+    factors: list[float | None] = []
+    for row in rows:
+        if not bool(row["active_offer"]):
+            factors.append(None)
+            continue
+        factor, matched = apply_fitted_policy(row, policy)
+        factors.append(float(factor) if matched else 0.0)
+    return factors
+
+
+def _subset_metrics(
+    rows: Sequence[Mapping[str, Any]],
+    factor_maps: Mapping[str, Sequence[float | None]],
+    indices: Sequence[int],
+) -> dict[str, dict[str, Any]]:
+    selected_rows = [rows[index] for index in indices]
+    return {
+        name: evaluate_predictions(
+            selected_rows, [factors[index] for index in indices]
+        )
+        for name, factors in factor_maps.items()
+    }
+
+
+def _serialize_model(model: ConstrainedQuantileModel) -> dict[str, Any]:
+    coefficients = {name: model.coefficient(name) for name in FEATURE_NAMES}
+    return {
+        "quantile": model.quantile,
+        "penalty": model.penalty,
+        "training_n": model.training_n,
+        "intercept": model.intercept,
+        "coefficients_original_scale": coefficients,
+        "training_scaler": {
+            "centers": dict(model.centers),
+            "scales": dict(model.scales),
+            "continuous_features_scaled": list(CONTINUOUS_FEATURE_NAMES),
+            "categorical_features_unscaled": [
+                name for name in FEATURE_NAMES if name not in CONTINUOUS_FEATURE_NAMES
+            ],
+        },
+        "physical_sign_checks": {
+            "offer_stress_nonpositive": coefficients["offer_stress"] <= 1e-10,
+            "margin_coefficients_nonnegative": all(
+                coefficients[name] >= -1e-10
+                for name in PHYSICAL_NONNEGATIVE_COEFFICIENTS
+            ),
+        },
+    }
+
+
+def _prediction_records(
+    cohort: str,
+    rows: Sequence[Mapping[str, Any]],
+    quantile_predictions: Sequence[float | None],
+    factor_maps: Mapping[str, Sequence[float | None]],
+) -> list[dict[str, Any]]:
+    records = []
+    for index, row in enumerate(rows):
+        phicte_factor = factor_maps["phicte"][index]
+        records.append(
+            {
+                "cohort": cohort,
+                "evaluation_id": row["evaluation_id"],
+                "scenario_id": row.get("scenario_id"),
+                "feeder": row["feeder"],
+                "call_time": row.get("call_time"),
+                "direction": row["direction"],
+                "duration_min": row["duration_min"],
+                "active_offer": row["active_offer"],
+                "f_bal_kw": row["f_bal_kw"],
+                "alpha_transfer": row.get("alpha_transfer"),
+                "phicte_quantile_prediction": quantile_predictions[index],
+                "phicte_factor": phicte_factor,
+                "phicte_abstained": (
+                    None
+                    if phicte_factor is None
+                    else float(phicte_factor) <= 0.0
+                ),
+                "raw_balanced_offer_factor": factor_maps[
+                    "raw_balanced_offer"
+                ][index],
+                "global_derating_factor": factor_maps["global_derating"][index],
+                "feeder_only_factor": factor_maps["feeder_only"][index],
+                "direction_only_factor": factor_maps["direction_only"][index],
+                "local_feeder_direction_duration_factor": factor_maps[
+                    "local_feeder_direction_duration"
+                ][index],
+            }
+        )
+    return records
+
+
+def build_analysis(
+    development_rows: Sequence[Mapping[str, Any]],
+    external_rows: Sequence[Mapping[str, Any]],
+    *,
+    feeder_kva: Mapping[str, float],
+    code_commit: str,
+    generated_at_utc: str,
+    provenance: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Fit on V2.2 only, then evaluate the frozen factors on opened V2.3A."""
+
+    validate_evaluation_rows(development_rows, dataset_name="V2.2 development")
+    validate_evaluation_rows(external_rows, dataset_name="V2.3A external")
+    if not isinstance(code_commit, str) or len(code_commit) != 40:
+        raise ValueError("code_commit must be a 40-character Git commit")
+    development_active_indices = [
+        index
+        for index, row in enumerate(development_rows)
+        if bool(row["active_offer"])
+    ]
+    development_active = [development_rows[index] for index in development_active_indices]
+    cross_fitted = cross_fit(
+        development_active,
+        feeder_kva=feeder_kva,
+        penalties=DEFAULT_PENALTIES,
+        n_splits=4,
+        quantile=DEFAULT_QUANTILE,
+        target_risk=DEFAULT_TARGET_RISK,
+    )
+    final_model = cross_fitted["final_model"]
+    correction = float(cross_fitted["correction"])
+
+    development_quantile: list[float | None] = [None] * len(development_rows)
+    development_phicte: list[float | None] = [None] * len(development_rows)
+    for active_position, row_index in enumerate(development_active_indices):
+        development_quantile[row_index] = cross_fitted[
+            "oof_quantile_predictions"
+        ][active_position]
+        development_phicte[row_index] = cross_fitted["oof_lower_bounds"][
+            active_position
+        ]
+    external_quantile, external_phicte = _phicte_factors(
+        external_rows,
+        model=final_model,
+        correction=correction,
+        feeder_kva=feeder_kva,
+    )
+
+    policies = _baseline_policies(development_rows)
+    development_factor_maps: dict[str, list[float | None]] = {
+        "phicte": development_phicte
+    }
+    external_factor_maps: dict[str, list[float | None]] = {"phicte": external_phicte}
+    for name, policy in policies.items():
+        development_factor_maps[name] = _apply_baseline_policy(
+            development_rows, policy
+        )
+        external_factor_maps[name] = _apply_baseline_policy(external_rows, policy)
+
+    primary_indices = [
+        index
+        for index, row in enumerate(external_rows)
+        if int(row["duration_min"]) == 15
+    ]
+    all_indices = list(range(len(external_rows)))
+    primary_metrics = _subset_metrics(
+        external_rows, external_factor_maps, primary_indices
+    )
+    all_duration_metrics = _subset_metrics(
+        external_rows, external_factor_maps, all_indices
+    )
+    decision = build_decision(
+        primary_metrics["phicte"], primary_metrics["feeder_only"]
+    )
+
+    cluster_scores: dict[str, list[float]] = defaultdict(list)
+    for row, score in zip(
+        development_active,
+        cross_fitted["calibration_scores"],
+        strict=True,
+    ):
+        cluster_scores[str(row["scenario_id"])].append(float(score))
+    cluster_max_scores = {
+        scenario_id: max(values)
+        for scenario_id, values in sorted(cluster_scores.items())
+    }
+    cluster_status = calibration_rank_status(
+        sample_n=len(cluster_max_scores), target_risk=DEFAULT_TARGET_RISK
+    )
+    cluster_status.update(
+        {
+            "score_definition": (
+                "maximum OOF (quantile_prediction - alpha_transfer) within scenario"
+            ),
+            "correction_applied": False,
+            "scores_by_scenario": cluster_max_scores,
+        }
+    )
+
+    development_metrics = {
+        "phicte_oof": evaluate_predictions(
+            development_rows, development_factor_maps["phicte"]
+        ),
+        "baseline_resubstitution": {
+            name: evaluate_predictions(development_rows, factors)
+            for name, factors in development_factor_maps.items()
+            if name != "phicte"
+        },
+    }
+    summary = {
+        "analysis_version": ANALYSIS_VERSION,
+        "analysis_role": "retrospective_exploratory_method_screen",
+        "generated_at_utc": generated_at_utc,
+        "blind_holdout_claim": False,
+        "confirmatory_risk_guarantee": False,
+        "fitting_rule": {
+            "training_source": "V2.2 development active offers only",
+            "external_source": "V2.3A previously opened external cohort",
+            "external_outcomes_used_for_fitting_or_tuning": False,
+            "quantile": DEFAULT_QUANTILE,
+            "candidate_penalties": list(DEFAULT_PENALTIES),
+            "penalty_selection": (
+                "minimum scenario-macro OOF pinball loss; exact ties choose larger penalty"
+            ),
+            "folding": "four folds grouped by scenario_id",
+            "abstention": "factor zero; inactive offers have no decision",
+        },
+        "risk_definitions": {
+            "material_false_safe": "alpha_transfer < 0.95 * prescribed_factor",
+            "strict_bound_exceedance": "prescribed_factor > alpha_transfer",
+            "empirical_target": DEFAULT_TARGET_RISK,
+        },
+        "calibration": {
+            "row_level_exploratory": {
+                "selected_penalty": cross_fitted["selected_penalty"],
+                "candidate_scenario_macro_pinball_loss": {
+                    str(key): value
+                    for key, value in cross_fitted[
+                        "candidate_scenario_macro_pinball_loss"
+                    ].items()
+                },
+                "correction": correction,
+                "rank": cross_fitted["correction_rank"],
+                "rank_status": cross_fitted["row_calibration_rank_status"],
+                "prediction_count_all_one": all(
+                    count == 1 for count in cross_fitted["prediction_counts"]
+                ),
+                "scenario_overlap_count": cross_fitted[
+                    "scenario_overlap_count"
+                ],
+                "formal_exchangeability_claim": False,
+            },
+            "scenario_cluster_diagnostic": cluster_status,
+        },
+        "model": _serialize_model(final_model),
+        "development_diagnostics": development_metrics,
+        "external_scopes": {
+            "primary_15min": {
+                "role": "V2.3A primary duration retrospective",
+                "policies": primary_metrics,
+            },
+            "descriptive_all_durations": {
+                "role": "V2.3A amendment descriptive sensitivity",
+                "policies": all_duration_metrics,
+            },
+        },
+        "decision": decision,
+        "data_quality": {
+            "development_planned_n": len(development_rows),
+            "development_active_n": len(development_active),
+            "development_scenario_n": len(
+                {row["scenario_id"] for row in development_rows}
+            ),
+            "external_planned_n": len(external_rows),
+            "external_active_n": sum(
+                bool(row["active_offer"]) for row in external_rows
+            ),
+            "external_scenario_n": len({row["scenario_id"] for row in external_rows}),
+            "cross_cohort_scenario_intersection_n": len(
+                {row["scenario_id"] for row in development_rows}
+                & {row["scenario_id"] for row in external_rows}
+            ),
+        },
+        "limitations": [
+            "V2.3A had already been opened and is not a blind holdout.",
+            "The row-level conformal-style correction is exploratory because within-scenario rows are dependent and penalty selection reuses OOF predictions.",
+            "Only 16 V2.2 scenarios are available, so a nontrivial 95% scenario-cluster finite-sample correction is unavailable.",
+            "The 30- and 60-minute V2.3A results are descriptive under the protocol amendment.",
+            "Line thermal constraints are outside the audited constraint set.",
+        ],
+        "provenance": {"code_commit": code_commit, **dict(provenance)},
+    }
+    predictions = [
+        *_prediction_records(
+            "development_oof",
+            development_rows,
+            development_quantile,
+            development_factor_maps,
+        ),
+        *_prediction_records(
+            "external",
+            external_rows,
+            external_quantile,
+            external_factor_maps,
+        ),
+    ]
+    return summary, predictions
+
+
+PREDICTION_FIELDS = (
+    "cohort",
+    "evaluation_id",
+    "scenario_id",
+    "feeder",
+    "call_time",
+    "direction",
+    "duration_min",
+    "active_offer",
+    "f_bal_kw",
+    "alpha_transfer",
+    "phicte_quantile_prediction",
+    "phicte_factor",
+    "phicte_abstained",
+    "raw_balanced_offer_factor",
+    "global_derating_factor",
+    "feeder_only_factor",
+    "direction_only_factor",
+    "local_feeder_direction_duration_factor",
+)
+
+
+def write_results(
+    summary: Mapping[str, Any],
+    predictions: Sequence[Mapping[str, Any]],
+    output_directory: str | Path,
+) -> list[Path]:
+    """Write exactly the two compact PHiCTE result artifacts."""
+
+    output = Path(output_directory)
+    output.mkdir(parents=True, exist_ok=True)
+    allowed = {"summary.json", "predictions.csv"}
+    unexpected = {path.name for path in output.iterdir()} - allowed
+    if unexpected:
+        raise ValueError(f"output directory contains unexpected files: {sorted(unexpected)}")
+    summary_path = output / "summary.json"
+    prediction_path = output / "predictions.csv"
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with prediction_path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(
+            stream, fieldnames=PREDICTION_FIELDS, extrasaction="raise"
+        )
+        writer.writeheader()
+        for record in predictions:
+            writer.writerow({name: record.get(name) for name in PREDICTION_FIELDS})
+    return [summary_path, prediction_path]
+
+
+def _git_commit(repo_root: Path) -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Run the PHiCTE V2.4 retrospective exploratory evaluation."
+    )
+    parser.add_argument("--repo-root", default=".")
+    parser.add_argument(
+        "--output-directory", default="results/transferability_phicte_v2_4"
+    )
+    args = parser.parse_args(argv)
+    root = Path(args.repo_root).resolve(strict=True)
+    development, external, provenance = load_project_evaluations(root)
+    development_config = json.loads(
+        (root / "config/transferability_dev_v2_2.json").read_text(encoding="utf-8")
+    )
+    external_config = json.loads(
+        (root / "config/transferability_external_validation_v2_3.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    feeder_kva = development_config.get("feeder_kva")
+    if not isinstance(feeder_kva, Mapping) or feeder_kva != external_config.get(
+        "feeder_kva"
+    ):
+        raise ValueError("development and external feeder_kva mappings must match")
+    summary, predictions = build_analysis(
+        development,
+        external,
+        feeder_kva=feeder_kva,
+        code_commit=_git_commit(root),
+        generated_at_utc=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        provenance=provenance,
+    )
+    paths = write_results(summary, predictions, root / args.output_directory)
+    print(
+        json.dumps(
+            {
+                "status": summary["decision"]["status"],
+                "outputs": [path.relative_to(root).as_posix() for path in paths],
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

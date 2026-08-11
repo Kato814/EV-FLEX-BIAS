@@ -1,18 +1,25 @@
 from __future__ import annotations
 
+import copy
+import csv
+import json
 import math
 
 import pytest
 
 from evflex.transferability_phicte_v2_4 import (
     FEATURE_NAMES,
+    build_analysis,
     build_feature_row,
+    build_decision,
     calibration_rank_status,
     cross_fit,
     deterministic_group_folds,
+    evaluate_predictions,
     fit_constrained_quantile,
     one_sided_correction,
     penalty_weight,
+    write_results,
 )
 
 
@@ -25,7 +32,12 @@ def _feature_source(**overrides: object) -> dict[str, object]:
         "direction": "inc",
         "duration_min": 30,
         "f_bal_kw": -100.0,
+        "active_offer": True,
         "alpha_transfer": 0.01,
+        "eligible_for_scientific_denominator": True,
+        "status": "SUCCESS",
+        "scientific_status": "VALID",
+        "alpha_path_status": "VALID",
         "target_audit": {"vmin": -999.0},
         "witness": {"failure": "outcome-only"},
         "baseline_audit": {
@@ -225,3 +237,159 @@ def test_sixteen_scenarios_cannot_support_nontrivial_95_percent_rank() -> None:
     assert status["status"] == "NOT_EVALUABLE_NONTRIVIAL_95_PERCENT"
     assert status["rank"] == 17
     assert status["minimum_sample_n"] == 19
+
+
+def test_inactive_offers_are_excluded_only_from_risk_denominator() -> None:
+    rows = [
+        _feature_source(evaluation_id="active_bad", alpha_transfer=0.70),
+        _feature_source(evaluation_id="active_safe", alpha_transfer=1.00),
+        _feature_source(
+            evaluation_id="inactive",
+            active_offer=False,
+            alpha_transfer=None,
+            eligible_for_scientific_denominator=False,
+            status="INACTIVE_OFFER",
+            scientific_status="NOT_APPLICABLE_INACTIVE",
+            alpha_path_status=None,
+            f_bal_kw=0.0,
+        ),
+    ]
+
+    metrics = evaluate_predictions(rows, [0.8, 0.8, None])
+
+    assert metrics["planned_n"] == 3
+    assert metrics["active_n"] == 2
+    assert metrics["risk_denominator_n"] == 2
+    assert metrics["offer_coverage"] == pytest.approx(2 / 3)
+    assert metrics["material_false_safe_n"] == 1
+    assert metrics["material_false_safe_rate"] == pytest.approx(0.5)
+
+
+def test_retention_reports_equal_feeder_macro_and_pooled_kw_weightings() -> None:
+    rows = [
+        _feature_source(evaluation_id="i1", feeder="ieee13", f_bal_kw=100.0),
+        _feature_source(evaluation_id="i2", feeder="ieee13", f_bal_kw=300.0),
+        _feature_source(evaluation_id="l1", feeder="lv906", f_bal_kw=100.0),
+        _feature_source(evaluation_id="l2", feeder="lv906", f_bal_kw=100.0),
+    ]
+
+    metrics = evaluate_predictions(rows, [0.5, 1.0, 0.2, 0.4])
+
+    assert metrics["equal_case_retention"] == pytest.approx(0.525)
+    assert metrics["feeder_macro_kw_retention"] == pytest.approx(0.5875)
+    assert metrics["pooled_kw_retention_sensitivity"] == pytest.approx(410 / 600)
+
+
+def test_retrospective_decision_uses_dual_gain_and_never_claims_confirmation() -> None:
+    feeder = {
+        "material_false_safe_rate": 0.04,
+        "equal_case_retention": 0.60,
+        "feeder_macro_kw_retention": 0.64,
+        "pooled_kw_retention_sensitivity": 0.90,
+    }
+    phicte = {
+        "material_false_safe_rate": 0.04,
+        "equal_case_retention": 0.70,
+        "feeder_macro_kw_retention": 0.65,
+        "pooled_kw_retention_sensitivity": 0.50,
+    }
+
+    decision = build_decision(phicte, feeder)
+
+    assert decision["status"] == "EXPLORATORY_POSITIVE_SIGNAL"
+    assert decision["blind_holdout_claim"] is False
+    assert decision["confirmatory_risk_guarantee"] is False
+    assert decision["retention_delta_vs_feeder_only"]["equal_case"] == pytest.approx(
+        0.10
+    )
+    assert decision["retention_delta_vs_feeder_only"][
+        "feeder_macro_kw"
+    ] == pytest.approx(0.01)
+
+    no_dual_gain = build_decision(
+        {**phicte, "feeder_macro_kw_retention": 0.64}, feeder
+    )
+    assert no_dual_gain["status"] == "NO_EXPLORATORY_SIGNAL_NO_DUAL_RETENTION_GAIN"
+
+
+def test_external_outcomes_cannot_change_fitted_phicte_factors() -> None:
+    development = _cross_fit_rows()
+    external = copy.deepcopy(development)
+    for index, row in enumerate(external):
+        row["evaluation_id"] = f"external_{index}"
+        row["scenario_id"] = f"external_scenario_{index // 3}"
+        row["alpha_transfer"] = 0.90
+
+    _, predictions_a = build_analysis(
+        development,
+        external,
+        feeder_kva={"ieee13": 500.0, "lv906": 100.0},
+        code_commit="1" * 40,
+        generated_at_utc="2026-08-11T00:00:00Z",
+        provenance={"source": "synthetic"},
+    )
+    changed_external = copy.deepcopy(external)
+    for row in changed_external:
+        row["alpha_transfer"] = 0.10
+    summary_b, predictions_b = build_analysis(
+        development,
+        changed_external,
+        feeder_kva={"ieee13": 500.0, "lv906": 100.0},
+        code_commit="1" * 40,
+        generated_at_utc="2026-08-11T00:00:00Z",
+        provenance={"source": "synthetic"},
+    )
+
+    external_factors_a = [
+        row["phicte_factor"] for row in predictions_a if row["cohort"] == "external"
+    ]
+    external_factors_b = [
+        row["phicte_factor"] for row in predictions_b if row["cohort"] == "external"
+    ]
+    assert external_factors_a == external_factors_b
+    assert summary_b["fitting_rule"]["external_outcomes_used_for_fitting_or_tuning"] is False
+    assert summary_b["blind_holdout_claim"] is False
+    assert summary_b["confirmatory_risk_guarantee"] is False
+
+
+def test_result_writer_emits_only_summary_json_and_predictions_csv(tmp_path) -> None:
+    summary = {"analysis_version": "test", "decision": {"status": "test"}}
+    predictions = [
+        {
+            "cohort": "external",
+            "evaluation_id": "evaluation_01",
+            "scenario_id": "scenario_01",
+            "feeder": "ieee13",
+            "call_time": "00:00",
+            "direction": "inc",
+            "duration_min": 15,
+            "active_offer": True,
+            "f_bal_kw": 100.0,
+            "alpha_transfer": 0.9,
+            "phicte_quantile_prediction": 0.8,
+            "phicte_factor": 0.7,
+            "phicte_abstained": False,
+            "raw_balanced_offer_factor": 1.0,
+            "global_derating_factor": 0.5,
+            "feeder_only_factor": 0.6,
+            "direction_only_factor": 0.55,
+            "local_feeder_direction_duration_factor": 0.65,
+        }
+    ]
+
+    paths = write_results(summary, predictions, tmp_path)
+
+    assert {path.name for path in paths} == {"summary.json", "predictions.csv"}
+    assert {path.name for path in tmp_path.iterdir()} == {
+        "summary.json",
+        "predictions.csv",
+    }
+    assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))[
+        "analysis_version"
+    ] == "test"
+    with (tmp_path / "predictions.csv").open(
+        encoding="utf-8", newline=""
+    ) as stream:
+        rows = list(csv.DictReader(stream))
+    assert len(rows) == 1
+    assert rows[0]["phicte_factor"] == "0.7"
