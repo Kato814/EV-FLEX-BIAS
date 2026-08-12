@@ -1,0 +1,142 @@
+{
+  "analysis_role": "retrospective_robustness_diagnostic",
+  "analysis_version": "EV-FLEX-BIAS-V2.5A-PHICTE-ROBUSTNESS-DIAGNOSTIC",
+  "decision": {
+    "feeder_heterogeneity_resolved": true,
+    "global_dual_retention_gain_resolved_by_cluster_bootstrap": false,
+    "next_primary_estimands": [
+      "15-minute material false-safe risk by feeder",
+      "15-minute kW retention delta by feeder",
+      "feeder-macro retention as a secondary aggregate",
+      "pooled-kW retention as sensitivity only"
+    ],
+    "pooled_kw_loss_resolved_by_cluster_bootstrap": true,
+    "status": "CONTINUE_WITH_FEEDER_STRATIFIED_REPLICATION"
+  },
+  "leave_one_scenario_out": {
+    "equal_delta": {
+      "max": 0.042095585140469294,
+      "max_left_out": "ieee13_0200_25",
+      "min": 0.0005610098767135918,
+      "min_left_out": "lv906_0200_32",
+      "n": 16,
+      "negative_count": 0,
+      "positive_count": 16
+    },
+    "macro_delta": {
+      "max": 0.049480733650732966,
+      "max_left_out": "ieee13_0000_32",
+      "min": 0.010180958523544448,
+      "min_left_out": "ieee13_0600_32",
+      "n": 16,
+      "negative_count": 0,
+      "positive_count": 16
+    },
+    "pooled_delta": {
+      "max": -0.04674938292137665,
+      "max_left_out": "ieee13_0000_32",
+      "min": -0.11761946012394542,
+      "min_left_out": "ieee13_0600_32",
+      "n": 16,
+      "negative_count": 16,
+      "positive_count": 0
+    }
+  },
+  "limitations": [
+    "This diagnostic reuses the previously opened V2.3A cohort and is not confirmation.",
+    "Bootstrap resampling quantifies finite-sample scenario variability; it does not establish exchangeability or a 5% deployment-risk guarantee.",
+    "The diagnostic does not add new three-phase power-flow scenarios."
+  ],
+  "observed": {
+    "delta_vs_feeder_only": {
+      "equal_case": 0.016239687888848997,
+      "feeder_macro_kw": 0.024894771994459608,
+      "pooled_kw": -0.09589962562411708
+    },
+    "feeder_only": {
+      "equal_case_retention": 0.31606112054329377,
+      "feeder_macro_kw_retention": 0.30631578947368426,
+      "material_false_safe_n": 1,
+      "pooled_kw_retention": 0.5582494734837524,
+      "strict_exceedance_n": 1
+    },
+    "phicte": {
+      "equal_case_retention": 0.33230080843214277,
+      "feeder_macro_kw_retention": 0.33121056146814387,
+      "material_false_safe_n": 0,
+      "pooled_kw_retention": 0.46234984785963534,
+      "strict_exceedance_n": 0
+    }
+  },
+  "scope": {
+    "active_n": 31,
+    "blind_holdout_claim": false,
+    "cohort": "V2.3A previously opened external cohort",
+    "confirmatory_claim": false,
+    "duration_min": 15,
+    "planned_n": 32,
+    "scenario_n": 16
+  },
+  "source": {
+    "predictions_blob_sha": "1b07e3a381718dc6bf10cc2309436016c897655a",
+    "predictions_path": "results/transferability_phicte_v2_4/predictions.csv",
+    "repo_head_at_review": "390e6db7bce099e0782278aab900383ad57e58cd",
+    "v2_4_summary_blob_sha": "ffe665d395416f97498d14bc3df10b70755a3c69"
+  },
+  "stratified_scenario_bootstrap": {
+    "delta_distributions": {
+      "equal_delta": {
+        "median": 0.016980824225500124,
+        "p2_5": -0.045839382890186395,
+        "p97_5": 0.07200508787840346,
+        "probability_positive": 0.707155
+      },
+      "macro_delta": {
+        "median": 0.02501839050627603,
+        "p2_5": -0.0455663927575888,
+        "p97_5": 0.08302737023340123,
+        "probability_positive": 0.760735
+      },
+      "pooled_delta": {
+        "median": -0.09331308372337555,
+        "p2_5": -0.20770923587545648,
+        "p97_5": -0.005214538006433207,
+        "probability_positive": 0.015735
+      }
+    },
+    "feeder_specific_kw_delta": {
+      "ieee13": {
+        "active_n": 16,
+        "bootstrap_delta_median": -0.11770541155507122,
+        "bootstrap_delta_p2_5": -0.24271731016257458,
+        "bootstrap_delta_p97_5": -0.02087884809299967,
+        "bootstrap_probability_positive": 0.00199,
+        "feeder_only_kw_retention": 0.6084210526315791,
+        "feeder_only_material_false_safe_n": 1,
+        "kw_retention_delta": -0.11995534371734479,
+        "phicte_kw_retention": 0.4884657089142343,
+        "phicte_material_false_safe_n": 0
+      },
+      "lv906": {
+        "active_n": 15,
+        "bootstrap_delta_median": 0.17028893012897617,
+        "bootstrap_delta_p2_5": 0.09730716928520754,
+        "bootstrap_delta_p97_5": 0.22329722483769562,
+        "bootstrap_probability_positive": 1.0,
+        "feeder_only_kw_retention": 0.0042105263157894,
+        "feeder_only_material_false_safe_n": 0,
+        "kw_retention_delta": 0.1697448877062641,
+        "phicte_kw_retention": 0.1739554140220535,
+        "phicte_material_false_safe_n": 0
+      }
+    },
+    "percentile_interval": "2.5%-97.5%",
+    "resamples": 200000,
+    "resampling_unit": "scenario_id",
+    "seed": 2026081201,
+    "strata": [
+      "ieee13",
+      "lv906"
+    ]
+  }
+}

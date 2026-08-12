@@ -1,0 +1,121 @@
+{
+  "protocol_version": "EV-FLEX-BIAS-V2.5B-R1-PHICTE-EXPANDED-RETROSPECTIVE-REPLICATION",
+  "source_protocol_version": "EV-FLEX-BIAS-V2.0",
+  "source_manifest": "manifests/core_work_units_v2_0.csv",
+  "source_manifest_sha256": "856431b21d240010b44f0125de92ab7447bcef924c9d6987cf3caf12c2a6ce69",
+  "source_data_role": "holdout",
+  "prior_v2_0_holdout_open_record": "state/holdout_unlock_v2_0.json",
+  "prior_v2_0_holdout_open_record_sha256": "789b74b41bb2a17ee791d694babbdad97392ab4c9d123718123515f06bc7c69c",
+  "prior_v2_0_holdout_open_count": 1,
+  "blind_holdout_claim": false,
+  "confirmatory_claim": false,
+  "design_role": "expanded_retrospective_replication",
+  "selection_rule": "Use every prior V2.0 holdout scenario with suffix 26-31 in each feeder-call_time cell; exclude V2.3A suffixes 25 and 32; no V2.5 outcome field is used for selection.",
+  "scenario_suffixes": [
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "feeders": [
+    "ieee13",
+    "lv906"
+  ],
+  "call_times": [
+    "19:00",
+    "00:00",
+    "02:00",
+    "06:00"
+  ],
+  "directions": [
+    "inc",
+    "dec"
+  ],
+  "durations_min": [
+    15,
+    30,
+    60
+  ],
+  "primary_duration_min": 15,
+  "longer_duration_policy": "descriptive_only",
+  "workers": 1,
+  "numeric_threads": 1,
+  "formal_constraints": {
+    "vmin_pu": 0.95,
+    "vmax_pu": 1.06,
+    "vuf_limit_pct": 2.0,
+    "transformer_loading_limit_pu": 1.0,
+    "feeder_loading_limit_pu": 1.0,
+    "line_thermal_in_scope": false
+  },
+  "feeder_kva": {
+    "ieee13": 5000,
+    "lv906": 800
+  },
+  "active_offer": {
+    "rule": "max(minimum_kw, feeder_fraction * feeder_kva)",
+    "minimum_kw": 7.2,
+    "feeder_fraction": 0.005
+  },
+  "alpha_search": {
+    "coarse_step": 0.02,
+    "refine_tolerance": 0.002
+  },
+  "scientific_gate_thresholds": {
+    "warm_timing": {
+      "repeats": 3
+    }
+  },
+  "frozen_phicte_v2_4": {
+    "source_module_git_blob_sha": "1b42e82dcf1d1f53d9f6f5a480b3b386d13788f2",
+    "source_result_summary_git_blob_sha": "ffe665d395416f97498d14bc3df10b70755a3c69",
+    "source_predictions_git_blob_sha": "1b07e3a381718dc6bf10cc2309436016c897655a",
+    "selected_penalty": 0.01,
+    "row_level_correction": 0.31546852634886463,
+    "quantile": 0.1,
+    "target_empirical_material_risk": 0.05
+  },
+  "primary_evidence_rules": {
+    "minimum_active_primary_n": 73,
+    "phicte_empirical_material_false_safe_rate_max": 0.05,
+    "require_no_numerical_failure_audits": true,
+    "require_phicte_pareto_nondominated_within_each_feeder": true,
+    "require_positive_phicte_kw_delta_vs_global_within_each_feeder": true,
+    "require_positive_phicte_kw_delta_vs_direction_only_within_each_feeder": true,
+    "require_positive_lv906_kw_delta_vs_feeder_only": true,
+    "require_positive_ieee13_kw_delta_vs_feeder_only": false,
+    "wilson95_upper_below_5_percent_is_required": false,
+    "pooled_kw_superiority_is_required": false,
+    "minimum_primary_risk_denominator_n": 73,
+    "minimum_primary_risk_denominator_n_per_feeder": 24,
+    "phicte_empirical_material_false_safe_rate_max_each_feeder": 0.05,
+    "require_zero_phicte_strict_bound_exceedance": true,
+    "require_zero_phicte_strict_bound_exceedance_each_feeder": true
+  },
+  "bootstrap": {
+    "seed": 2026081202,
+    "resamples": 100000,
+    "resampling_unit": "scenario_id",
+    "stratify_by": "feeder",
+    "interval": [
+      0.025,
+      0.975
+    ]
+  },
+  "protocol_amendment": {
+    "amendment_id": "V2.5B-R1-PREEXECUTION-RISK-DENOMINATOR",
+    "amended_at_utc": "2026-08-12T05:34:00Z",
+    "execution_started_before_amendment": false,
+    "v2_5b_outcomes_observed_before_amendment": false,
+    "selection_changed": false,
+    "scenario_ids_changed": false,
+    "phicte_model_or_hyperparameters_changed": false,
+    "reason": [
+      "The original pre-run gate used active primary n=73 even though material-risk uncertainty is determined by the prescribed (non-abstained) risk denominator.",
+      "Because PHiCTE is presented as a conservative transferability lower envelope, strict bound exceedance must also be tracked separately from the 5% material false-safe definition.",
+      "The primary scientific interpretation is feeder-stratified, so the empirical material-risk target must be checked within each feeder as well as overall."
+    ]
+  }
+}
