@@ -65,6 +65,8 @@ PREDICTION_FIELDS = (
     "active_offer",
     "f_bal_kw",
     "alpha_transfer",
+    "alpha_transfer_tied",
+    "phase_repair_gain",
     "phicte_quantile_prediction",
     "phicte_factor",
     "raw_balanced_offer_factor",
@@ -325,6 +327,82 @@ def _records(frame: pd.DataFrame) -> list[dict[str, Any]]:
     return records
 
 
+def _is_analysis_eligible(row: Mapping[str, Any]) -> bool:
+    """Return whether a row is a valid active or legitimate inactive scientific row."""
+
+    status = row.get("status")
+    valid_active = bool(
+        status == "SUCCESS"
+        and row.get("scientific_status") == "VALID"
+        and row.get("active_offer") is True
+        and row.get("eligible_for_scientific_denominator") is True
+        and row.get("alpha_path_scientific_valid") is True
+        and row.get("alpha_path_status") == "VALID"
+        and isinstance(row.get("alpha_transfer"), (int, float))
+        and not isinstance(row.get("alpha_transfer"), bool)
+        and 0.0 <= float(row["alpha_transfer"]) <= 1.0
+        and isinstance(row.get("alpha_path_audit"), Mapping)
+        and row["alpha_path_audit"].get("numerical_failure_audits") == 0
+    )
+    valid_inactive = bool(
+        status == "INACTIVE_OFFER"
+        and row.get("scientific_status") == "NOT_APPLICABLE_INACTIVE"
+        and row.get("active_offer") is False
+        and row.get("eligible_for_scientific_denominator") is False
+        and row.get("alpha_transfer") is None
+        and row.get("alpha_path_scientific_valid") is None
+        and row.get("alpha_path_status") is None
+        and row.get("alpha_path_audit") is None
+    )
+    return valid_active or valid_inactive
+
+
+def _is_planned_noneligible(row: Mapping[str, Any]) -> bool:
+    """Accept explicitly classified scientific ineligibility without aborting the batch."""
+
+    return bool(
+        row.get("eligible_for_scientific_denominator") is False
+        and row.get("scientific_status")
+        in {"INVALID_SCHEDULE", "INVALID_BASELINE", "NUMERICAL_INVALID_ALPHA_PATH"}
+        and row.get("status")
+        in {
+            "SCHEDULE_SOLVER_INVALID",
+            "BASELINE_PHYSICAL_INVALID",
+            "BASELINE_NUMERICAL_INVALID",
+            "ALPHA_PATH_NUMERICAL_INVALID",
+            "ALPHA_PATH_INVALID",
+        }
+    )
+
+
+def _noneligible_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    noneligible = [row for row in rows if not _is_analysis_eligible(row)]
+    by_status: dict[str, int] = defaultdict(int)
+    by_baseline: dict[str, int] = defaultdict(int)
+    by_feeder: dict[str, int] = defaultdict(int)
+    for row in noneligible:
+        by_status[str(row.get("status"))] += 1
+        by_baseline[str(row.get("baseline_status"))] += 1
+        by_feeder[str(row.get("feeder"))] += 1
+    return {
+        "n": len(noneligible),
+        "by_status": dict(sorted(by_status.items())),
+        "by_baseline_status": dict(sorted(by_baseline.items())),
+        "by_feeder": dict(sorted(by_feeder.items())),
+        "baseline_physical_invalid_n": sum(
+            row.get("baseline_status") == "BASELINE_PHYSICAL_INVALID" for row in noneligible
+        ),
+        "baseline_numerical_invalid_n": sum(
+            row.get("baseline_status") == "BASELINE_NUMERICAL_INVALID" for row in noneligible
+        ),
+        "interpretation": (
+            "Planned rows with an infeasible or invalid baseline/schedule are retained as coverage outcomes "
+            "but excluded from alpha-transfer risk/retention denominators because transferability along the "
+            "baseline-to-call ray is not scientifically defined from an infeasible alpha=0 operating point."
+        ),
+    }
+
+
 def _validate_unit_evaluations(
     evaluations: Sequence[Mapping[str, Any]],
     *,
@@ -341,33 +419,16 @@ def _validate_unit_evaluations(
             and row.get("scenario_id") == unit["scenario_id"]
             and row.get("data_role") == config["design_role"]
         )
-        status = row.get("status")
-        valid_active = bool(
-            status == "SUCCESS"
-            and row.get("scientific_status") == "VALID"
-            and row.get("active_offer") is True
-            and row.get("eligible_for_scientific_denominator") is True
-            and row.get("alpha_path_scientific_valid") is True
-            and row.get("alpha_path_status") == "VALID"
-            and isinstance(row.get("alpha_transfer"), (int, float))
-            and not isinstance(row.get("alpha_transfer"), bool)
-            and 0.0 <= float(row["alpha_transfer"]) <= 1.0
-            and isinstance(row.get("alpha_path_audit"), Mapping)
-            and row["alpha_path_audit"].get("numerical_failure_audits") == 0
-        )
-        valid_inactive = bool(
-            status == "INACTIVE_OFFER"
-            and row.get("scientific_status") == "NOT_APPLICABLE_INACTIVE"
-            and row.get("active_offer") is False
-            and row.get("eligible_for_scientific_denominator") is False
-            and row.get("alpha_transfer") is None
-            and row.get("alpha_path_scientific_valid") is None
-            and row.get("alpha_path_status") is None
-            and row.get("alpha_path_audit") is None
-        )
-        if not identity_valid or (not valid_active and not valid_inactive):
+        if not identity_valid:
             raise ValueError(
-                f"V2.5B produced a non-eligible evaluation: {row.get('evaluation_id')}"
+                f"V2.5B produced an identity-invalid evaluation: {row.get('evaluation_id')}"
+            )
+        if not _is_analysis_eligible(row) and not _is_planned_noneligible(row):
+            raise ValueError(
+                "V2.5B produced an unclassified evaluation state: "
+                f"{row.get('evaluation_id')} status={row.get('status')} "
+                f"scientific_status={row.get('scientific_status')} "
+                f"baseline_status={row.get('baseline_status')}"
             )
 
 
@@ -419,7 +480,7 @@ def _apply_policy_to_rows(
 ) -> list[float | None]:
     factors: list[float | None] = []
     for row in rows:
-        if not bool(row["active_offer"]):
+        if not _is_analysis_eligible(row) or row.get("active_offer") is not True:
             factors.append(None)
             continue
         factor, matched = apply_fitted_policy(row, fitted_policy)
@@ -454,7 +515,10 @@ def _apply_phicte(
 ) -> tuple[list[float | None], list[float | None]]:
     quantile_predictions: list[float | None] = [None] * len(rows)
     factors: list[float | None] = [None] * len(rows)
-    active_indices = [index for index, row in enumerate(rows) if bool(row["active_offer"])]
+    active_indices = [
+        index for index, row in enumerate(rows)
+        if _is_analysis_eligible(row) and row.get("active_offer") is True
+    ]
     if not active_indices:
         return quantile_predictions, factors
     features = [
@@ -484,7 +548,8 @@ def _metrics(
     factors: Mapping[str, Sequence[float | None]],
     indices: Sequence[int],
 ) -> dict[str, dict[str, Any]]:
-    selected_rows, selected_factors = _subset(rows, factors, indices)
+    eligible_indices = [index for index in indices if _is_analysis_eligible(rows[index])]
+    selected_rows, selected_factors = _subset(rows, factors, eligible_indices)
     return {
         name: evaluate_predictions(selected_rows, values)
         for name, values in selected_factors.items()
@@ -526,7 +591,7 @@ def _scenario_aggregates(
 ) -> dict[str, list[dict[str, float]]]:
     by_feeder_scenario: dict[tuple[str, str], dict[str, float]] = {}
     for row, ph_factor, feeder_factor in zip(rows, phicte, feeder_only, strict=True):
-        if not bool(row["active_offer"]):
+        if not _is_analysis_eligible(row) or row.get("active_offer") is not True:
             continue
         if ph_factor is None or feeder_factor is None:
             raise ValueError("active bootstrap row lacks a factor")
@@ -641,7 +706,7 @@ def _bootstrap_primary_deltas(
 def _numerical_failure_audits(rows: Sequence[Mapping[str, Any]]) -> int:
     total = 0
     for row in rows:
-        if not bool(row["active_offer"]):
+        if not _is_analysis_eligible(row) or row.get("active_offer") is not True:
             continue
         audit = row.get("alpha_path_audit")
         if not isinstance(audit, Mapping):
@@ -657,7 +722,12 @@ def _scenario_risk_summary(
 ) -> dict[str, Any]:
     by_scenario: dict[str, list[bool]] = defaultdict(list)
     for row, factor in zip(rows, factors, strict=True):
-        if not bool(row["active_offer"]) or factor is None or float(factor) <= 0.0:
+        if (
+            not _is_analysis_eligible(row)
+            or row.get("active_offer") is not True
+            or factor is None
+            or float(factor) <= 0.0
+        ):
             continue
         event = float(row["alpha_transfer"]) + 1e-12 < 0.95 * float(factor)
         by_scenario[str(row["scenario_id"])].append(bool(event))
@@ -686,7 +756,8 @@ def _performance_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             float(row["alpha1_warm_p95_s"])
             for row in rows
             if row["feeder"] == feeder
-            and bool(row["active_offer"])
+            and _is_analysis_eligible(row)
+            and row.get("active_offer") is True
             and isinstance(row.get("alpha1_warm_p95_s"), (int, float))
             and not isinstance(row.get("alpha1_warm_p95_s"), bool)
             and math.isfinite(float(row["alpha1_warm_p95_s"]))
@@ -713,7 +784,10 @@ def _benchmark_phicte_inference(
     feeder_kva: Mapping[str, float],
     repeats: int = 200,
 ) -> dict[str, Any]:
-    active = [row for row in rows if bool(row["active_offer"])]
+    active = [
+        row for row in rows
+        if _is_analysis_eligible(row) and row.get("active_offer") is True
+    ]
     if not active:
         return {"active_n": 0, "repeats": repeats}
     start = time.perf_counter()
@@ -731,6 +805,74 @@ def _benchmark_phicte_inference(
         "not_a_scientific_gate": True,
     }
 
+def _repairability_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Summarize phase-aware tie-break repair without changing bus-time aggregate schedules."""
+
+    def summarize(group: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+        active = [
+            row for row in group
+            if _is_analysis_eligible(row) and row.get("active_offer") is True
+        ]
+        paired = []
+        for row in active:
+            tied = row.get("alpha_transfer_tied")
+            if (
+                row.get("tie_comparator_valid") is True
+                and row.get("tie_break_status") == "SUCCESS"
+                and row.get("alpha_tie_path_status") == "VALID"
+                and isinstance(tied, (int, float))
+                and not isinstance(tied, bool)
+                and math.isfinite(float(tied))
+                and 0.0 <= float(tied) <= 1.0
+            ):
+                paired.append((row, float(row["alpha_transfer"]), float(tied)))
+        if not paired:
+            return {"active_n": len(active), "paired_valid_n": 0}
+        fixed = np.asarray([item[1] for item in paired], dtype=float)
+        tied = np.asarray([item[2] for item in paired], dtype=float)
+        delta = tied - fixed
+        offers = np.asarray([abs(float(item[0]["f_bal_kw"])) for item in paired], dtype=float)
+        bad = fixed < 0.95 - 1e-12
+        return {
+            "active_n": len(active),
+            "paired_valid_n": len(paired),
+            "paired_coverage": len(paired) / len(active) if active else None,
+            "alpha_fixed_mean": float(np.mean(fixed)),
+            "alpha_repaired_mean": float(np.mean(tied)),
+            "repair_gain_mean": float(np.mean(delta)),
+            "repair_gain_median": float(np.median(delta)),
+            "repair_gain_offer_weighted": float(np.sum(offers * delta) / np.sum(offers)),
+            "positive_repair_n": int(np.sum(delta > 1e-12)),
+            "material_repair_ge_0_05_n": int(np.sum(delta >= 0.05 - 1e-12)),
+            "worsened_n": int(np.sum(delta < -1e-12)),
+            "fixed_bad_alpha_lt_0_95_n": int(np.sum(bad)),
+            "rescued_to_alpha_ge_0_95_n": int(np.sum(bad & (tied >= 0.95 - 1e-12))),
+            "full_transfer_rescue_n": int(np.sum((fixed < 1.0 - 1e-12) & (tied >= 1.0 - 1e-12))),
+            "definition": (
+                "Phase-aware tie-break redispatch preserves each bus-time aggregate schedule and declared offer "
+                "while reallocating feasible EV trajectories across the fixed fleet; repair gain is "
+                "alpha_transfer_tied - alpha_transfer."
+            ),
+        }
+
+    primary = [row for row in rows if int(row.get("duration_min", -1)) == 15]
+    return {
+        "overall": summarize(primary),
+        "by_feeder": {
+            feeder: summarize([row for row in primary if row.get("feeder") == feeder])
+            for feeder in ("ieee13", "lv906")
+        },
+        "by_direction": {
+            direction: summarize([row for row in primary if row.get("direction") == direction])
+            for direction in ("inc", "dec")
+        },
+        "claim_boundary": (
+            "This is a constrained schedule-repair diagnostic, not a full three-phase reoptimization or a proof "
+            "of maximum deliverable flexibility."
+        ),
+    }
+
+
 def build_replication_analysis(
     repo_root: str | Path,
     replication_rows: Sequence[Mapping[str, Any]],
@@ -740,11 +882,13 @@ def build_replication_analysis(
     generated_at_utc: str,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     root = Path(repo_root).resolve(strict=True)
-    validate_evaluation_rows(replication_rows, dataset_name="V2.5B replication")
     if len(replication_rows) != 288:
         raise ValueError("V2.5B must contain 288 duration-level evaluations")
     if len({row["scenario_id"] for row in replication_rows}) != 48:
         raise ValueError("V2.5B must contain 48 unique scenarios")
+    analysis_rows = [row for row in replication_rows if _is_analysis_eligible(row)]
+    validate_evaluation_rows(analysis_rows, dataset_name="V2.5B eligible replication")
+    noneligible = _noneligible_summary(replication_rows)
 
     development_rows, _opened_external, development_provenance = load_project_evaluations(root)
     validate_evaluation_rows(development_rows, dataset_name="V2.2 development")
@@ -829,6 +973,7 @@ def build_replication_analysis(
         }
         primary_by_feeder[feeder] = {
             "planned_n": len(indices),
+            "eligible_n": sum(_is_analysis_eligible(replication_rows[index]) for index in indices),
             "active_n": int(ph["active_n"]),
             "policies": metrics,
             "phicte_pareto": _pareto_status(metrics),
@@ -860,6 +1005,8 @@ def build_replication_analysis(
         for name, values in primary_factor_maps.items()
     }
     numerical_failure_count = _numerical_failure_audits(primary_rows)
+    repairability = _repairability_summary(replication_rows)
+    primary_noneligible = _noneligible_summary(primary_rows)
     performance = {
         "three_phase_replay": _performance_summary(primary_rows),
         "phicte_inference": _benchmark_phicte_inference(
@@ -900,7 +1047,10 @@ def build_replication_analysis(
             int(primary_by_feeder[feeder]["policies"]["phicte"]["exceeds_verified_bound_n"]) == 0
             for feeder in config["feeders"]
         ),
-        "no_numerical_failure_audits": numerical_failure_count == 0,
+        "no_numerical_failure_audits": (
+            numerical_failure_count == 0
+            and int(primary_noneligible["baseline_numerical_invalid_n"]) == 0
+        ),
         "phicte_pareto_nondominated_each_feeder": all(
             primary_by_feeder[feeder]["phicte_pareto"]["status"] == "NONDOMINATED"
             for feeder in config["feeders"]
@@ -940,6 +1090,15 @@ def build_replication_analysis(
                 "active_offer": row["active_offer"],
                 "f_bal_kw": row["f_bal_kw"],
                 "alpha_transfer": row.get("alpha_transfer"),
+                "alpha_transfer_tied": row.get("alpha_transfer_tied"),
+                "phase_repair_gain": (
+                    float(row["alpha_transfer_tied"]) - float(row["alpha_transfer"])
+                    if isinstance(row.get("alpha_transfer_tied"), (int, float))
+                    and not isinstance(row.get("alpha_transfer_tied"), bool)
+                    and isinstance(row.get("alpha_transfer"), (int, float))
+                    and not isinstance(row.get("alpha_transfer"), bool)
+                    else None
+                ),
                 "phicte_quantile_prediction": quantile_predictions[index],
                 "phicte_factor": factor_maps["phicte"][index],
                 "raw_balanced_offer_factor": factor_maps["raw_balanced_offer"][index],
@@ -974,6 +1133,8 @@ def build_replication_analysis(
             "planned_evaluations": 288,
             "primary_duration_min": primary_duration,
             "primary_planned_n": 96,
+            "analysis_eligible_evaluations": len(analysis_rows),
+            "noneligible_evaluations": noneligible,
             "source_selection": config["selection_rule"],
         },
         "frozen_phicte": {
@@ -987,6 +1148,8 @@ def build_replication_analysis(
             "policies": primary_metrics,
             "by_feeder": primary_by_feeder,
             "numerical_failure_audits": numerical_failure_count,
+            "noneligible": primary_noneligible,
+            "phase_aware_schedule_repair": repairability,
             "scenario_cluster_risk": scenario_risk,
             "bootstrap": bootstrap,
             "performance": performance,
@@ -1007,6 +1170,8 @@ def build_replication_analysis(
             "The 5% threshold remains an empirical screening target; Wilson intervals are uncertainty summaries and are not a deployment guarantee.",
             "Line thermal constraints remain outside the formal audited constraint set because traceable line ampacity is unavailable.",
             "Pooled-kW superiority is not required; feeder-specific and feeder-macro results must be reported separately.",
+            "Planned cases with a physically infeasible baseline are retained and reported as coverage outcomes but excluded from transferability denominators because alpha=0 is not feasible.",
+            "Phase-aware tie-break repair is a constrained redispatch diagnostic that preserves bus-time aggregate schedules; it is not full three-phase reoptimization.",
         ],
         "evaluations": deepcopy(list(replication_rows)),
     }

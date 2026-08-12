@@ -117,5 +117,19 @@
       "Because PHiCTE is presented as a conservative transferability lower envelope, strict bound exceedance must also be tracked separately from the 5% material false-safe definition.",
       "The primary scientific interpretation is feeder-stratified, so the empirical material-risk target must be checked within each feeder as well as overall."
     ]
+  },
+  "post_diagnostic_execution_amendment": {
+    "amendment_id": "V2.5B-R2-BASELINE-INELIGIBILITY-HANDLING",
+    "amended_at_utc": "2026-08-12T07:20:00Z",
+    "triggering_observation": "The first batch stopped at ieee13_1900_31 inc because the shared evaluator classified all durations as SCHEDULE_SOLVER_INVALID with BASELINE_PHYSICAL_INVALID; xfm1 loading reached 1.1597553664470397 pu in the balanced baseline at slot 28.",
+    "scientific_change": "Execution now retains explicitly classified noneligible baseline/schedule rows instead of aborting the complete predetermined scenario set. Such rows remain outside transferability risk/retention denominators because alpha=0 is infeasible or scientifically invalid.",
+    "selection_changed": false,
+    "scenario_ids_changed": false,
+    "network_constraints_changed": false,
+    "phicte_model_or_hyperparameters_changed": false,
+    "outcome_dependent_exclusion_added": false,
+    "coverage_reporting_required": true,
+    "phase_aware_repair_analysis_added": true,
+    "repair_analysis_scope": "Uses the already-generated phase tie-break comparator from the shared evaluator; no additional optimization family or outcome tuning is introduced."
   }
 }

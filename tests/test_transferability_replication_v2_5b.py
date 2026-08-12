@@ -119,3 +119,33 @@ def test_v25b_analysis_pipeline_runs_without_external_outcome_tuning() -> None:
         "positive_kw_delta_vs_direction_only_each_feeder",
         "positive_lv906_kw_delta_vs_feeder_only",
     }
+
+
+def test_v25b_explicit_baseline_ineligibility_is_retained_not_fatal() -> None:
+    from evflex.transferability_replication_v2_5b import _validate_unit_evaluations
+
+    config, frame = load_replication_design(REPO_ROOT)
+    unit = frame.iloc[0].to_dict()
+    expected_ids = json.loads(unit["evaluation_ids"])
+    rows = []
+    for duration, evaluation_id in zip((15, 30, 60), expected_ids, strict=True):
+        rows.append(
+            {
+                "evaluation_id": evaluation_id,
+                "work_unit_id": unit["work_unit_id"],
+                "protocol_version": config["protocol_version"],
+                "scenario_id": unit["scenario_id"],
+                "data_role": config["design_role"],
+                "duration_min": duration,
+                "status": "SCHEDULE_SOLVER_INVALID",
+                "scientific_status": "INVALID_SCHEDULE",
+                "baseline_status": "BASELINE_PHYSICAL_INVALID",
+                "active_offer": None,
+                "eligible_for_scientific_denominator": False,
+                "alpha_transfer": None,
+                "alpha_path_scientific_valid": None,
+                "alpha_path_status": None,
+                "alpha_path_audit": None,
+            }
+        )
+    _validate_unit_evaluations(rows, unit=unit, config=config)

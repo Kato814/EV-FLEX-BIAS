@@ -28,7 +28,8 @@ def _close(left: Any, right: Any, *, tol: float = 1e-10) -> bool:
 
 
 def _metrics(frame: pd.DataFrame, factor_column: str) -> dict[str, Any]:
-    active = frame[frame["active_offer"]].copy()
+    eligible = frame[frame["active_offer"].notna()].copy()
+    active = eligible[eligible["active_offer"] == True].copy()
     factors = pd.to_numeric(active[factor_column], errors="coerce")
     if factors.isna().any():
         raise ValueError(f"active rows contain missing {factor_column}")
@@ -48,9 +49,9 @@ def _metrics(frame: pd.DataFrame, factor_column: str) -> dict[str, Any]:
         denom = group["f_bal_kw"].abs().sum()
         feeder_retention.append((group["f_bal_kw"].abs() * group["_factor"]).sum() / denom)
     return {
-        "planned_n": int(len(frame)),
+        "planned_n": int(len(eligible)),
         "active_n": int(len(active)),
-        "inactive_n": int(len(frame) - len(active)),
+        "inactive_n": int(len(eligible) - len(active)),
         "risk_denominator_n": int(prescribed.sum()),
         "prescribed_n": int(prescribed.sum()),
         "abstention_n": int(len(active) - prescribed.sum()),
@@ -94,9 +95,9 @@ def verify(repo_root: Path) -> dict[str, Any]:
         raise AssertionError("predictions must contain 288 unique evaluations")
     if frame["scenario_id"].nunique() != 48:
         raise AssertionError("predictions must contain 48 scenarios")
-    frame["active_offer"] = frame["active_offer"].astype(str).str.lower().map({"true": True, "false": False})
-    if frame["active_offer"].isna().any():
-        raise AssertionError("active_offer encoding is invalid")
+    raw_active = frame["active_offer"].astype(str).str.lower()
+    frame["active_offer"] = raw_active.map({"true": True, "false": False})
+    # Blank/None values represent planned but scientifically noneligible evaluations and are retained for coverage accounting.
     primary = frame[frame["duration_min"] == 15].copy()
     if len(primary) != 96:
         raise AssertionError("primary 15-minute scope must contain 96 rows")
@@ -129,15 +130,23 @@ def verify(repo_root: Path) -> dict[str, Any]:
     if not isinstance(raw_evaluations, list) or len(raw_evaluations) != 288:
         raise AssertionError("summary must retain 288 raw evaluations")
     numerical_failures = 0
+    baseline_numerical_invalid = 0
+    primary_noneligible = 0
     for row in raw_evaluations:
-        if int(row.get("duration_min", -1)) != 15 or row.get("active_offer") is not True:
+        if int(row.get("duration_min", -1)) != 15:
             continue
-        audit = row.get("alpha_path_audit")
-        if not isinstance(audit, dict):
-            raise AssertionError("active primary raw evaluation lacks alpha_path_audit")
-        numerical_failures += int(audit.get("numerical_failure_audits", 0))
+        if row.get("active_offer") is True and row.get("eligible_for_scientific_denominator") is True:
+            audit = row.get("alpha_path_audit")
+            if not isinstance(audit, dict):
+                raise AssertionError("active primary raw evaluation lacks alpha_path_audit")
+            numerical_failures += int(audit.get("numerical_failure_audits", 0))
+        elif row.get("status") != "INACTIVE_OFFER":
+            primary_noneligible += 1
+            baseline_numerical_invalid += int(row.get("baseline_status") == "BASELINE_NUMERICAL_INVALID")
     if numerical_failures != int(summary["primary_15min"]["numerical_failure_audits"]):
         raise AssertionError("numerical-failure audit count differs")
+    if primary_noneligible != int(summary["primary_15min"]["noneligible"]["n"]):
+        raise AssertionError("primary noneligible count differs")
 
     ph = recomputed["phicte"]
     rules = {
@@ -158,7 +167,7 @@ def verify(repo_root: Path) -> dict[str, Any]:
         "zero_phicte_strict_bound_exceedance_each_feeder": all(
             by_feeder[f]["phicte"]["exceeds_verified_bound_n"] == 0 for f in by_feeder
         ),
-        "no_numerical_failure_audits": numerical_failures == 0,
+        "no_numerical_failure_audits": numerical_failures == 0 and baseline_numerical_invalid == 0,
     }
     reported = summary["decision"]["criteria"]
     for name, value in rules.items():
@@ -196,6 +205,32 @@ def verify(repo_root: Path) -> dict[str, Any]:
             raise AssertionError(f"{feeder} Pareto status differs")
         pareto_status[feeder] = status
         retention_deltas[feeder] = expected_deltas
+
+    # Independently verify phase-aware schedule-repair counts from raw evaluations.
+    repair_rows = []
+    for row in raw_evaluations:
+        if (
+            int(row.get("duration_min", -1)) == 15
+            and row.get("active_offer") is True
+            and row.get("eligible_for_scientific_denominator") is True
+            and row.get("tie_comparator_valid") is True
+            and row.get("tie_break_status") == "SUCCESS"
+            and row.get("alpha_tie_path_status") == "VALID"
+            and isinstance(row.get("alpha_transfer"), (int, float))
+            and isinstance(row.get("alpha_transfer_tied"), (int, float))
+        ):
+            repair_rows.append(row)
+    reported_repair = summary["primary_15min"]["phase_aware_schedule_repair"]["overall"]
+    if int(reported_repair.get("paired_valid_n", -1)) != len(repair_rows):
+        raise AssertionError("phase-repair paired-valid count differs")
+    if repair_rows:
+        deltas = [float(row["alpha_transfer_tied"]) - float(row["alpha_transfer"]) for row in repair_rows]
+        positive_n = sum(value > TOL for value in deltas)
+        material_n = sum(value >= 0.05 - TOL for value in deltas)
+        if int(reported_repair["positive_repair_n"]) != positive_n:
+            raise AssertionError("phase-repair positive count differs")
+        if int(reported_repair["material_repair_ge_0_05_n"]) != material_n:
+            raise AssertionError("phase-repair material count differs")
 
     decision_rules = {
         "phicte_pareto_nondominated_each_feeder": all(
@@ -237,6 +272,8 @@ def verify(repo_root: Path) -> dict[str, Any]:
         "primary_material_false_safe_n": ph["material_false_safe_n"],
         "primary_strict_bound_exceedance_n": ph["exceeds_verified_bound_n"],
         "primary_numerical_failure_audits": numerical_failures,
+        "primary_noneligible_n": primary_noneligible,
+        "phase_repair_paired_valid_n": len(repair_rows),
         "verified_core_decision_criteria": rules,
         "note": "Core counts, risk, retention, feeder deltas, Pareto status, and numerical-failure counts were independently recomputed from archived predictions/raw evaluations.",
     }
