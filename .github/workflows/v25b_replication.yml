@@ -1,4 +1,4 @@
-name: V2.5B-R1 PHiCTE replication
+name: V2.5B-R2 transferability and repair replication
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
       - "scripts/analyze_phicte_robustness_v2_5a.py"
       - "scripts/verify_transferability_replication_v2_5b.py"
       - "reports/v2_5b_r1_preexecution_audit.md"
+      - "reports/v2_5b_r2_execution_amendment.md"
       - "tests/test_transferability_replication_v2_5b.py"
       - ".github/workflows/v25b_replication.yml"
   workflow_dispatch:
@@ -52,7 +53,7 @@ jobs:
           python -m pip install -e .
           python -m pip install pytest==8.4.2
 
-      - name: Verify V2.5B-R1 design
+      - name: Verify V2.5B-R2 design
         shell: pwsh
         run: python -m pytest -q tests/test_transferability_replication_v2_5b.py
 
@@ -64,7 +65,7 @@ jobs:
         shell: pwsh
         run: |
           $dirty = git status --porcelain
-          if ($dirty) { Write-Error "Worktree is dirty before V2.5B-R1:`n$dirty"; exit 1 }
+          if ($dirty) { Write-Error "Worktree is dirty before V2.5B-R2:`n$dirty"; exit 1 }
 
       - name: Run expanded retrospective three-phase replication
         shell: pwsh
@@ -74,7 +75,7 @@ jobs:
         shell: pwsh
         run: python scripts/analyze_phicte_robustness_v2_5a.py --overwrite
 
-      - name: Independently verify V2.5B-R1 outputs
+      - name: Independently verify V2.5B-R2 outputs
         shell: pwsh
         run: python scripts/verify_transferability_replication_v2_5b.py
 
@@ -90,6 +91,8 @@ jobs:
             results/transferability_phicte_v2_5a_robustness/summary.json
             reports/v2_5b_independent_verification.json
             reports/v2_5b_r1_preexecution_audit.md
+            reports/v2_5b_r2_execution_amendment.md
+            state/runtime/transferability_replication_v2_5b/checkpoint.json
 
       - name: Commit completed experiment artifacts
         if: success()
@@ -102,7 +105,7 @@ jobs:
                   results/transferability_phicte_v2_5a_robustness/summary.json `
                   reports/v2_5b_independent_verification.json
           if (-not (git diff --cached --quiet)) {
-            git commit -m "results: archive V2.5B-R1 PHiCTE replication"
+            git commit -m "results: archive V2.5B-R2 transferability replication"
             git push origin "HEAD:$env:GITHUB_REF_NAME"
           } else {
             Write-Host "No result changes to commit."
