@@ -71,9 +71,7 @@ def _mode(direction: str) -> str:
     raise ValueError(f"unsupported direction {direction!r}")
 
 
-def _pairs(
-    fleet: Sequence[Any],
-) -> tuple[list[tuple[int, int]], dict[tuple[int, int], int]]:
+def _pairs(fleet: Sequence[Any]) -> tuple[list[tuple[int, int]], dict[tuple[int, int], int]]:
     pairs = [
         (i, t)
         for i, ev in enumerate(fleet)
@@ -82,45 +80,19 @@ def _pairs(
     return pairs, {pair: index for index, pair in enumerate(pairs)}
 
 
-def _group_to_evs(
-    fleet: Sequence[Any],
-    groups: Sequence[Any],
-) -> list[list[int]]:
-    result: list[list[int]] = []
-    for group in groups:
-        if not (
-            isinstance(group, (tuple, list))
-            and len(group) == 2
-        ):
-            raise ValueError("R3 spatial targets require three-phase (bus, phase) groups")
-        bus, phase = str(group[0]), int(group[1])
-        result.append(
-            [
-                i
-                for i, ev in enumerate(fleet)
-                if str(ev.bus) == bus and int(ev.phase) == phase
-            ]
-        )
-    return result
-
-
 def _build_repair_lp(
     fleet: Sequence[Any],
     fixed_ray: np.ndarray,
     *,
     mode: str,
-    groups: Sequence[Any],
-    spatial_targets: Mapping[int, np.ndarray],
+    linearizations: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    """Feeder-trajectory-preserving trajectory LP with fixed spatial targets.
+    """Build a feeder-trajectory-preserving EV LP with frozen linearized 3ph cuts.
 
-    This implements the preregistered preservation rule:
-      * all 96 feeder-time aggregate EV powers equal the fixed ray;
-      * selected failure slots additionally match a frozen, nonlinear-verified
-        three-phase bus/phase target;
-      * all EV trajectory constraints remain active.
-
-    No network sensitivity inequalities are inserted into this trajectory LP.
+    The LP keeps the exact 96-slot feeder aggregate trajectory of ``fixed_ray``.
+    Spatial/vehicle allocation is free subject to the original EV trajectory
+    constraints. Network cuts are only a proposal mechanism; final truth is
+    always a nonlinear OpenDSS audit.
     """
     pairs, pmap = _pairs(fleet)
     n = len(pairs)
@@ -145,7 +117,7 @@ def _build_repair_lp(
     eq_rows: list[dict[int, float]] = []
     eq_rhs: list[float] = []
 
-    # Vehicle energy, reserve/capacity, departure-energy and V2G-budget constraints.
+    # Vehicle energy, reserve/capacity and V2G budget constraints.
     for i, ev in enumerate(fleet):
         indices = [
             pmap[(i, t)]
@@ -175,7 +147,8 @@ def _build_repair_lp(
             ub_rows.append({n + j: DT for j in indices})
             ub_rhs.append(float(ev.max_discharge))
 
-    # Deterministic tie-break: remain as close as possible to the exact fixed ray.
+    # Absolute deviation from the fixed ray; this only selects a deterministic
+    # nearby realization and does not relax the aggregate commitment.
     for j, (i, t) in enumerate(pairs):
         target = float(fixed_ray[i, t])
         ub_rows.append({j: 1.0, n + j: -1.0, z0 + j: -1.0})
@@ -196,26 +169,67 @@ def _build_repair_lp(
         eq_rows.append(row)
         eq_rhs.append(float(feeder_target[t]))
 
-    # Preregistered fixed bus-phase equality targets for already-diagnosed slots.
-    group_evs = _group_to_evs(fleet, groups)
-    for slot, raw_target in sorted(spatial_targets.items()):
-        target = np.asarray(raw_target, dtype=float)
-        if target.shape != (len(groups),) or not np.isfinite(target).all():
-            raise ValueError(f"invalid spatial target at slot {slot}")
-        if abs(float(target.sum()) - float(feeder_target[slot])) > 1e-6:
-            raise ValueError(
-                f"spatial target at slot {slot} changes feeder aggregate commitment"
+    # Successive linearized 3ph cuts. Each stored cut set comes from one
+    # nonlinear-evaluated failing slot.
+    for cut in linearizations:
+        slot = int(cut["slot"])
+        groups = list(cut["groups"])
+        sensitivity = np.asarray(cut["sensitivity"], dtype=float)
+        m0 = np.asarray(cut["m0_vector"], dtype=float)
+        p0 = np.asarray(cut["p0"], dtype=float)
+        lower = np.asarray(cut["lower"], dtype=float)
+        upper = np.asarray(cut["upper"], dtype=float)
+        if sensitivity.shape != (len(m0), len(groups)):
+            raise ValueError("network sensitivity dimensions differ")
+        if not np.isfinite(sensitivity).all() or not np.isfinite(m0).all():
+            raise ValueError("network linearization contains non-finite values")
+
+        group_evs: list[list[int]] = []
+        for group in groups:
+            if not (
+                isinstance(group, (tuple, list))
+                and len(group) == 2
+            ):
+                raise ValueError("R3 requires three-phase (bus, phase) groups")
+            bus, phase = str(group[0]), int(group[1])
+            group_evs.append(
+                [
+                    i for i, ev in enumerate(fleet)
+                    if str(ev.bus) == bus and int(ev.phase) == phase
+                ]
             )
-        for g, evs in enumerate(group_evs):
-            row: dict[int, float] = {}
-            for i in evs:
-                j = pmap.get((i, int(slot)))
-                if j is None:
-                    continue
-                row[j] = 1.0
-                row[n + j] = -1.0
-            eq_rows.append(row)
-            eq_rhs.append(float(target[g]))
+
+        sp0 = sensitivity @ p0
+        for metric in range(len(m0)):
+            srow = sensitivity[metric]
+            if math.isfinite(float(upper[metric])):
+                row: dict[int, float] = {}
+                for g, evs in enumerate(group_evs):
+                    coeff = float(srow[g])
+                    if abs(coeff) <= 1e-15:
+                        continue
+                    for i in evs:
+                        j = pmap.get((i, slot))
+                        if j is None:
+                            continue
+                        row[j] = row.get(j, 0.0) + coeff
+                        row[n + j] = row.get(n + j, 0.0) - coeff
+                ub_rows.append(row)
+                ub_rhs.append(float(upper[metric] - m0[metric] + sp0[metric]))
+            if math.isfinite(float(lower[metric])):
+                row = {}
+                for g, evs in enumerate(group_evs):
+                    coeff = -float(srow[g])
+                    if abs(coeff) <= 1e-15:
+                        continue
+                    for i in evs:
+                        j = pmap.get((i, slot))
+                        if j is None:
+                            continue
+                        row[j] = row.get(j, 0.0) + coeff
+                        row[n + j] = row.get(n + j, 0.0) - coeff
+                ub_rows.append(row)
+                ub_rhs.append(float(m0[metric] - lower[metric] - sp0[metric]))
 
     def sparse(rows: Sequence[Mapping[int, float]]) -> csr_matrix:
         rr: list[int] = []
@@ -223,16 +237,12 @@ def _build_repair_lp(
         vv: list[float] = []
         for r, row in enumerate(rows):
             for c, value in row.items():
-                value = float(value)
-                if abs(value) <= 1e-18:
+                if abs(float(value)) <= 1e-18:
                     continue
                 rr.append(r)
                 cc.append(int(c))
-                vv.append(value)
-        return coo_matrix(
-            (vv, (rr, cc)),
-            shape=(len(rows), nvar),
-        ).tocsr()
+                vv.append(float(value))
+        return coo_matrix((vv, (rr, cc)), shape=(len(rows), nvar)).tocsr()
 
     return {
         "objective": objective,
@@ -252,15 +262,13 @@ def _solve_repair_lp(
     fixed_ray: np.ndarray,
     *,
     mode: str,
-    groups: Sequence[Any],
-    spatial_targets: Mapping[int, np.ndarray],
+    linearizations: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     lp = _build_repair_lp(
         fleet,
         fixed_ray,
         mode=mode,
-        groups=groups,
-        spatial_targets=spatial_targets,
+        linearizations=linearizations,
     )
     result = linprog(
         lp["objective"],
@@ -300,10 +308,7 @@ def _solve_repair_lp(
     )
     aggregate_error = float(
         np.max(
-            np.abs(
-                schedule.sum(axis=0)
-                - np.asarray(lp["feeder_target"], dtype=float)
-            ),
+            np.abs(schedule.sum(axis=0) - np.asarray(lp["feeder_target"])),
             initial=0.0,
         )
     )
@@ -341,9 +346,7 @@ def _audit(
     )
 
 
-def _first_physical_failure(
-    raw: Mapping[str, Any],
-) -> tuple[int | None, list[Any]]:
+def _first_physical_failure(raw: Mapping[str, Any]) -> tuple[int | None, list[Any]]:
     violations = raw.get("violations", [])
     if not isinstance(violations, list):
         return None, []
@@ -358,9 +361,7 @@ def _first_physical_failure(
         except (KeyError, TypeError, ValueError):
             continue
         witness = item.get("violations", [])
-        physical.append(
-            (slot, list(witness) if isinstance(witness, list) else [])
-        )
+        physical.append((slot, list(witness) if isinstance(witness, list) else []))
     if not physical:
         return None, []
     slot = min(value[0] for value in physical)
@@ -371,191 +372,54 @@ def _first_physical_failure(
     return slot, witnesses
 
 
-def _pointwise_spatial_target(
+def _make_linearization(
     runtime: Any,
-    baseline: np.ndarray,
-    fixed_ray: np.ndarray,
     truth_cache: Any,
+    schedule: np.ndarray,
     slot: int,
 ) -> dict[str, Any]:
-    """Construct the preregistered nonlinear-feasible point target.
-
-    1. Start from the baseline three-phase EV group injection at the failure slot.
-    2. Use the existing finite-difference sensitivity + point optimizer.
-    3. The point optimizer performs a nonlinear evaluation and, if needed,
-       backtracks toward baseline.
-    4. Interpolate the verified pointwise-feasible injection to exactly match
-       the fixed-ray feeder aggregate at this slot.
-    5. Nonlinearly evaluate the interpolated target before it is frozen.
-    """
     scale = float(runtime.load_scales[slot])
     if scale not in truth_cache:
         raise KeyError(f"truth cache has no network for load scale {scale}")
     network = truth_cache[scale]
     groups = list(network.groups)
-
-    # Reuse the archived instantaneous vehicle-bound construction with the
-    # actual R2 baseline schedule.
-    frame = runtime.corrected_core.fleet_frame(
-        runtime.fleet,
-        baseline,
-        int(slot),
-    )
-    if len(frame) != len(runtime.fleet):
-        raise ValueError("instantaneous fleet frame row count differs")
-
-    if runtime.direction == "inc":
-        lower_values = np.asarray(frame["v1_lo"], dtype=float)
-        upper_values = np.asarray(frame["v1_hi"], dtype=float)
-        sense = "max"
-    elif runtime.direction == "dec":
-        lower_values = np.asarray(frame["v2_lo"], dtype=float)
-        upper_values = np.asarray(frame["v2_hi"], dtype=float)
-        sense = "min"
-    else:
-        raise ValueError(runtime.direction)
-
-    base_values = np.asarray(frame["base"], dtype=float)
     p0 = np.asarray(
         runtime.archived_engine.group_vector(
             runtime.fleet,
-            base_values,
+            schedule[:, slot],
             groups,
             "3ph",
         ),
         dtype=float,
     )
-    lower = np.asarray(
-        runtime.archived_engine.group_vector(
-            runtime.fleet,
-            lower_values,
-            groups,
-            "3ph",
-        ),
-        dtype=float,
-    )
-    upper = np.asarray(
-        runtime.archived_engine.group_vector(
-            runtime.fleet,
-            upper_values,
-            groups,
-            "3ph",
-        ),
-        dtype=float,
-    )
-
-    baseline_eval = network.evaluate(p0)
-    if baseline_eval.get("feasible") is not True:
-        return {
-            "success": False,
-            "status": "POINT_BASELINE_INVALID",
-        }
-
-    sensitivity = network.sensitivity(p0)
-    optimized = network.optimize(
-        p0,
-        lower,
-        upper,
-        sense,
-        sensitivity,
-    )
-    if optimized.get("success") is not True:
-        return {
-            "success": False,
-            "status": "POINT_OPTIMIZER_FAILED",
-        }
-
-    p_opt = np.asarray(optimized["p"], dtype=float)
-    if p_opt.shape != p0.shape or not np.isfinite(p_opt).all():
-        return {
-            "success": False,
-            "status": "POINT_OPTIMIZER_INVALID_VECTOR",
-        }
-    opt_eval = network.evaluate(p_opt)
-    if opt_eval.get("feasible") is not True:
-        return {
-            "success": False,
-            "status": "POINT_OPTIMIZER_NONLINEAR_INVALID",
-        }
-
-    required_total = float(np.asarray(fixed_ray[:, slot], dtype=float).sum())
-    base_total = float(p0.sum())
-    opt_total = float(p_opt.sum())
-    denominator = opt_total - base_total
-
-    if runtime.direction == "inc":
-        if required_total > opt_total + 1e-6:
-            return {
-                "success": False,
-                "status": "POINTWISE_HEADROOM_INSUFFICIENT",
-                "base_total_kw": base_total,
-                "point_opt_total_kw": opt_total,
-                "required_total_kw": required_total,
-            }
-    else:
-        if required_total < opt_total - 1e-6:
-            return {
-                "success": False,
-                "status": "POINTWISE_HEADROOM_INSUFFICIENT",
-                "base_total_kw": base_total,
-                "point_opt_total_kw": opt_total,
-                "required_total_kw": required_total,
-            }
-
-    if abs(required_total - base_total) <= 1e-8:
-        lam = 0.0
-        target = p0.copy()
-    else:
-        if abs(denominator) <= 1e-12:
-            return {
-                "success": False,
-                "status": "POINTWISE_ZERO_HEADROOM",
-                "base_total_kw": base_total,
-                "point_opt_total_kw": opt_total,
-                "required_total_kw": required_total,
-            }
-        lam = (required_total - base_total) / denominator
-        if lam < -1e-7 or lam > 1.0 + 1e-7:
-            return {
-                "success": False,
-                "status": "POINTWISE_INTERPOLATION_OUT_OF_RANGE",
-                "lambda": float(lam),
-                "base_total_kw": base_total,
-                "point_opt_total_kw": opt_total,
-                "required_total_kw": required_total,
-            }
-        lam = min(max(float(lam), 0.0), 1.0)
-        target = p0 + lam * (p_opt - p0)
-
-    aggregate_error = abs(float(target.sum()) - required_total)
-    if aggregate_error > 1e-6:
-        return {
-            "success": False,
-            "status": "POINT_TARGET_AGGREGATE_MISMATCH",
-            "aggregate_error_kw": aggregate_error,
-        }
-
-    target_eval = network.evaluate(target)
-    if target_eval.get("feasible") is not True:
-        return {
-            "success": False,
-            "status": "INTERPOLATED_TARGET_NONLINEAR_INVALID",
-            "lambda": float(lam),
-            "base_total_kw": base_total,
-            "point_opt_total_kw": opt_total,
-            "required_total_kw": required_total,
-        }
-
+    linear = network.sensitivity(p0)
+    if not (
+        isinstance(linear, tuple)
+        and len(linear) == 2
+        and isinstance(linear[0], Mapping)
+    ):
+        raise TypeError("network.sensitivity must return (evaluation, matrix)")
+    m0, sensitivity = linear
+    vector = np.asarray(m0["vector"], dtype=float)
+    sensitivity = np.asarray(sensitivity, dtype=float)
+    lower, upper = network.bounds()
+    lower = np.asarray(lower, dtype=float)
+    upper = np.asarray(upper, dtype=float)
+    if vector.shape != lower.shape or vector.shape != upper.shape:
+        raise ValueError("network metric/bound dimensions differ")
+    if sensitivity.shape != (len(vector), len(groups)):
+        raise ValueError("network sensitivity shape differs")
     return {
-        "success": True,
-        "status": "SUCCESS",
-        "groups": groups,
-        "target": target,
-        "lambda": float(lam),
-        "base_total_kw": base_total,
-        "point_opt_total_kw": opt_total,
-        "required_total_kw": required_total,
-        "aggregate_error_kw": aggregate_error,
+        "slot": int(slot),
+        "groups": [
+            [str(group[0]), int(group[1])]
+            for group in groups
+        ],
+        "p0": p0.tolist(),
+        "m0_vector": vector.tolist(),
+        "sensitivity": sensitivity.tolist(),
+        "lower": lower.tolist(),
+        "upper": upper.tolist(),
     }
 
 
@@ -570,34 +434,25 @@ def _repair_at_alpha(
 ) -> dict[str, Any]:
     fixed_ray = baseline + float(alpha) * (original - baseline)
     mode = _mode(runtime.direction)
-
-    # All truth-cache networks for a work unit use the same EV bus/phase groups.
-    first_network = next(iter(truth_cache.values()))
-    groups = list(first_network.groups)
-
-    spatial_targets: dict[int, np.ndarray] = {}
+    linearizations: list[dict[str, Any]] = []
     seen_slots: set[int] = set()
     trace: list[dict[str, Any]] = []
-    point_optimizer_calls = 0
 
     for iteration in range(T + 1):
         solved = _solve_repair_lp(
             runtime.fleet,
             fixed_ray,
             mode=mode,
-            groups=groups,
-            spatial_targets=spatial_targets,
+            linearizations=linearizations,
         )
         if not solved["success"]:
             return {
                 "verified_feasible": False,
                 "status": solved["status"],
                 "iterations": iteration,
-                "spatial_target_slots": sorted(seen_slots),
-                "point_optimizer_calls": point_optimizer_calls,
+                "linearized_slots": sorted(seen_slots),
                 "trace": trace,
             }
-
         schedule = solved["schedule"]
         raw = _audit(
             runtime,
@@ -613,15 +468,10 @@ def _repair_at_alpha(
                 "verified_feasible": False,
                 "status": "NUMERICAL_INVALID",
                 "iterations": iteration,
-                "spatial_target_slots": sorted(seen_slots),
-                "point_optimizer_calls": point_optimizer_calls,
+                "linearized_slots": sorted(seen_slots),
                 "trace": trace,
             }
-
-        if (
-            raw.get("feasible") is True
-            and int(raw.get("checked_intervals", 0)) == T
-        ):
+        if raw.get("feasible") is True and int(raw.get("checked_intervals", 0)) == T:
             final = _audit(
                 runtime,
                 schedule,
@@ -637,87 +487,49 @@ def _repair_at_alpha(
             )
             return {
                 "verified_feasible": verified,
-                "status": (
-                    "VERIFIED_FEASIBLE"
-                    if verified
-                    else "FULL_AUDIT_FAILED"
-                ),
+                "status": "VERIFIED_FEASIBLE" if verified else "FULL_AUDIT_FAILED",
                 "iterations": iteration,
-                "spatial_target_slots": sorted(seen_slots),
-                "point_optimizer_calls": point_optimizer_calls,
+                "linearized_slots": sorted(seen_slots),
                 "aggregate_error_kw": solved["aggregate_error_kw"],
                 "invariants": solved["invariants"],
                 "trace": trace,
             }
 
         slot, witnesses = _first_physical_failure(raw)
-        trace_entry: dict[str, Any] = {
-            "iteration": iteration,
-            "first_failure_slot": slot,
-            "witnesses": witnesses,
-            "aggregate_error_kw": solved["aggregate_error_kw"],
-        }
-        trace.append(trace_entry)
-
+        trace.append(
+            {
+                "iteration": iteration,
+                "first_failure_slot": slot,
+                "witnesses": witnesses,
+                "aggregate_error_kw": solved["aggregate_error_kw"],
+            }
+        )
         if slot is None:
             return {
                 "verified_feasible": False,
                 "status": "UNCLASSIFIED_INVALID",
                 "iterations": iteration,
-                "spatial_target_slots": sorted(seen_slots),
-                "point_optimizer_calls": point_optimizer_calls,
+                "linearized_slots": sorted(seen_slots),
                 "trace": trace,
             }
         if slot in seen_slots:
             return {
                 "verified_feasible": False,
-                "status": "TARGETED_SLOT_STILL_FAILS",
+                "status": "SAME_SLOT_LINEARIZATION_EXHAUSTED",
                 "iterations": iteration,
-                "spatial_target_slots": sorted(seen_slots),
-                "point_optimizer_calls": point_optimizer_calls,
+                "linearized_slots": sorted(seen_slots),
                 "trace": trace,
             }
-
-        point = _pointwise_spatial_target(
-            runtime,
-            baseline,
-            fixed_ray,
-            truth_cache,
-            int(slot),
+        linearizations.append(
+            _make_linearization(runtime, truth_cache, schedule, slot)
         )
-        point_optimizer_calls += 1
-        trace_entry["point_target_status"] = point["status"]
-        for name in (
-            "lambda",
-            "base_total_kw",
-            "point_opt_total_kw",
-            "required_total_kw",
-            "aggregate_error_kw",
-        ):
-            if name in point:
-                trace_entry[name] = point[name]
-
-        if not point["success"]:
-            return {
-                "verified_feasible": False,
-                "status": point["status"],
-                "iterations": iteration,
-                "spatial_target_slots": sorted(seen_slots),
-                "point_optimizer_calls": point_optimizer_calls,
-                "trace": trace,
-            }
-
-        if list(point["groups"]) != groups:
-            raise ValueError("truth-cache group ordering changed across load scales")
-        spatial_targets[int(slot)] = np.asarray(point["target"], dtype=float)
-        seen_slots.add(int(slot))
+        seen_slots.add(slot)
 
     return {
         "verified_feasible": False,
         "status": "ITERATION_LIMIT",
         "iterations": T + 1,
-        "spatial_target_slots": sorted(seen_slots),
-        "point_optimizer_calls": point_optimizer_calls,
+        "linearized_slots": sorted(seen_slots),
         "trace": trace,
     }
 
@@ -770,17 +582,13 @@ def smoke(
         if work_unit_id not in units:
             raise KeyError(work_unit_id)
         unit = units[work_unit_id]
-
         runtime = _create_real_pilot_runtime(repo_root, unit, config)
         baseline, original, _selected = _reconstruct_schedule(
             runtime,
             config,
             unit,
         )
-        observed_hash = canonical_schedule_sha256(
-            runtime.fleet,
-            original,
-        )
+        observed_hash = canonical_schedule_sha256(runtime.fleet, original)
         expected_hash = str(archived["schedule_sha256"])
         if observed_hash != expected_hash:
             raise AssertionError(
@@ -799,17 +607,12 @@ def smoke(
             baseline_raw.get("feasible") is True
             and int(baseline_raw.get("checked_intervals", 0)) == T
         ):
-            raise AssertionError(
-                f"{evaluation_id}: baseline not feasible"
-            )
+            raise AssertionError(f"{evaluation_id}: baseline not feasible")
         baseline_slots = baseline_raw.get("slot_results")
 
         alpha_fixed = float(archived["alpha_transfer"])
         probe_alpha = float(archived["probe_alpha"])
-
-        fixed_schedule = (
-            baseline + alpha_fixed * (original - baseline)
-        )
+        fixed_schedule = baseline + alpha_fixed * (original - baseline)
         fixed_audit = _audit(
             runtime,
             fixed_schedule,
@@ -822,12 +625,10 @@ def smoke(
             and int(fixed_audit.get("checked_intervals", 0)) == T
         ):
             raise AssertionError(
-                f"{evaluation_id}: alpha_fixed did not reproduce as feasible"
+                f"{evaluation_id}: archived alpha_fixed did not reproduce as feasible"
             )
 
-        probe_schedule = (
-            baseline + probe_alpha * (original - baseline)
-        )
+        probe_schedule = baseline + probe_alpha * (original - baseline)
         probe_audit = _audit(
             runtime,
             probe_schedule,
@@ -835,16 +636,9 @@ def smoke(
             baseline_slots,
             full=False,
         )
-        observed_probe_slot, probe_witnesses = (
-            _first_physical_failure(probe_audit)
-        )
-        expected_probe_slot = int(
-            archived["observed_first_failure_slot"]
-        )
-        if (
-            probe_audit.get("feasible") is True
-            or observed_probe_slot != expected_probe_slot
-        ):
+        observed_probe_slot, probe_witnesses = _first_physical_failure(probe_audit)
+        expected_probe_slot = int(archived["observed_first_failure_slot"])
+        if probe_audit.get("feasible") is True or observed_probe_slot != expected_probe_slot:
             raise AssertionError(
                 f"{evaluation_id}: archived failing probe did not reproduce"
             )
@@ -858,157 +652,96 @@ def smoke(
             baseline_slots=baseline_slots,
         )
         if repair["status"] == "NUMERICAL_INVALID":
-            raise AssertionError(
-                f"{evaluation_id}: repair generated numerical invalidity"
-            )
-        # Every failing probe must actually exercise the preregistered
-        # point-optimizer branch at least once.
-        if int(repair["point_optimizer_calls"]) < 1:
-            raise AssertionError(
-                f"{evaluation_id}: point optimizer was not exercised"
-            )
+            raise AssertionError(f"{evaluation_id}: repair generated numerical invalidity")
         if repair["verified_feasible"]:
-            if float(
-                repair.get("aggregate_error_kw", math.inf)
-            ) > 1e-6:
-                raise AssertionError(
-                    f"{evaluation_id}: aggregate commitment changed"
-                )
+            if float(repair.get("aggregate_error_kw", math.inf)) > 1e-6:
+                raise AssertionError(f"{evaluation_id}: aggregate commitment changed")
             inv = repair["invariants"]
             if (
                 float(inv["max_ev_invariant_error"]) > 1e-6
                 or int(inv["simultaneous_slots"]) != 0
             ):
-                raise AssertionError(
-                    f"{evaluation_id}: EV invariants failed"
-                )
+                raise AssertionError(f"{evaluation_id}: EV invariants failed")
 
         cases.append(
             {
                 "evaluation_id": evaluation_id,
                 "feeder": str(archived["feeder"]),
                 "direction": str(archived["direction"]),
-                "constraint_classes": str(
-                    archived["constraint_classes"]
-                ),
+                "constraint_classes": str(archived["constraint_classes"]),
                 "alpha_fixed": alpha_fixed,
                 "probe_alpha": probe_alpha,
                 "probe_failure_slot": observed_probe_slot,
                 "probe_witnesses": probe_witnesses,
                 "repair_status_at_probe": repair["status"],
-                "repair_verified_at_probe": bool(
-                    repair["verified_feasible"]
-                ),
-                "repair_iterations": int(
-                    repair["iterations"]
-                ),
-                "spatial_target_slots": list(
-                    repair["spatial_target_slots"]
-                ),
-                "point_optimizer_calls": int(
-                    repair["point_optimizer_calls"]
-                ),
+                "repair_verified_at_probe": bool(repair["verified_feasible"]),
+                "repair_iterations": int(repair["iterations"]),
+                "linearized_slots": list(repair["linearized_slots"]),
                 "schedule_sha256": observed_hash,
             }
         )
         print(
             f"{evaluation_id}: fixed={alpha_fixed:.3f} "
-            f"probe={probe_alpha:.3f} "
-            f"repair={repair['status']} "
-            f"point_calls={repair['point_optimizer_calls']}",
+            f"probe={probe_alpha:.3f} repair={repair['status']}",
             flush=True,
         )
 
     return {
-        "analysis": (
-            "V2.5C-R3 preregistration-consistent "
-            "spatial-repair implementation smoke"
-        ),
-        "role": (
-            "implementation validation only; "
-            "not manuscript evidence"
-        ),
-        "method_identity": (
-            "point optimizer -> nonlinear-feasible spatial target -> "
-            "fixed bus-phase equality in feeder-trajectory-preserving "
-            "trajectory LP"
-        ),
+        "analysis": "V2.5C-R3 spatial-repair implementation smoke",
+        "role": "implementation validation only; not manuscript evidence",
+        "scientific_input_commit": config.get("_config_sha256"),
         "smoke_case_n": len(cases),
         "all_schedule_hashes_reproduced": True,
         "all_archived_fixed_boundaries_reproduced": True,
-        "all_point_optimizer_branches_exercised": all(
-            case["point_optimizer_calls"] >= 1
-            for case in cases
-        ),
         "numerical_invalid_n": sum(
             case["repair_status_at_probe"] == "NUMERICAL_INVALID"
             for case in cases
         ),
         "verified_probe_repairs_n": sum(
-            case["repair_verified_at_probe"]
-            for case in cases
+            case["repair_verified_at_probe"] for case in cases
         ),
         "cases": cases,
         "claim_boundary": (
-            "Smoke outcomes are implementation evidence only. "
-            "They are not used to select R3 cases, tune thresholds, "
-            "or support manuscript efficacy claims."
+            "Smoke outcomes are used only to validate code paths, invariants, "
+            "aggregate-commitment preservation, and nonlinear audit integration. "
+            "They are not used to select R3 cases or tune scientific thresholds."
         ),
     }
 
 
-def _write_markdown(
-    result: Mapping[str, Any],
-    path: Path,
-) -> None:
+def _write_markdown(result: Mapping[str, Any], path: Path) -> None:
     lines = [
-        "# V2.5C-R3 preregistration-consistent spatial-repair smoke",
+        "# V2.5C-R3 spatial-repair smoke",
         "",
         f"- Cases: **{result['smoke_case_n']}**",
         "- Exact balanced-schedule hashes reproduced: **yes**",
         "- Archived fixed/probe boundary behavior reproduced: **yes**",
-        "- Preregistered point-optimizer branch exercised in every case: **yes**",
         f"- Numerical-invalid repair paths: **{result['numerical_invalid_n']}**",
-        (
-            "- Probe points repaired and nonlinearly verified: "
-            f"**{result['verified_probe_repairs_n']}**"
-        ),
+        f"- Probe points repaired and nonlinearly verified: **{result['verified_probe_repairs_n']}**",
         "",
-        (
-            "> Smoke outcomes are implementation evidence only "
-            "and are not manuscript results."
-        ),
-        "",
-        "## Method identity",
-        "",
-        result["method_identity"],
+        "> Smoke outcomes are implementation evidence only and are not manuscript results.",
         "",
         "## Cases",
         "",
-        (
-            "| case | feeder | dir | boundary | alpha_fixed | "
-            "probe | repair status | point calls |"
-        ),
-        "|---|---|---|---|---:|---:|---|---:|",
+        "| case | feeder | dir | boundary | alpha_fixed | probe | repair status |",
+        "|---|---|---|---|---:|---:|---|",
     ]
     for row in result["cases"]:
         lines.append(
-            f"| `{row['evaluation_id']}` | {row['feeder']} | "
-            f"{row['direction']} | {row['constraint_classes']} | "
-            f"{row['alpha_fixed']:.3f} | {row['probe_alpha']:.3f} | "
-            f"{row['repair_status_at_probe']} | "
-            f"{row['point_optimizer_calls']} |"
+            f"| `{row['evaluation_id']}` | {row['feeder']} | {row['direction']} | "
+            f"{row['constraint_classes']} | {row['alpha_fixed']:.3f} | "
+            f"{row['probe_alpha']:.3f} | {row['repair_status_at_probe']} |"
         )
-    path.write_text(
-        "\n".join(lines) + "\n",
-        encoding="utf-8",
-    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", default=".")
-    parser.add_argument("--boundary-csv", required=True)
+    parser.add_argument(
+        "--boundary-csv",
+        required=True,
+    )
     parser.add_argument(
         "--output-json",
         default="reports/v2_5c_r3_smoke.json",
@@ -1028,32 +761,16 @@ def main() -> int:
     output_md = root / args.output_md
     output_json.parent.mkdir(parents=True, exist_ok=True)
     output_json.write_text(
-        json.dumps(
-            result,
-            indent=2,
-            sort_keys=True,
-            allow_nan=False,
-        )
-        + "\n",
+        json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
     )
     _write_markdown(result, output_md)
-    print(
-        json.dumps(
-            {
-                "status": "PASS",
-                "output_json": str(
-                    output_json.relative_to(root)
-                ),
-                "output_md": str(
-                    output_md.relative_to(root)
-                ),
-                "verified_probe_repairs_n": result[
-                    "verified_probe_repairs_n"
-                ],
-            }
-        )
-    )
+    print(json.dumps({
+        "status": "PASS",
+        "output_json": str(output_json.relative_to(root)),
+        "output_md": str(output_md.relative_to(root)),
+        "verified_probe_repairs_n": result["verified_probe_repairs_n"],
+    }))
     return 0
 
 
