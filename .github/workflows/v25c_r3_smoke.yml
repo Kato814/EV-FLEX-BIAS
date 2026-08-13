@@ -1,0 +1,98 @@
+name: V2.5C-R3 spatial-repair smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      VECLIB_MAXIMUM_THREADS: "1"
+      BLIS_NUM_THREADS: "1"
+      PYTHONHASHSEED: "0"
+      R2_COMMIT: "2ba97a7f62d2dcfeb711971fc589441f00f5016a"
+      R2_RUN_ID: "31671974049"
+      BW_RUN_ID: "31676835878"
+
+    steps:
+      - name: Checkout smoke implementation commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify scientific inputs match frozen R2
+        shell: pwsh
+        run: |
+          git diff --exit-code $env:R2_COMMIT -- src/evflex config data manifests legacy requirements.lock.txt pyproject.toml
+          if ($LASTEXITCODE -ne 0) {
+            throw "Scientific inputs differ from frozen R2 commit $env:R2_COMMIT"
+          }
+
+      - name: Verify preregistration is present
+        shell: pwsh
+        run: |
+          if (-not (Test-Path reports/v2_5c_r3_preregistered_design.md)) {
+            throw "Missing R3 preregistration report"
+          }
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install locked dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.lock.txt
+          python -m pip install -e .
+
+      - name: Download completed R2 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ev-flex-bias-v25-r2-complete-31671974049
+          path: _r2
+          github-token: ${{ github.token }}
+          repository: Kato814/EV-FLEX-BIAS
+          run-id: 31671974049
+
+      - name: Download boundary-witness artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: v25b-r2-boundary-witness-31676835878
+          path: _bw
+          github-token: ${{ github.token }}
+          repository: Kato814/EV-FLEX-BIAS
+          run-id: 31676835878
+
+      - name: Verify frozen evidence inputs
+        shell: pwsh
+        run: |
+          python -c "import json,pandas as pd; s=json.load(open(r'_r2/results/transferability_replication_v2_5b/summary.json',encoding='utf-8')); b=pd.read_csv(r'_bw/reports/v2_5b_boundary_witness.csv'); assert len(s['evaluations'])==288; assert len(b)==56; assert b['boundary_reproduced'].astype(str).str.lower().eq('true').all(); print('R2 and boundary evidence OK')"
+
+      - name: Run R3 implementation smoke
+        shell: pwsh
+        run: |
+          python scripts/run_v2_5c_r3_smoke.py `
+            --boundary-csv _bw/reports/v2_5b_boundary_witness.csv
+
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v25c-r3-spatial-repair-smoke-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            reports/v2_5c_r3_smoke.json
+            reports/v2_5c_r3_smoke.md
+            reports/v2_5c_r3_preregistered_design.md
