@@ -1,0 +1,89 @@
+name: V2.5B fixed-ray vehicle verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    env:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      VECLIB_MAXIMUM_THREADS: "1"
+      BLIS_NUM_THREADS: "1"
+      PYTHONHASHSEED: "0"
+      R2_COMMIT: "2ba97a7f62d2dcfeb711971fc589441f00f5016a"
+      R2_RUN_ID: "31671974049"
+
+    steps:
+      - name: Checkout verification implementation
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify scientific inputs match frozen R2
+        shell: pwsh
+        run: |
+          git diff --exit-code $env:R2_COMMIT -- src/evflex config data manifests legacy requirements.lock.txt pyproject.toml
+          if ($LASTEXITCODE -ne 0) {
+            throw "Scientific inputs differ from frozen R2 commit $env:R2_COMMIT"
+          }
+
+      - name: Verify diagnostic script is present
+        shell: pwsh
+        run: |
+          if (-not (Test-Path scripts/verify_v2_5b_fixed_ray_vehicle_feasibility.py)) {
+            throw "Missing fixed-ray vehicle verification script"
+          }
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install locked dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.lock.txt
+          python -m pip install -e .
+
+      - name: Download completed R2 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ev-flex-bias-v25-r2-complete-31671974049
+          path: _r2
+          github-token: ${{ github.token }}
+          repository: Kato814/EV-FLEX-BIAS
+          run-id: 31671974049
+
+      - name: Verify completed R2 evidence identity
+        shell: pwsh
+        run: |
+          python -c "import json,hashlib,pathlib; p=pathlib.Path(r'_r2/results/transferability_replication_v2_5b/summary.json'); s=json.load(open(p,encoding='utf-8')); assert len(s['evaluations'])==288; primary=[r for r in s['evaluations'] if int(r.get('requested_duration_min',-1))==15]; active=[r for r in primary if r.get('status')=='SUCCESS' and r.get('scientific_status')=='VALID' and r.get('active_offer') is True and r.get('eligible_for_scientific_denominator') is True]; assert len(primary)==96; assert len(active)==89; print('R2 summary identity OK', hashlib.sha256(p.read_bytes()).hexdigest())"
+
+      - name: Run fixed-ray vehicle-feasibility verification
+        shell: pwsh
+        run: |
+          python scripts/verify_v2_5b_fixed_ray_vehicle_feasibility.py `
+            --summary _r2/results/transferability_replication_v2_5b/summary.json
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v25b-fixed-ray-vehicle-verification-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            reports/v2_5b_fixed_ray_vehicle_verification.json
+            reports/v2_5b_fixed_ray_vehicle_verification.csv
+            reports/v2_5b_fixed_ray_vehicle_verification.md
+            reports/v2_5b_fixed_ray_vehicle_verification_partial.jsonl
