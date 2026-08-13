@@ -44,6 +44,13 @@ jobs:
             throw "Missing R3 preregistration report"
           }
 
+      - name: Verify consistency note is present
+        shell: pwsh
+        run: |
+          if (-not (Test-Path reports/v2_5c_r3_smoke_consistency_note.md)) {
+            throw "Missing R3 smoke consistency note"
+          }
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -80,7 +87,7 @@ jobs:
         run: |
           python -c "import json,pandas as pd; s=json.load(open(r'_r2/results/transferability_replication_v2_5b/summary.json',encoding='utf-8')); b=pd.read_csv(r'_bw/v2_5b_boundary_witness.csv'); assert len(s['evaluations'])==288; assert len(b)==56; assert b['boundary_reproduced'].astype(str).str.lower().eq('true').all(); print('R2 and boundary evidence OK')"
 
-      - name: Run R3 implementation smoke
+      - name: Run preregistration-consistent R3 implementation smoke
         shell: pwsh
         run: |
           python scripts/run_v2_5c_r3_smoke.py `
@@ -96,3 +103,4 @@ jobs:
             reports/v2_5c_r3_smoke.json
             reports/v2_5c_r3_smoke.md
             reports/v2_5c_r3_preregistered_design.md
+            reports/v2_5c_r3_smoke_consistency_note.md
