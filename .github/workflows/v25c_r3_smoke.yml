@@ -90,7 +90,7 @@ jobs:
       - name: Run preregistration-consistent R3 implementation smoke
         shell: pwsh
         run: |
-          python scripts/run_v2_5c_r3_smoke.py `
+          python scripts/run_v2_5c_r3_smoke_prereg_interface_fix.py `
             --boundary-csv _bw/v2_5b_boundary_witness.csv
 
       - name: Upload smoke evidence
