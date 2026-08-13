@@ -78,13 +78,13 @@ jobs:
       - name: Verify frozen evidence inputs
         shell: pwsh
         run: |
-          python -c "import json,pandas as pd; s=json.load(open(r'_r2/results/transferability_replication_v2_5b/summary.json',encoding='utf-8')); b=pd.read_csv(r'_bw/reports/v2_5b_boundary_witness.csv'); assert len(s['evaluations'])==288; assert len(b)==56; assert b['boundary_reproduced'].astype(str).str.lower().eq('true').all(); print('R2 and boundary evidence OK')"
+          python -c "import json,pandas as pd; s=json.load(open(r'_r2/results/transferability_replication_v2_5b/summary.json',encoding='utf-8')); b=pd.read_csv(r'_bw/v2_5b_boundary_witness.csv'); assert len(s['evaluations'])==288; assert len(b)==56; assert b['boundary_reproduced'].astype(str).str.lower().eq('true').all(); print('R2 and boundary evidence OK')"
 
       - name: Run R3 implementation smoke
         shell: pwsh
         run: |
           python scripts/run_v2_5c_r3_smoke.py `
-            --boundary-csv _bw/reports/v2_5b_boundary_witness.csv
+            --boundary-csv _bw/v2_5b_boundary_witness.csv
 
       - name: Upload smoke evidence
         if: always()
