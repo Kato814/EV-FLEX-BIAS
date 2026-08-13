@@ -56,6 +56,9 @@ jobs:
           Copy-Item _resume_artifact/state/runtime/transferability_replication_v2_5b/checkpoint.json `
             state/runtime/transferability_replication_v2_5b/checkpoint.json
           python -c "import json; p=r'state/runtime/transferability_replication_v2_5b/checkpoint.json'; d=json.load(open(p,encoding='utf-8')); assert d['code_commit']=='2ba97a7f62d2dcfeb711971fc589441f00f5016a'; assert len(d['unit_results'])==93; print('Checkpoint OK: 93/96 units complete')"
+          Remove-Item -Recurse -Force _resume_artifact
+          $dirty = git status --porcelain
+          if ($dirty) { Write-Error "Worktree is dirty before resume:`n$dirty"; exit 1 }
 
       - name: Verify R2-specific tests
         shell: pwsh
