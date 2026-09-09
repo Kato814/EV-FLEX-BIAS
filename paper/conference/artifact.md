@@ -1,75 +1,121 @@
 # ISGT Asia 2026 manuscript template contract
 
-## Reference
+## Status
 
-- Authoritative conference page: `https://attend.ieee.org/isgt-asia-2026/submission/`
-- Retained conference template: `paper/conference/conference-template-letter.docx`
-- Retained template SHA-256: `4589779a1a74782dc5a7a657a9907f243c9dd54510cb6c154acaf24cc9079852`
-- Retained template size: 34,065 bytes
-- Render evidence: three pages inspected from the official template at 100% zoom.
-- Structure evidence: seven sections; template styles, headings, drawing, fields, notes, and controls audited.
+This file tracks two different formatting stages and must not conflate them:
+
+1. **Initial submission** — the CFP/initial-submission guidance used A4.
+2. **Camera-ready after acceptance** — the acceptance notification for Paper 9499 explicitly requires **US Letter (21.59 cm × 27.94 cm)**.
+
+The camera-ready requirement is now authoritative for the final paper.
+
+## Reference files
+
+- Conference site: `https://attend.ieee.org/isgt-asia-2026/`
+- Retained Word template: `paper/conference/conference-template-letter.docx`
+- Retained Word-template SHA-256: `4589779a1a74782dc5a7a657a9907f243c9dd54510cb6c154acaf24cc9079852`
+- Retained Word-template size: 34,065 bytes
 - Authoring copy: `paper/conference/conference-template-transitional.docx`
 - Authoring-copy SHA-256: `058d47f060d96cba413b83741061801f5fbde4948e1bdaade79045c05f474ac8`
-- Normalization: Microsoft Word read-only open followed by Save As DOCX converted Strict OOXML relationship namespaces to Transitional OOXML. The retained conference download was not modified.
+- Acceptance/camera-ready status: `paper/conference/acceptance_status_9499.md`
 
-## Page system
+## Initial-submission page system
 
-- The conference page requires a single A4 PDF and a 4-6 page full paper.
-- The downloaded Word file is internally US Letter (612 x 792 pt), despite the conference page's A4 requirement and its filename `conference-template-letter.docx`.
-- The final manuscript must therefore use A4 portrait (210 x 297 mm) while retaining the downloaded template's type styles, column system, and paragraph rhythm.
-- Baseline margins from the downloaded file are 0.62 in left/right, 0.75 in top, and 1.00 in bottom.
-- The paper body uses two columns separated by 0.25 in. Continuous one-column sections may be used for the title/author block and publication-width figures or tables.
-- No page numbers are inserted.
+For the initial manuscript, the conference CFP/submission guidance required a single A4 PDF and a 4-6 page full paper. The downloaded Word template itself was internally US Letter (612 × 792 pt), so the initial-submission artifact used A4 geometry while retaining the IEEE conference typography and two-column system.
+
+This A4 geometry was appropriate for the initial submission only.
+
+## Camera-ready page system
+
+The acceptance notification for Paper 9499 explicitly instructs authors to format the **Camera-ready** according to the official template and states:
+
+- page size: **Letter**;
+- physical size: **21.59 cm × 27.94 cm**;
+- final upload deadline: **2026-10-20, Beijing Time**.
+
+Therefore the final camera-ready manuscript must use US Letter geometry. The old A4 correction is no longer applicable to the final paper.
+
+The camera-ready body should remain the standard IEEE conference **two-column** layout. Only the standard IEEE title/author region is full-width; ordinary body text should not be converted into a one-column layout. Figures should normally occupy a single text column unless a truly publication-width figure is scientifically necessary and explicitly justified.
 
 ## Typography and components
 
-- Primary typeface: Times New Roman.
-- Paper title: template style `paper title`, 24 pt, centered, 6 pt after.
-- Author line: template style `Author`, centered.
-- Affiliation line: template style `Affiliation`, centered.
-- Abstract: template style `Abstract`, 9 pt, justified, 10 pt after.
-- Keywords: template style `Keywords`, derived from `Abstract`, italic label treatment, 6 pt after.
-- Main body: template style `Body Text`, justified, approximately 0.95 line spacing.
-- Major headings: template style `Heading 1`, centered Roman numeral convention.
-- Subheadings: template style `Heading 2`, italic, left aligned.
-- Figure captions: template style `figure caption`, 8 pt, below the figure.
-- Table titles: template style `table head`, 8 pt, above the table.
-- References: template style `references`, 8 pt, justified, 2.5 pt after.
-- Figures are inline, not floating, and carry alternative text.
-- Tables use explicit widths, cell margins, and repeating header rows; fixed row heights are prohibited.
+The retained IEEE conference template establishes the following practical style contract:
 
-## Content flow
+- primary text typeface: Times New Roman / IEEE template equivalent;
+- paper title and author block: IEEE conference template styles;
+- abstract and keywords: template styles, no unnecessary mathematical display content;
+- main body: justified two-column IEEE conference text;
+- major headings: IEEE Roman-numeral convention;
+- subheadings: IEEE conference subsection style;
+- figure captions: below the figure, short and descriptive;
+- table titles: above the table;
+- references: IEEE numbered style;
+- figure labels: 8 pt Times New Roman or the template-compatible equivalent;
+- mathematical symbols inside figures should visually match the manuscript's mathematical typography rather than being forced into the figure-label font.
 
-1. Title, author placeholder, and affiliation placeholder.
-2. Abstract and index terms.
-3. Introduction and positioning.
-4. Same-input multi-period audit method.
-5. Frozen protocol and applicability modeling.
-6. Development, controlled-ablation, and one-pass holdout results.
-7. Limitations, engineering implications, and conclusion.
-8. References.
+## Accepted-paper metadata
 
-## Slot map
+- Paper ID: **9499**
+- Title: *Feasibility Assessment of Balanced-Model Electric Vehicle Charging-Flexibility Schedules in Unbalanced Three-Phase Distribution Networks*
+- Authors: Junxing Tan, Jun Wu, Shiting Cui, Chaofan Yang, Jiangcheng Wang
+- Funding acknowledgement: `Project Supported By Smart Grid-National Science and Technology Major Project. (2025ZD0806600)`
 
-- Title: replace all template guidance with the V2.0 working title.
-- Author and affiliation: use explicit placeholders because no verified author identity or affiliation exists in the project files; never invent identifying information.
-- Abstract and keywords: replace completely with V2.0 text.
-- Body, tables, figures, captions, and references: replace all template guidance completely.
-- Footer: remove the sample copyright placeholder and funding text; no conference-specific copyright code has been provided.
-- Template warning text, sample equations, sample references, and instructional prose: remove completely.
+The funding acknowledgement is placed in the IEEE first-page footnote area with the normal horizontal footnote rule.
 
-## Package preservation and intentional deviations
+## Figure/table layout contract
 
-- Preserve the template-derived styles, theme, numbering definitions needed by the manuscript, and footer relationship topology where practical.
-- The Strict-to-Transitional normalization necessarily rewrites namespace-bearing XML parts; this is recorded and the retained source remains byte-for-byte unchanged.
-- The Letter-to-A4 geometry change is mandatory because the conference page explicitly requires A4.
-- The manuscript may remove unused sample relationships and guidance content; no sample guidance may survive into the submission files.
+Current manuscript decisions to preserve unless reviewer comments require changes:
 
-## Fidelity gates
+- Fig. 1: vector workflow figure, single-column width.
+- Fig. 2: one-column figure; panels `(a)` and `(b)` stacked vertically.
+- Fig. 3: one-column figure; panels `(a)` and `(b)` stacked vertically.
+- Fig. 4: one-column result figure.
+- Fig. 5: one-column result figure.
+- No figure should exceed the width of the column in which it is placed.
+- Captions should identify the displayed content; result interpretation belongs in the main text.
+- Figures and tables must be cited before their final rendered appearance.
 
-- The retained conference download must still match its recorded SHA-256.
-- Every final section must report A4 portrait geometry.
-- The final paper must contain 4-6 pages, use two-column IEEE body layout, and have no page numbers.
-- Every page of the latest DOCX render and final PDF render must pass visual inspection.
-- No template guidance, old 117-scenario statistic, old 15-minute-only claim, manuscript marker, or internal tool token may be visible.
-- All experimental numbers must validate against `paper/generated_values_v2_0.json`.
+## Content-flow contract
+
+The accepted-paper narrative is:
+
+1. Introduction.
+2. Network Feasibility Assessment.
+   - Proportional Schedule Scaling.
+   - Network Feasibility Evaluation.
+3. Test Systems and Study Cases.
+4. Results and Discussion.
+   - Schedule Feasibility.
+   - Limiting Network Constraints.
+5. Conclusion.
+6. References.
+
+Scientific evidence is frozen to the validated INC/V1G scope under:
+
+`manuscript_freeze_20260813/manuscript_freeze_20260813/`
+
+Historical V2.0/V2.4 paper-generation assets are retained for provenance but are not authoritative for the camera-ready manuscript.
+
+## Fidelity gates for the next camera-ready build
+
+The final camera-ready artifact must pass all of the following:
+
+- reviewer comments addressed and response decisions documented;
+- US Letter portrait geometry (21.59 cm × 27.94 cm);
+- standard IEEE conference two-column body;
+- no page numbers;
+- title, author order, affiliations, emails, and funding text verified;
+- figure and table numbering sequential and cited in text;
+- figure captions below figures; table titles above tables;
+- all vector figures remain vector where possible;
+- raster topology figures retain effective resolution above 300 ppi;
+- no clipped or overlapping figure/table text;
+- no Type 3 fonts; fonts embedded;
+- no undefined references or citations;
+- references checked against authoritative sources;
+- no old template guidance or obsolete V2.0/V2.4 manuscript prose;
+- all reported experimental numbers validated against the V2.5B INC/V1G manuscript freeze.
+
+## Acceptance-letter provenance
+
+See `acceptance_status_9499.md` for the acceptance-letter hash, deadlines, registration requirements, copyright instructions, and official links.
