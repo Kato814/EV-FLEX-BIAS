@@ -1,16 +1,13 @@
-* text=auto
-
+* text=auto eol=lf
 *.py text eol=lf
-*.json text eol=lf
-*.csv text eol=lf
 *.md text eol=lf
-*.txt text eol=lf
-*.dss text eol=lf
-*.svg text eol=lf
-*.xml text eol=lf
-
-*.docx binary
-*.pdf binary
-*.png binary
-*.tiff binary
+*.toml text eol=lf
+*.yml text eol=lf
+data/** -text
+results/** -text
+paper/** -text
+poster/** -text
 *.zip binary
+*.pdf binary
+*.docx binary
+*.png binary

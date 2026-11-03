@@ -1,0 +1,18 @@
+{
+  "formal_constraints": {
+    "vmin_pu": 0.95,
+    "vmax_pu": 1.06,
+    "vuf_limit_pct": 2.0,
+    "transformer_loading_limit_pu": 1.0,
+    "feeder_loading_limit_pu": 1.0,
+    "line_thermal_in_scope": false
+  },
+  "alpha_search": {
+    "coarse_step": 0.02,
+    "refine_tolerance": 0.002
+  },
+  "feeder_kva": {
+    "ieee13": 5000,
+    "lv906": 800
+  }
+}

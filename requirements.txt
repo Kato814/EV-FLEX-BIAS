@@ -1,0 +1,15 @@
+# Final numerical experiment, verified with CPython 3.12.15 on Windows.
+# Exact versions from the environment that reproduced the archived schedules.
+numpy==2.3.5
+pandas==2.2.3
+scipy==1.17.0
+opendssdirect.py==0.9.4
+dss-python==0.15.7
+dss-python-backend==0.14.5
+cffi==2.1.1
+pycparser==3.11
+typing_extensions==4.16.0
+python-dateutil==2.9.0.post0
+pytz==2026.5
+tzdata==2026.5
+six==1.17.0

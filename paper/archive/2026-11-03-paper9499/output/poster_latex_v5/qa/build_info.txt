@@ -1,6 +1,0 @@
-Compiler: C:\Users\Administrator\AppData\Local\Programs\MiKTeX\miktex\bin\x64\pdflatex.exe
-Version: MiKTeX-pdfTeX 4.23 (MiKTeX 25.12)
-Source: D:\Kato‘s Files\会议论文\output\poster_latex_v5\paper9499_A0_poster_v5.tex
-Output: D:\Kato‘s Files\会议论文\output\pdf\paper9499_A0_poster_v5.pdf
-SHA256: B2F8A26736EFDE64FE93963CE0ED7452D297285982F44C9405603E8E7B17B556
-Built: 2026-10-24T21:26:15

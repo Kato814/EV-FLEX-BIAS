@@ -1,8 +1,0 @@
-{
-  "errors": [],
-  "gate": "G0_PROVENANCE",
-  "gate_status": "PASS",
-  "protocol_id": "EV-FLEX-BIAS-V2.0",
-  "required_assets": 27,
-  "verified_assets": 27
-}

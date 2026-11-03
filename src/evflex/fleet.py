@@ -1,9 +1,7 @@
 from __future__ import annotations
-
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-
 import numpy as np
 import pandas as pd
 
@@ -28,7 +26,6 @@ POPULATION_COLUMNS = (
     "kv_ln",
 )
 
-
 @dataclass(frozen=True)
 class FleetBundle:
     scenario: pd.Series
@@ -37,25 +34,24 @@ class FleetBundle:
     baseline: np.ndarray
     load_scales: np.ndarray
 
-
 def load_fleet_bundle(
     repo_root: Path,
     scenario_id: str,
     archived_engine: ModuleType,
     legacy_core: ModuleType,
 ) -> FleetBundle:
-    """Load one frozen scenario and construct its D5-compatible baseline."""
+    """Load one frozen scenario and construct its uniform baseline."""
     repo = repo_root.resolve(strict=True)
-    inherited = repo / "data" / "inherited"
+    inherited = repo / "data"
 
-    scenarios = pd.read_csv(inherited / "base_scenarios_v1_2.csv")
+    scenarios = pd.read_csv(inherited / "scenarios.csv")
     selected = scenarios.loc[scenarios["scenario_id"] == scenario_id]
     if len(selected) != 1:
         raise ValueError(f"Expected exactly one frozen scenario {scenario_id}, found {len(selected)}")
     scenario = selected.iloc[0].copy()
 
     population = pd.read_csv(
-        inherited / "formal_ev_populations_v1_2.csv",
+        inherited / "vehicles.csv",
         usecols=list(POPULATION_COLUMNS),
     )
     population = population.loc[population["scenario_id"] == scenario_id].copy()
@@ -64,7 +60,7 @@ def load_fleet_bundle(
     if population["ev_id"].duplicated().any():
         raise ValueError(f"Duplicate EV IDs in frozen population for {scenario_id}")
 
-    load_profile = pd.read_csv(inherited / "controlled_native_load_profile_v1_2.csv")
+    load_profile = pd.read_csv(inherited / "load_profile.csv")
     fleet = archived_engine.build_fleet(population, legacy_core.EV)
     baseline = archived_engine.uniform_baseline(fleet)
     load_scales = archived_engine.scenario_load_scales(load_profile, scenario)
