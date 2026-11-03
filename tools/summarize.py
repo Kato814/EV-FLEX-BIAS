@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import io
 import json
 import math
@@ -12,9 +13,7 @@ from statistics import mean, median
 from typing import Any
 
 from evaluate import (
-    DEFAULT_OUTPUT, DEFAULT_REPO, N_GRID, SCRIPT_VERSION,
-    analyze_flags, atomic_json, atomic_text, provenance, read_sources,
-    sha256_file,
+    DEFAULT_REPO, N_GRID, analyze_flags, atomic_json, atomic_text, read_sources,
 )
 
 
@@ -119,17 +118,19 @@ def analyze_one(meta: dict[str, Any], grid_rows: list[dict[str, str]], frozen: d
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=DEFAULT_REPO)
-    parser.add_argument("--input", type=Path, default=DEFAULT_REPO / "results/alpha_grid.zip")
-    parser.add_argument("--output", type=Path, default=DEFAULT_REPO / "generated/analysis")
+    parser.add_argument("--input", type=Path,
+                        help="Saved grid ZIP or directory; defaults to <repo>/results/alpha_grid.zip")
+    parser.add_argument("--output", type=Path,
+                        help="Summary directory; defaults to <repo>/generated/analysis")
     args = parser.parse_args()
     repo = args.repo.resolve(strict=True)
-    out = args.output.resolve()
+    out = (args.output if args.output is not None else repo / "generated/analysis").resolve()
     if out == (repo / "results").resolve() or (repo / "results").resolve() in out.parents:
         raise ValueError("Write regenerated summaries outside final results")
     cases, _ = read_sources(repo)
-    source = args.input.resolve(strict=True)
+    source = (args.input if args.input is not None else repo / "results/alpha_grid.zip").resolve(strict=True)
     packed = zipfile.ZipFile(source) if source.is_file() else None
-    completed, missing, all_grids = [], [], []
+    completed, missing = [], []
     try:
         for case in cases:
             name = case["scenario_id"]
@@ -142,7 +143,6 @@ def main() -> int:
             meta = json.loads(meta_bytes)
             if meta.get("status") not in {"PASS", "REVIEW_REQUIRED"}:
                 raise ValueError(f"Invalid result status: {name}")
-            import hashlib
             if hashlib.sha256(grid_bytes).hexdigest() != meta["grid_csv_sha256"]:
                 raise ValueError(f"Grid checksum mismatch: {name}")
             rows = list(csv.DictReader(io.StringIO(grid_bytes.decode("utf-8"))))

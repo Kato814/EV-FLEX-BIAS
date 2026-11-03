@@ -37,7 +37,7 @@ def parse_inputs(source: Path):
         if match:
             lines.append(match.groups())
     loads = []
-    for row in (source / "Loads.txt").read_text().splitlines():
+    for row in (source / "LoadsStaticAudit.txt").read_text().splitlines():
         match = re.search(r"New\s+Load\.LOAD(\d+)\s+Phases=1\s+Bus1=(\d+)\.(\d+)", row, re.I)
         if match:
             load_id, bus, phase = match.groups()

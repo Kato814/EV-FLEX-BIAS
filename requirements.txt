@@ -1,5 +1,5 @@
 # Final numerical experiment, verified with CPython 3.12.15 on Windows.
-# Exact versions from the environment that reproduced the archived schedules.
+# Exact versions from the environment that reproduced the final schedules.
 numpy==2.3.5
 pandas==2.2.3
 scipy==1.17.0

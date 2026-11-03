@@ -25,8 +25,6 @@ for _variable in (
 
 SCRIPT_VERSION = "final-alpha-grid-1.0"
 DEFAULT_REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(DEFAULT_REPO / "src"))
-DEFAULT_OUTPUT = DEFAULT_REPO / "generated/evaluation"
 FROZEN_DIR = Path("results")
 FROZEN_CASES = FROZEN_DIR / "cases.csv"
 FROZEN_RAW = FROZEN_DIR / "evaluations.json"
@@ -48,6 +46,51 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _select_runtime_source(repo: Path) -> None:
+    """Load evflex from the selected repository, never from an earlier import."""
+    source = (repo / "src").resolve(strict=True)
+    if not (source / "evflex/__init__.py").is_file():
+        raise ValueError(f"Selected repository has no evflex package: {source}")
+    for name, module in tuple(sys.modules.items()):
+        if name != "evflex" and not name.startswith("evflex."):
+            continue
+        origin = getattr(module, "__file__", None)
+        if origin is None or not Path(origin).resolve().is_relative_to(source):
+            raise RuntimeError(
+                f"Already loaded {name} from {origin!r}; selected source is {source}. "
+                "Start a fresh Python process for this repository."
+            )
+    source_text = str(source)
+    sys.path[:] = [source_text, *(entry for entry in sys.path if entry != source_text)]
+
+
+def _runtime_input_fingerprints(repo: Path) -> dict[str, str]:
+    """Fingerprint numerical code and inputs, including uncommitted edits."""
+    ignored_directories = {"__pycache__", ".pytest_cache", ".git", "generated"}
+    ignored_suffixes = {".pyc", ".pyo", ".tmp", ".log", ".out"}
+    files = []
+    for directory in ("src", "config", "data"):
+        root = repo / directory
+        if not root.is_dir():
+            raise FileNotFoundError(f"Missing runtime input directory: {root}")
+        for path in root.rglob("*"):
+            relative = path.relative_to(repo)
+            if (not path.is_file() or ignored_directories.intersection(relative.parts)
+                    or path.suffix.lower() in ignored_suffixes):
+                continue
+            if directory == "src" and path.suffix != ".py":
+                continue
+            files.append(path)
+    for filename in ("requirements.txt", "pyproject.toml"):
+        path = repo / filename
+        if path.is_file():
+            files.append(path)
+    return {
+        path.relative_to(repo).as_posix(): sha256_file(path)
+        for path in sorted(files, key=lambda item: item.relative_to(repo).as_posix())
+    }
 
 
 def atomic_text(path: Path, value: str) -> None:
@@ -107,7 +150,7 @@ def analyze_flags(flags: list[bool]) -> dict[str, Any]:
 
 
 def read_sources(repo: Path):
-    """Read and cross-check paper cases and archived, vehicle-level evidence."""
+    """Read and cross-check the final paper cases and vehicle-level evidence."""
     with (repo / FROZEN_CASES).open(newline="", encoding="utf-8-sig") as f:
         cases = list(csv.DictReader(f))
     raw = json.loads((repo / FROZEN_RAW).read_text(encoding="utf-8"))
@@ -161,6 +204,7 @@ def provenance(repo: Path, config_path: Path) -> dict[str, Any]:
         head = p.stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         pass
+    input_hashes = _runtime_input_fingerprints(repo)
     return {
         "script_version": SCRIPT_VERSION,
         "script_sha256": sha256_file(Path(__file__)),
@@ -169,12 +213,19 @@ def provenance(repo: Path, config_path: Path) -> dict[str, Any]:
         "frozen_cases_sha256": sha256_file(repo / FROZEN_CASES),
         "frozen_raw_sha256": sha256_file(repo / FROZEN_RAW),
         "replication_config_sha256": sha256_file(config_path),
+        "runtime_input_sha256": hashlib.sha256(
+            json.dumps(input_hashes, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest(),
+        "runtime_input_files_sha256": input_hashes,
         "python_version": sys.version.split(" ")[0],
         "platform": platform.platform(),
         "numpy_version": version("numpy"),
+        "pandas_version": version("pandas"),
         "scipy_version": version("scipy"),
         "opendssdirect_version": version("opendssdirect.py"),
         "dss_python_version": version("dss-python"),
+        "dss_python_backend_version": version("dss-python-backend"),
+        "cffi_version": version("cffi"),
         "n_grid": N_GRID,
         "grid_step": STEP,
         "workers": 1,
@@ -246,10 +297,10 @@ def run_one(repo: Path, out: Path, case: dict[str, str], frozen: dict[str, Any],
     try:
         key = (scenario, case["direction"])
         if key not in source_units:
-            raise ValueError(f"Missing work unit in verified V2.5B design: {key}")
+            raise ValueError(f"Missing work unit in final case design: {key}")
         unit = dict(source_units[key])
         if unit["feeder"] != case["feeder"] or unit["call_time"] != case["call_time"]:
-            raise ValueError(f"V2.5B work unit / frozen case mismatch for {scenario}")
+            raise ValueError(f"Final work unit / reference case mismatch for {scenario}")
         target_id = f"v25b_replication_{scenario}__inc__15m"
         if case["evaluation_id"] != target_id:
             raise ValueError(f"Unexpected evaluation ID for {scenario}")
@@ -428,7 +479,8 @@ def main() -> int:
     parser.add_argument("--mode", choices=("selftest", "list", "stress", "full", "single"), default="list")
     parser.add_argument("--case", default=None, help="Internal single-case execution, isolated in a child process")
     parser.add_argument("--repo", type=Path, default=DEFAULT_REPO)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--output", type=Path, default=None,
+                        help="New-run directory (default: selected repository/generated/evaluation)")
     parser.add_argument("--force", action="store_true", help="Rerun completed cases instead of skipping verified results")
     args = parser.parse_args()
     if args.mode == "selftest":
@@ -436,7 +488,8 @@ def main() -> int:
         return 0
 
     repo = args.repo.resolve(strict=True)
-    out = args.output.resolve()
+    _select_runtime_source(repo)
+    out = (args.output if args.output is not None else repo / "generated/evaluation").resolve()
     if out == (repo / "results").resolve() or (repo / "results").resolve() in out.parents:
         raise ValueError("Write new runs outside the final results directory")
     all_cases, raw_by_id = read_sources(repo)

@@ -27,7 +27,7 @@ FINAL_HASHES = {
     "paper/final.pdf": "3de6ef3433057d2407b8be3158029d7d9631aa2647ec82807238c96e9521afdc",
     "paper/chinese/reading.pdf": "195b5bf103d64f7f88e5c1a578ceb2502cbf649f3c7d3ecac6be7e9f0be0eee6",
     "paper/chinese/reading.docx": "05f53777d6caa2e069e30ffd17f6e04b0c431c2aead5ea1e974f3889e28008ad",
-    "poster/final.pdf": "b2f8a26736efde64fe93963ce0ed7452d297285982f44c9405603e8e7b17b556",
+    "poster/final.pdf": "8e4d367f7b11447fc77f2d6418a9263beb020960be73d88f87bf46c65a94dd8c",
 }
 REQUIRED_INPUTS = (
     "config/experiment.json", "config/cases.csv", "data/scenarios.csv",
@@ -39,6 +39,42 @@ REQUIRED_INPUTS = (
 MASTERS = (
     "data/feeders/ieee13/IEEE13Nodeckt.dss",
     "data/feeders/lv906_core/MasterStaticAudit.dss",
+)
+
+# The released file inventory is explicit so a missing checksum cannot silently
+# remove an artifact from verification. Extra user files, generated outputs,
+# TeX auxiliaries, Git metadata, virtual environments and caches are not release
+# payload merely because they are present in a checkout or an extracted ZIP.
+# Update this inventory when deliberately adding/removing a published artifact.
+# SHA256SUMS.txt itself is excluded to avoid a self-referential checksum.
+PUBLISHED_FILES = frozenset(
+    (PurePosixPath(directory) / name).as_posix()
+    for directory, names in {
+        "": (".gitattributes", ".gitignore", "README.md", "pyproject.toml",
+             "requirements.txt", "requirements-figures.txt"),
+        ".github/workflows": ("verify.yml",),
+        "src/evflex": ("__init__.py", "design.py", "engine.py", "fleet.py", "network.py", "runtime.py"),
+        "src/evflex/solver": ("__init__.py", "duration_engine.py", "network_core.py"),
+        "tools": ("build_pdfs.py", "draw_topology.py", "draw_workflow.py", "evaluate.py",
+                  "plot_results.py", "smoke.py", "summarize.py", "verify.py"),
+        "config": ("cases.csv", "experiment.json"),
+        "data": ("load_profile.csv", "scenarios.csv", "vehicles.csv"),
+        "data/feeders/ieee13": ("IEEE13Node_BusXY.csv", "IEEE13Nodeckt.dss", "IEEELineCodes.dss"),
+        "data/feeders/lv906_core": ("Buscoords.txt", "LineCode.txt", "Lines.txt",
+                                   "LoadsStaticAudit.txt", "MasterStaticAudit.dss", "Transformers.txt"),
+        "results": ("alpha_grid.zip", "boundary_comparison.csv", "case_table.csv", "cases.csv",
+                    "evaluations.json", "feeder_runtime_summary.csv", "summary.json"),
+        "results/figures": ("fig3_scheduled_offer_data.csv", "fig4_feasible_scaling_data.csv",
+                            "fig5_boundary_data.csv", "load_phase_map.csv"),
+        "paper": ("final.pdf", "IEEEtran.cls", "manuscript.tex", "references.tex"),
+        "paper/chinese": ("reading.docx", "reading.pdf"),
+        "paper/figures": ("fig1_network_feasibility_workflow.pdf", "fig1_network_feasibility_workflow.svg",
+                          "fig2a_ieee13_topology.png", "fig2b_lv906_topology.pdf", "fig2b_lv906_topology.svg",
+                          "fig3_ieee13_scheduled_vs_feasible_offer.pdf", "fig3_lv906_scheduled_vs_feasible_offer.pdf",
+                          "fig4_feasible_scaling_distribution.pdf", "fig5_limiting_network_constraints.pdf"),
+        "poster": ("final.pdf", "poster.tex"),
+    }.items()
+    for name in names
 )
 
 
@@ -89,6 +125,8 @@ def check_checksums(root):
         require(sha256(target) == digest.lower(), "SHA-256 mismatch: " + name)
         entries[target] = digest.lower()
     require(bool(entries), "empty SHA256SUMS.txt")
+    missing = sorted(name for name in PUBLISHED_FILES if (root / name).resolve() not in entries)
+    require(not missing, "published files missing from SHA256SUMS.txt: " + ", ".join(missing))
     for name, expected in FINAL_HASHES.items():
         require(entries.get(root / name) == expected,
                 "final artifact is missing or changed in checksum list: " + name)
@@ -143,6 +181,23 @@ def no_provenance(value):
     return True
 
 
+def check_figure_case_data(root, cases):
+    for filename in ("fig3_scheduled_offer_data.csv", "fig4_feasible_scaling_data.csv"):
+        _, rows = csv_records(root / "results/figures" / filename)
+        figure = keyed_rows(rows, "scenario_id", filename)
+        require(figure.keys() == cases.keys(), "figure scenario scope differs: " + filename)
+        for scenario, row in figure.items():
+            saved = cases[scenario]
+            require(row["feeder"].lower() == saved["feeder"],
+                    "figure feeder differs: {} / {}".format(filename, scenario))
+            require(Decimal(row["alpha_fixed"]) == Decimal(saved["alpha_transfer"]),
+                    "figure alpha differs: {} / {}".format(filename, scenario))
+            if filename.startswith("fig3_"):
+                require(row["call_time"] == saved["call_time"]
+                        and Decimal(row["f_bal_kw"]) == Decimal(saved["f_bal_kw"]),
+                        "figure call time/offer differs: {} / {}".format(filename, scenario))
+
+
 def check_grid_zip(root, cases):
     expected = {case + suffix for case in cases for suffix in (".csv", ".json")}
     with zipfile.ZipFile(root / "results/alpha_grid.zip") as archive:
@@ -187,7 +242,8 @@ def path_expression(node, names, root):
 def check_python_references(root):
     checked = set()
     external = {"numpy", "pandas", "scipy", "opendssdirect", "dss"}
-    for source in sorted((root / "src").rglob("*.py")):
+    sources = (root / name for name in PUBLISHED_FILES if name.startswith("src/") and name.endswith(".py"))
+    for source in sorted(sources):
         tree = ast.parse(source.read_text(encoding="utf-8-sig"), filename=str(source))
         names = {"__file__": source, "repo_root": root}
         nodes = sorted(ast.walk(tree), key=lambda node: getattr(node, "lineno", 0))
@@ -334,6 +390,7 @@ def verify(root):
     references = check_python_references(root)
     dss_inputs = check_dss_references(root)
     cases = check_cases(root)
+    check_figure_case_data(root, cases)
     grid_files = check_grid_zip(root, cases)
     check_recomputed_summaries(root)
     return {"status": "PASS", "sha256_files": checksums, "cases": len(cases),
