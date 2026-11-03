@@ -10,7 +10,9 @@ The accepted IEEE PES ISGT Asia 2026 paper is:
 
 - Paper ID: **9499**
 - Authors: Junxing Tan, Jun Wu, Shiting Cui, Chaofan Yang, Jiangcheng Wang
-- Status: **Accepted; camera-ready revision pending reviewer comments**
+- Status: **Accepted; camera-ready v1.22 completed and archived on 2026-11-03**
+
+Current final deliverables: [Paper 9499 archive index](archive/2026-11-03-paper9499/README.md).
 
 Current conference/camera-ready information:
 
@@ -33,7 +35,7 @@ Files such as:
 - `build_manuscript_v2_0_zh.py`
 - `build_paper_assets_v2_0.py`
 
-are **historical V2.0 paper-generation artifacts**. They predate the final V2.5B INC/V1G manuscript freeze and must not be mistaken for the accepted submission or the upcoming camera-ready version.
+are **historical V2.0 paper-generation artifacts**. They predate the final V2.5B INC/V1G manuscript freeze and must not be mistaken for the accepted submission or the archived camera-ready version.
 
 They are retained intentionally because they document the evolution of the study and may remain useful for provenance or later extensions.
 
@@ -43,16 +45,8 @@ The initial submission used A4 formatting. The acceptance notification for Paper
 
 Do not regenerate the final paper from the old V2.0 builders without first reconciling them with the accepted manuscript and reviewer comments.
 
-## Next manuscript artifact
+## Archived manuscript artifacts
 
-The next authoritative manuscript artifact should be created only after reviewer comments are processed. It should:
+The completed English camera-ready is v1.22 (five US Letter pages). The Chinese reading edition remains v1.21, and the latest local A0 poster is v5. The [archive index](archive/2026-11-03-paper9499/README.md) links every deliverable, source package, experiment record and checksum.
 
-1. preserve the validated INC/V1G evidence unless a reviewer comment requires additional work;
-2. use the official Letter camera-ready template;
-3. include the accepted author list and funding acknowledgement;
-4. pass final figure, reference, font, page-size, and camera-ready QA;
-5. be archived here with an explicit `camera_ready` name and a short provenance/readme note.
-
-For a clean restart of the project, begin with:
-
-[`../docs/project_handoff_2026-09-09.md`](../docs/project_handoff_2026-09-09.md)
+For future edits, start from the v1.22 LaTeX package and preserve the dated archive. See [current handoff](../docs/project_handoff_2026-11-03.md).

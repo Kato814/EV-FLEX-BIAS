@@ -1,0 +1,47 @@
+{
+  "figure": "fig1_network_feasibility_workflow",
+  "size_inches": [
+    3.5,
+    3.0
+  ],
+  "pdf_size_points": [
+    252.0,
+    216.0
+  ],
+  "png_dpi": 600,
+  "font": "SimSun (Chinese), Times New Roman (Latin and math)",
+  "font_path": "C:\\Windows\\Fonts\\times.ttf",
+  "body_font_points": 9.0,
+  "title_font_points": 9.5,
+  "equation_font_points": 11.5,
+  "scientific_change": "Largest feasible alpha -> Largest verified feasible alpha",
+  "last_step_title": "\u7ecf\u9a8c\u8bc1\u7684\u8c03\u5ea6\u5b9e\u65bd\u6c34\u5e73",
+  "continuous_or_global_optimum_claimed": false,
+  "checks": [
+    {
+      "step": 1,
+      "text_within_box": true,
+      "no_line_overlap": true
+    },
+    {
+      "step": 2,
+      "text_within_box": true,
+      "no_line_overlap": true
+    },
+    {
+      "step": 3,
+      "text_within_box": true,
+      "no_line_overlap": true
+    },
+    {
+      "step": 4,
+      "text_within_box": true,
+      "no_line_overlap": true
+    },
+    {
+      "step": 5,
+      "text_within_box": true,
+      "no_line_overlap": true
+    }
+  ]
+}

@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="252pt" height="216pt" viewBox="0 0 252 216" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-10-15T21:24:57.078530</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.9.2, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 216 
+L 252 216 
+L 252 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 5.616 38.448 
+L 246.384 38.448 
+Q 249.048 38.448 249.048 35.784 
+L 249.048 7.416 
+Q 249.048 4.752 246.384 4.752 
+L 5.616 4.752 
+Q 2.952 4.752 2.952 7.416 
+L 2.952 35.784 
+Q 2.952 38.448 5.616 38.448 
+z
+" clip-path="url(#p55aa93c4fa)" style="fill: #ffffff; stroke: #000000; stroke-width: 0.85; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_3">
+    <path d="M 126 38.52 
+Q 126 41.22 126 43.025573 
+" clip-path="url(#p55aa93c4fa)" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: round"/>
+    <path d="M 127.8 39.425573 
+L 126 43.025573 
+L 124.2 39.425573 
+z
+" clip-path="url(#p55aa93c4fa)" style="stroke: #000000; stroke-width: 0.8; stroke-linecap: round"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 5.616 77.688 
+L 246.384 77.688 
+Q 249.048 77.688 249.048 75.024 
+L 249.048 46.656 
+Q 249.048 43.992 246.384 43.992 
+L 5.616 43.992 
+Q 2.952 43.992 2.952 46.656 
+L 2.952 75.024 
+Q 2.952 77.688 5.616 77.688 
+z
+" clip-path="url(#p55aa93c4fa)" style="fill: #ffffff; stroke: #000000; stroke-width: 0.85; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 126 77.76 
+Q 126 80.46 126 82.265573 
+" clip-path="url(#p55aa93c4fa)" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: round"/>
+    <path d="M 127.8 78.665573 
+L 126 82.265573 
+L 124.2 78.665573 
+z
+" clip-path="url(#p55aa93c4fa)" style="stroke: #000000; stroke-width: 0.8; stroke-linecap: round"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 5.616 122.688 
+L 246.384 122.688 
+Q 249.048 122.688 249.048 120.024 
+L 249.048 85.896 
+Q 249.048 83.232 246.384 83.232 
+L 5.616 83.232 
+Q 2.952 83.232 2.952 85.896 
+L 2.952 120.024 
+Q 2.952 122.688 5.616 122.688 
+z
+" clip-path="url(#p55aa93c4fa)" style="fill: #ffffff; stroke: #000000; stroke-width: 0.85; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 126 122.76 
+Q 126 125.46 126 127.265573 
+" clip-path="url(#p55aa93c4fa)" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: round"/>
+    <path d="M 127.8 123.665573 
+L 126 127.265573 
+L 124.2 123.665573 
+z
+" clip-path="url(#p55aa93c4fa)" style="stroke: #000000; stroke-width: 0.8; stroke-linecap: round"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 5.616 161.928 
+L 246.384 161.928 
+Q 249.048 161.928 249.048 159.264 
+L 249.048 130.896 
+Q 249.048 128.232 246.384 128.232 
+L 5.616 128.232 
+Q 2.952 128.232 2.952 130.896 
+L 2.952 159.264 
+Q 2.952 161.928 5.616 161.928 
+z
+" clip-path="url(#p55aa93c4fa)" style="fill: #ffffff; stroke: #000000; stroke-width: 0.85; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 126 162 
+Q 126 164.7 126 166.505573 
+" clip-path="url(#p55aa93c4fa)" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: round"/>
+    <path d="M 127.8 162.905573 
+L 126 166.505573 
+L 124.2 162.905573 
+z
+" clip-path="url(#p55aa93c4fa)" style="stroke: #000000; stroke-width: 0.8; stroke-linecap: round"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 5.616 210.528 
+L 246.384 210.528 
+Q 249.048 210.528 249.048 207.864 
+L 249.048 170.136 
+Q 249.048 167.472 246.384 167.472 
+L 5.616 167.472 
+Q 2.952 167.472 2.952 170.136 
+L 2.952 207.864 
+Q 2.952 210.528 5.616 210.528 
+z
+" clip-path="url(#p55aa93c4fa)" style="fill: #ffffff; stroke: #000000; stroke-width: 0.85; stroke-linejoin: miter"/>
+   </g>
+   <g id="text_1">
+    <text style="font: 700 9.5px 'Times New Roman', 'SimSun'; text-anchor: middle" x="15.48" y="23.729336" transform="rotate(-0 15.48 23.729336)">1</text>
+   </g>
+   <g id="text_2">
+    <text style="font: 700 9.5px 'Times New Roman', 'SimSun'; text-anchor: start" x="28.8" y="14.965352" transform="rotate(-0 28.8 14.965352)">满足车辆约束的基线调度</text>
+   </g>
+   <g id="text_3">
+    <text style="font: 9px 'Times New Roman', 'SimSun'; text-anchor: start" x="28.8" y="28.880859" transform="rotate(-0 28.8 28.880859)">可用时窗、能量需求、充电功率限制</text>
+   </g>
+   <g id="text_4">
+    <text style="font: 700 9.5px 'Times New Roman', 'SimSun'; text-anchor: middle" x="15.48" y="62.969336" transform="rotate(-0 15.48 62.969336)">2</text>
+   </g>
+   <g id="text_5">
+    <text style="font: 700 9.5px 'Times New Roman', 'SimSun'; text-anchor: start" x="28.8" y="54.205352" transform="rotate(-0 28.8 54.205352)">平衡模型目标调度</text>
+   </g>
+   <g id="text_6">
+    <text style="font: 9px 'Times New Roman', 'SimSun'; text-anchor: start" x="28.8" y="68.120859" transform="rotate(-0 28.8 68.120859)">预先生成的车辆级 V1G 调度</text>
+   </g>
+   <g id="text_7">
+    <text style="font: 700 9.5px 'Times New Roman', 'SimSun'; text-anchor: middle" x="15.48" y="105.089336" transform="rotate(-0 15.48 105.089336)">3</text>
+   </g>
+   <g id="text_8">
+    <text style="font: 700 9.5px 'Times New Roman', 'SimSun'; text-anchor: start" x="28.8" y="93.463906" transform="rotate(-0 28.8 93.463906)">调度按比例缩放</text>
+   </g>
+   <g id="text_9">
+    <!-- $u_{i,t}(\alpha)=u^{0}_{i,t}+\alpha(u^{B}_{i,t}-u^{0}_{i,t}),\;0\leq\alpha\leq1$ -->
+    <g transform="translate(28.8 111.4075)">
+     <text>
+      <tspan style="font: italic 11.5px 'Times New Roman'" x="0 17.70279 37.376325 61.057094 70.923061 94.603829 134.533045" y="-0.915265625">uαuαuuα</tspan>
+      <tspan style="font: italic 8.05px 'Times New Roman'" x="5.75 11.161738 43.126325 48.538063 76.673061 76.829932 82.084799 100.353829 105.765567" y="1.9342187499999994 1.9342187499999994 3.833874999999999 3.833874999999999 3.833874999999999 -7.5640625 3.833874999999999 3.833874999999999 3.833874999999999">ititiBtit</tspan>
+      <tspan style="font: 8.05px 'Times New Roman'" x="7.986548 43.283196 45.362873 78.909608 100.5107 102.590377" y="1.9342187499999994 -7.5640625 3.833874999999999 3.833874999999999 -7.5640625 3.833874999999999">,0,,0,</tspan>
+      <tspan style="font: 11.5px 'Times New Roman'" x="13.8732 23.739167 29.229743 52.910512 67.093471 86.457247 108.477029 112.306619 119.149549 126.560536 142.230409 150.202919" y="-0.915265625">()=+(−),0≤≤1</tspan>
+     </text>
+    </g>
+   </g>
+   <g id="text_10">
+    <text style="font: 700 9.5px 'Times New Roman', 'SimSun'; text-anchor: middle" x="15.48" y="147.209336" transform="rotate(-0 15.48 147.209336)">4</text>
+   </g>
+   <g id="text_11">
+    <text style="font: 700 9.5px 'Times New Roman', 'SimSun'; text-anchor: start" x="28.8" y="138.426797" transform="rotate(-0 28.8 138.426797)">不平衡三相潮流校验</text>
+   </g>
+   <g id="text_12">
+    <text style="font: 9px 'Times New Roman', 'SimSun'; text-anchor: start" x="28.8" y="152.343281" transform="rotate(-0 28.8 152.343281)">电压、VUF、设备负载率</text>
+   </g>
+   <g id="text_13">
+    <text style="font: 700 9.5px 'Times New Roman', 'SimSun'; text-anchor: middle" x="15.48" y="191.129336" transform="rotate(-0 15.48 191.129336)">5</text>
+   </g>
+   <g id="text_14">
+    <text style="font: 700 9.5px 'Times New Roman', 'SimSun'; text-anchor: start" x="28.8" y="177.685352" transform="rotate(-0 28.8 177.685352)">经验证的调度实施水平</text>
+   </g>
+   <g id="text_15">
+    <text style="font: 9px 'Times New Roman', 'SimSun'; text-anchor: start" x="28.8" y="191.618437" transform="rotate(-0 28.8 191.618437)">经验证的最大可行缩放因子 α；</text>
+   </g>
+   <g id="text_16">
+    <text style="font: 9px 'Times New Roman', 'SimSun'; text-anchor: start" x="28.8" y="202.760859" transform="rotate(-0 28.8 202.760859)">首个限制性网络约束</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p55aa93c4fa">
+   <rect x="0" y="0" width="252" height="216"/>
+  </clipPath>
+ </defs>
+</svg>

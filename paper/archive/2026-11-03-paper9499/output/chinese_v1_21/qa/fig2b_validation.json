@@ -1,0 +1,1213 @@
+{
+  "bus_count": 906,
+  "line_count": 905,
+  "is_connected_tree": true,
+  "load_count": 55,
+  "phase_counts": {
+    "A": 21,
+    "B": 19,
+    "C": 15
+  },
+  "unique_load_marker_count": 53,
+  "source_secondary_bus": "1",
+  "coordinates_changed": false,
+  "canvas_inches": [
+    2.87,
+    2.99
+  ],
+  "exported_inches": [
+    2.754778,
+    2.5077489639256028
+  ],
+  "label_font_pt": 5.6,
+  "font_name": "Times New Roman",
+  "font_file": "times.ttf",
+  "all_55_ids_labeled_once": true,
+  "label_overlap_pairs": [],
+  "marker_label_intersections": 0,
+  "line_label_intersections": 0,
+  "labels": [
+    {
+      "label": "48",
+      "load_ids": [
+        48
+      ],
+      "bus_ids": [
+        "860"
+      ],
+      "phase": 1,
+      "offset_points": [
+        -2.678784026555628,
+        6.467156727579007
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        225.65547747822202,
+        82.19518183716943,
+        242.82214414488868,
+        97.02851517050276
+      ]
+    },
+    {
+      "label": "10,11",
+      "load_ids": [
+        10,
+        11
+      ],
+      "bus_ids": [
+        "248",
+        "249"
+      ],
+      "phase": 2,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        223.72154421865432,
+        526.2620182135967,
+        259.638210885321,
+        541.09535154693
+      ]
+    },
+    {
+      "label": "46",
+      "load_ids": [
+        46
+      ],
+      "bus_ids": [
+        "817"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        186.9642515404823,
+        60.22745999318524,
+        204.13091820714897,
+        75.06079332651858
+      ]
+    },
+    {
+      "label": "49",
+      "load_ids": [
+        49
+      ],
+      "bus_ids": [
+        "861"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        246.27719926956055,
+        88.005237770963,
+        263.4438659362272,
+        102.83857110429634
+      ]
+    },
+    {
+      "label": "38",
+      "load_ids": [
+        38
+      ],
+      "bus_ids": [
+        "688"
+      ],
+      "phase": 2,
+      "offset_points": [
+        2.678784026555629,
+        6.467156727579007
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        181.22466323000836,
+        105.2613281762554,
+        198.39132989667502,
+        120.09466150958873
+      ]
+    },
+    {
+      "label": "21",
+      "load_ids": [
+        21
+      ],
+      "bus_ids": [
+        "387"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        190.2594153032089,
+        312.0763736363697,
+        207.42608196987555,
+        326.909706969703
+      ]
+    },
+    {
+      "label": "26",
+      "load_ids": [
+        26
+      ],
+      "bus_ids": [
+        "522"
+      ],
+      "phase": 2,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        157.30777767594319,
+        152.49204534952918,
+        174.47444434260984,
+        167.32537868286252
+      ]
+    },
+    {
+      "label": "32",
+      "load_ids": [
+        32
+      ],
+      "bus_ids": [
+        "614"
+      ],
+      "phase": 3,
+      "offset_points": [
+        -6.467156727579008,
+        -2.6787840265556278
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        142.63861719539474,
+        96.33175600618094,
+        159.8052838620614,
+        111.16508933951427
+      ]
+    },
+    {
+      "label": "18",
+      "load_ids": [
+        18
+      ],
+      "bus_ids": [
+        "337"
+      ],
+      "phase": 3,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        246.27719926956055,
+        249.46826214456487,
+        263.4438659362272,
+        264.3015954778982
+      ]
+    },
+    {
+      "label": "39",
+      "load_ids": [
+        39
+      ],
+      "bus_ids": [
+        "701"
+      ],
+      "phase": 3,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        272.6385093713731,
+        111.07138411004898,
+        289.8051760380398,
+        125.90471744338231
+      ]
+    },
+    {
+      "label": "42",
+      "load_ids": [
+        42
+      ],
+      "bus_ids": [
+        "778"
+      ],
+      "phase": 3,
+      "offset_points": [
+        2.67878402655563,
+        -6.467156727579006
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        270.1940848236257,
+        72.62784345243195,
+        287.3607514902924,
+        87.46117678576528
+      ]
+    },
+    {
+      "label": "22",
+      "load_ids": [
+        22
+      ],
+      "bus_ids": [
+        "388"
+      ],
+      "phase": 1,
+      "offset_points": [
+        7.0,
+        0.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        236.0651698494659,
+        275.1213384083948,
+        253.23183651613255,
+        289.95467174172813
+      ]
+    },
+    {
+      "label": "27",
+      "load_ids": [
+        27
+      ],
+      "bus_ids": [
+        "539"
+      ],
+      "phase": 3,
+      "offset_points": [
+        7.0,
+        0.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        163.5715670694814,
+        182.8567530520509,
+        180.73823373614806,
+        197.69008638538423
+      ]
+    },
+    {
+      "label": "4,5",
+      "load_ids": [
+        4,
+        5
+      ],
+      "bus_ids": [
+        "73",
+        "74"
+      ],
+      "phase": 1,
+      "offset_points": [
+        -4.949747468305832,
+        4.949747468305833
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        138.3258153901449,
+        447.0384975423418,
+        159.36748205681155,
+        461.87183087567513
+      ]
+    },
+    {
+      "label": "19",
+      "load_ids": [
+        19
+      ],
+      "bus_ids": [
+        "342"
+      ],
+      "phase": 3,
+      "offset_points": [
+        6.467156727579007,
+        2.6787840265556286
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        224.69955836011675,
+        295.74306019973335,
+        241.8662250267834,
+        310.57639353306666
+      ]
+    },
+    {
+      "label": "20",
+      "load_ids": [
+        20
+      ],
+      "bus_ids": [
+        "349"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        226.50621669320114,
+        244.75663070587308,
+        243.6728833598678,
+        259.5899640392064
+      ]
+    },
+    {
+      "label": "23",
+      "load_ids": [
+        23
+      ],
+      "bus_ids": [
+        "406"
+      ],
+      "phase": 2,
+      "offset_points": [
+        7.0,
+        0.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        272.3119712394582,
+        228.98904573022287,
+        289.4786379061249,
+        243.8223790635562
+      ]
+    },
+    {
+      "label": "3",
+      "load_ids": [
+        3
+      ],
+      "bus_ids": [
+        "70"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        72.21335608232587,
+        526.2620182135967,
+        81.63002274899254,
+        541.09535154693
+      ]
+    },
+    {
+      "label": "36",
+      "load_ids": [
+        36
+      ],
+      "bus_ids": [
+        "676"
+      ],
+      "phase": 2,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        427.5112062195219,
+        384.56997641635417,
+        444.6778728861886,
+        399.4033097496875
+      ]
+    },
+    {
+      "label": "54",
+      "load_ids": [
+        54
+      ],
+      "bus_ids": [
+        "900"
+      ],
+      "phase": 1,
+      "offset_points": [
+        2.67878402655563,
+        -6.467156727579006
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        309.7360499763446,
+        105.57948107969762,
+        326.9027166430113,
+        120.41281441303094
+      ]
+    },
+    {
+      "label": "40",
+      "load_ids": [
+        40
+      ],
+      "bus_ids": [
+        "702"
+      ],
+      "phase": 2,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        292.4094919477326,
+        99.76942514590407,
+        309.5761586143993,
+        114.60275847923738
+      ]
+    },
+    {
+      "label": "50",
+      "load_ids": [
+        50
+      ],
+      "bus_ids": [
+        "886"
+      ],
+      "phase": 2,
+      "offset_points": [
+        -4.949747468305832,
+        4.949747468305833
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        463.18936413734866,
+        275.68998188056025,
+        480.35603080401535,
+        290.52331521389357
+      ]
+    },
+    {
+      "label": "16",
+      "load_ids": [
+        16
+      ],
+      "bus_ids": [
+        "320"
+      ],
+      "phase": 3,
+      "offset_points": [
+        -4.949747468305832,
+        4.949747468305833
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        268.7747021364811,
+        407.496532389623,
+        285.9413688031478,
+        422.3298657229563
+      ]
+    },
+    {
+      "label": "33",
+      "load_ids": [
+        33
+      ],
+      "bus_ids": [
+        "619"
+      ],
+      "phase": 3,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        447.28218879588127,
+        391.16030394180734,
+        464.44885546254795,
+        405.99363727514066
+      ]
+    },
+    {
+      "label": "51",
+      "load_ids": [
+        51
+      ],
+      "bus_ids": [
+        "896"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        328.65629333772483,
+        163.7940043136741,
+        345.8229600043915,
+        178.62733764700744
+      ]
+    },
+    {
+      "label": "15",
+      "load_ids": [
+        15
+      ],
+      "bus_ids": [
+        "314"
+      ],
+      "phase": 2,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        272.6385093713731,
+        366.67768992675605,
+        289.8051760380398,
+        381.51102326008936
+      ]
+    },
+    {
+      "label": "30",
+      "load_ids": [
+        30
+      ],
+      "bus_ids": [
+        "563"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        322.0659658122717,
+        305.48604611091656,
+        339.2326324789384,
+        320.3193794442499
+      ]
+    },
+    {
+      "label": "41",
+      "load_ids": [
+        41
+      ],
+      "bus_ids": [
+        "755"
+      ],
+      "phase": 2,
+      "offset_points": [
+        2.67878402655563,
+        -6.467156727579006
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        352.57317889178995,
+        145.12144623241645,
+        369.73984555845664,
+        159.9547795657498
+      ]
+    },
+    {
+      "label": "43",
+      "load_ids": [
+        43
+      ],
+      "bus_ids": [
+        "780"
+      ],
+      "phase": 3,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        387.9692410668031,
+        185.44368297679486,
+        405.13590773346976,
+        200.2770163101282
+      ]
+    },
+    {
+      "label": "13",
+      "load_ids": [
+        13
+      ],
+      "bus_ids": [
+        "276"
+      ],
+      "phase": 2,
+      "offset_points": [
+        -4.949747468305832,
+        4.949747468305833
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        232.5279007464888,
+        367.95456723690415,
+        249.69456741315545,
+        382.78790057023747
+      ]
+    },
+    {
+      "label": "29",
+      "load_ids": [
+        29
+      ],
+      "bus_ids": [
+        "562"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        381.3789135413499,
+        354.9135025518151,
+        398.5455802080166,
+        369.7468358851484
+      ]
+    },
+    {
+      "label": "55",
+      "load_ids": [
+        55
+      ],
+      "bus_ids": [
+        "906"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        463.75800760951415,
+        238.16630318041996,
+        480.92467427618084,
+        252.9996365137533
+      ]
+    },
+    {
+      "label": "1",
+      "load_ids": [
+        1
+      ],
+      "bus_ids": [
+        "34"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        85.39401113323215,
+        513.0813631626904,
+        94.81067779989883,
+        527.9146964960238
+      ]
+    },
+    {
+      "label": "25",
+      "load_ids": [
+        25
+      ],
+      "bus_ids": [
+        "502"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        341.8369483886311,
+        321.9618649245494,
+        359.00361505529776,
+        336.7951982578827
+      ]
+    },
+    {
+      "label": "47",
+      "load_ids": [
+        47
+      ],
+      "bus_ids": [
+        "835"
+      ],
+      "phase": 3,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        414.3305511686156,
+        232.99244333093205,
+        431.4972178352823,
+        247.8257766642654
+      ]
+    },
+    {
+      "label": "24",
+      "load_ids": [
+        24
+      ],
+      "bus_ids": [
+        "458"
+      ],
+      "phase": 3,
+      "offset_points": [
+        -4.949747468305832,
+        4.949747468305833
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        97.4261864746995,
+        239.44318049056804,
+        114.59285314136618,
+        254.27651382390138
+      ]
+    },
+    {
+      "label": "44",
+      "load_ids": [
+        44
+      ],
+      "bus_ids": [
+        "785"
+      ],
+      "phase": 2,
+      "offset_points": [
+        -4.949747468305832,
+        4.949747468305833
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        136.9681516274183,
+        130.70277632059128,
+        154.13481829408497,
+        145.53610965392463
+      ]
+    },
+    {
+      "label": "45",
+      "load_ids": [
+        45
+      ],
+      "bus_ids": [
+        "813"
+      ],
+      "phase": 2,
+      "offset_points": [
+        -4.949747468305832,
+        4.949747468305833
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        357.74412373009847,
+        199.90121533784924,
+        374.91079039676515,
+        214.73454867118258
+      ]
+    },
+    {
+      "label": "12",
+      "load_ids": [
+        12
+      ],
+      "bus_ids": [
+        "264"
+      ],
+      "phase": 3,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        200.1449065913886,
+        496.60554434905754,
+        217.31157325805526,
+        511.43887768239085
+      ]
+    },
+    {
+      "label": "28",
+      "load_ids": [
+        28
+      ],
+      "bus_ids": [
+        "556"
+      ],
+      "phase": 3,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        121.06097628595096,
+        192.03401050224798,
+        138.22764295261763,
+        206.86734383558132
+      ]
+    },
+    {
+      "label": "31",
+      "load_ids": [
+        31
+      ],
+      "bus_ids": [
+        "611"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        358.31276720226396,
+        338.4376837381822,
+        375.47943386893064,
+        353.27101707151553
+      ]
+    },
+    {
+      "label": "34",
+      "load_ids": [
+        34
+      ],
+      "bus_ids": [
+        "629"
+      ],
+      "phase": 1,
+      "offset_points": [
+        -4.949747468305832,
+        4.949747468305833
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        295.1360122382937,
+        288.87063693146655,
+        312.3026789049604,
+        303.70397026479986
+      ]
+    },
+    {
+      "label": "52",
+      "load_ids": [
+        52
+      ],
+      "bus_ids": [
+        "898"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        430.80636998224844,
+        215.10015684133398,
+        447.9730366489151,
+        229.93349017466733
+      ]
+    },
+    {
+      "label": "9",
+      "load_ids": [
+        9
+      ],
+      "bus_ids": [
+        "225"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        223.79088916774802,
+        485.30358538491254,
+        233.20755583441468,
+        500.13691871824585
+      ]
+    },
+    {
+      "label": "14",
+      "load_ids": [
+        14
+      ],
+      "bus_ids": [
+        "289"
+      ],
+      "phase": 1,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        233.09654421865432,
+        323.8405610113107,
+        250.26321088532097,
+        338.673894344644
+      ]
+    },
+    {
+      "label": "37",
+      "load_ids": [
+        37
+      ],
+      "bus_ids": [
+        "682"
+      ],
+      "phase": 2,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        397.8547323549828,
+        371.3893213654479,
+        415.0213990216495,
+        386.22265469878124
+      ]
+    },
+    {
+      "label": "7",
+      "load_ids": [
+        7
+      ],
+      "bus_ids": [
+        "178"
+      ],
+      "phase": 2,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        167.77310520139636,
+        457.0635791963387,
+        177.18977186806302,
+        471.896912529672
+      ]
+    },
+    {
+      "label": "2",
+      "load_ids": [
+        2
+      ],
+      "bus_ids": [
+        "47"
+      ],
+      "phase": 2,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        111.7553212350447,
+        493.31038058633095,
+        121.17198790171138,
+        508.14371391966426
+      ]
+    },
+    {
+      "label": "35",
+      "load_ids": [
+        35
+      ],
+      "bus_ids": [
+        "639"
+      ],
+      "phase": 2,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        467.0531713722407,
+        404.3409589927136,
+        484.21983803890737,
+        419.1742923260469
+      ]
+    },
+    {
+      "label": "8",
+      "load_ids": [
+        8
+      ],
+      "bus_ids": [
+        "208"
+      ],
+      "phase": 3,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        190.8392515404823,
+        455.6471115203734,
+        200.25591820714897,
+        470.48044485370673
+      ]
+    },
+    {
+      "label": "53",
+      "load_ids": [
+        53
+      ],
+      "bus_ids": [
+        "899"
+      ],
+      "phase": 2,
+      "offset_points": [
+        0.0,
+        -5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        506.5951365249595,
+        261.2324495195059,
+        523.7618031916262,
+        276.0657828528392
+      ]
+    },
+    {
+      "label": "17",
+      "load_ids": [
+        17
+      ],
+      "bus_ids": [
+        "327"
+      ],
+      "phase": 3,
+      "offset_points": [
+        0.0,
+        5.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        302.2949832359123,
+        424.111941569073,
+        319.461649902579,
+        438.9452749024063
+      ]
+    },
+    {
+      "label": "6",
+      "load_ids": [
+        6
+      ],
+      "bus_ids": [
+        "83"
+      ],
+      "phase": 2,
+      "offset_points": [
+        5.0,
+        0.0
+      ],
+      "line_intersections": 0,
+      "marker_intersections": 0,
+      "bbox_px": [
+        135.52970141211327,
+        466.2408366465358,
+        144.94636807877993,
+        481.0741699798691
+      ]
+    }
+  ],
+  "source_sha256": {
+    "Buscoords.txt": "64b3083adc794cdafe51f4a01077aeaed0dc089ca0fb7bad81f8d27c06eef358",
+    "Lines.txt": "b8504cd13e8add6a400ebd595c52ec8b73d48c4c538e299719c11c0dc06ab154",
+    "Loads.txt": "e762afac706aa718372f6b536db3624e49f41131a70726db8b0e903b0c311a3d",
+    "load_phase_map.csv": "fe21148f6a7c8ffe96102eb941d7df9a2c1f991f588ac39f81105a3d20db0004",
+    "Transformers.txt": "e1a5ea6aa4e54e4ac014a43cd9a744eb900c41c6093953ddfd4ab14d6f7d173a"
+  },
+  "output_sha256": {
+    "fig2b_lv906_topology.pdf": "8ecef4fbe113ac9687afee569ab3a4a04d5853c52a8dfcb4fa485f96c635b481",
+    "fig2b_lv906_topology.png": "8351b74fff6098cbadc819c14750ca51bac5961c1a9bfff98cbfac6251e148ff",
+    "fig2b_lv906_topology.svg": "278ffebe142f7c41caf7d812388097f66f04bbe3b591eebb0abdff0064fff5ec"
+  }
+}

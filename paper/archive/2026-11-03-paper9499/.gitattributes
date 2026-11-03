@@ -1,0 +1,2 @@
+# Preserve frozen payload bytes, including original line endings.
+* -text

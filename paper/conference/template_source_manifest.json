@@ -1,6 +1,6 @@
 {
   "protocol_id": "EV-FLEX-BIAS-ISGT-ASIA-2026",
-  "last_updated_utc": "2026-09-09T04:01:00Z",
+  "last_updated_utc": "2026-11-03T10:27:38Z",
   "conference_submission_url": "https://attend.ieee.org/isgt-asia-2026/submission/",
   "conference_template_url": "https://attend.ieee.org/isgt-asia-2026/wp-content/uploads/sites/526/conference-template-letter.docx",
   "downloaded_filename": "conference-template-letter.docx",
@@ -85,6 +85,16 @@
   "manuscript_evidence": {
     "authoritative_scope": "V2.5B validated INC/V1G manuscript freeze",
     "path": "../../manuscript_freeze_20260813/manuscript_freeze_20260813/v2_5b_inc_only_manuscript_freeze.md",
-    "camera_ready_status": "pending reviewer-comment revision"
+    "camera_ready_status": "completed v1.22; archived 2026-11-03"
+  },
+  "archive_recorded_date": "2026-11-03",
+  "camera_ready_archive": {
+    "path": "../archive/2026-11-03-paper9499",
+    "tag": "paper9499-archive-2026-11-03",
+    "version": "v1.22",
+    "pages": 5,
+    "paper_size": "US Letter",
+    "pdf_sha256": "3de6ef3433057d2407b8be3158029d7d9631aa2647ec82807238c96e9521afdc",
+    "source_zip_sha256": "d5b179dc0d2b8fe571cf9812e99181a915c88865a80a249f03264feaeca02963"
   }
 }

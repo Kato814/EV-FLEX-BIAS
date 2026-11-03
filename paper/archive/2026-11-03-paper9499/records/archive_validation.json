@@ -1,0 +1,44 @@
+{
+  "status": "PASS",
+  "archived_date": "2026-11-03",
+  "timezone": "Asia/Shanghai",
+  "repository": "Kato814/EV-FLEX-BIAS",
+  "base_commit": "3475301f2282b3fff6515fc77c0eb306063967c1",
+  "tag": "paper9499-archive-2026-11-03",
+  "copied_files": 111,
+  "all_copied_files_byte_identical": true,
+  "renamed_english_pdf_matches_original_delivery_sha256": true,
+  "renamed_english_zip_matches_original_delivery_sha256": true,
+  "pdf_page_checks": {
+    "English_v1.22": "5 pages, 612 x 792 pt Letter",
+    "Chinese_v1.21": "8 pages, A4",
+    "Poster_v5": "1 page, 841 x 1189 mm A0"
+  },
+  "supplementary_experiments": {
+    "cases": 46,
+    "grid_points": 23046,
+    "original_results_preserved": true,
+    "simulations_rerun": false
+  },
+  "archive_scope": "Deliverables, sources, figures, supplementary evidence, historical v1.18, template and provenance; no research-code changes.",
+  "historical_qa_dependency_note": "Old local generation and QA scripts retain historical paths. See README. Use verify_archive.py for portable archive integrity checks.",
+  "original_local_repositories": [
+    {
+      "path": "E:/EV-FLEX-BIAS",
+      "branch": "main",
+      "head_before_archive": "3475301f2282b3fff6515fc77c0eb306063967c1"
+    },
+    {
+      "path": "workspace/EV_FLEX_BIAS_V2_0",
+      "branch": "master",
+      "head_observed": "4215770a03e239285bd24c320fb998e0caa79769"
+    }
+  ],
+  "excluded": [
+    "runtime binaries and caches",
+    "duplicate rendered pages",
+    "superseded posters v2-v4",
+    "original acceptance-letter binary",
+    "unrelated V2.0 worktree contents"
+  ]
+}

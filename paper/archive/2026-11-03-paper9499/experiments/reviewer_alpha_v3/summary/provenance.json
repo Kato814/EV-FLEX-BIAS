@@ -1,0 +1,20 @@
+{
+  "dss_python_version": "0.15.7",
+  "frozen_cases_sha256": "8888fbe0a73fc8729a2664663a6c5f46206f0a862daafbbdbfe3cb5faf1eafed",
+  "frozen_raw_sha256": "d4198c53538adab1cb7aa82e0549a61e043fbce241c1c2630e4e08bcdf1ae55d",
+  "git_head": "3475301f2282b3fff6515fc77c0eb306063967c1",
+  "grid_step": 0.002,
+  "n_grid": 501,
+  "numerical_threads": 1,
+  "numpy_version": "2.3.5",
+  "opendssdirect_version": "0.9.4",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python_version": "3.12.15",
+  "replication_config_sha256": "f922d769e824e6cbfef1ff0bb6f5ad99c68e6bd2316b94818b2c6ec9ad035769",
+  "repo_root": "E:\\EV-FLEX-BIAS",
+  "scipy_version": "1.17.0",
+  "script_sha256": "5044827436256119bc4770e12d6f2c029a050dbfae6197f23c8bd3f496462cc7",
+  "script_version": "reviewer-alpha-grid-v3.0",
+  "validation_audit": "96-slot full coverage, no early stop, reusable verified baseline slots",
+  "workers": 1
+}

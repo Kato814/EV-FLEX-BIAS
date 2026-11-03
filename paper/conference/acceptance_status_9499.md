@@ -1,8 +1,8 @@
 # IEEE PES ISGT Asia 2026 acceptance and camera-ready status
 
-**Last updated:** 2026-09-09  
-**Paper ID:** 9499  
-**Status:** Accepted; camera-ready revision pending reviewer comments
+**Last updated:** 2026-11-03
+**Paper ID:** 9499
+**Status:** Accepted; camera-ready v1.22 completed and archived
 
 ## Accepted paper
 
@@ -47,10 +47,8 @@ The received acceptance-notification PDF is not committed as a binary file in th
 
 ## Manuscript state
 
-The currently accepted-submission manuscript should be treated as the **pre-review accepted version**, not as the final camera-ready artifact. The camera-ready version must be regenerated only after reviewer comments are handled.
+The completed camera-ready v1.22, Chinese reading edition v1.21, latest local A0 poster v5, supplementary experiment v3 and their sources are archived in [Paper 9499 archive](../archive/2026-11-03-paper9499/README.md), dated 2026-11-03.
 
-Scientific evidence remains frozen to the validated V2.5B INC/V1G scope in:
+The English final passed the retained local checks: five US Letter pages, embedded fonts, no Type 3 fonts, resolved references, and independent source-package compilation. The archive verifies byte identity with those delivery records.
 
-`manuscript_freeze_20260813/manuscript_freeze_20260813/`
-
-The next work item is reviewer-comment triage and revision, followed by Letter-format camera-ready production and final submission QA.
+Scientific evidence remains the validated V2.5B INC/V1G freeze plus the preserved 46-case, 501-point supplementary validation. Registration, conference upload, copyright and publication status are not inferred from the presence of these local artifacts; the deadlines and instructions above are retained historical notification details.

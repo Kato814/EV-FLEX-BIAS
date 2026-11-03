@@ -81,12 +81,15 @@ The accepted-paper narrative is:
 
 1. Introduction.
 2. Network Feasibility Assessment.
-   - Proportional Schedule Scaling.
-   - Network Feasibility Evaluation.
+   - Proportional Scaling and Vehicle Feasibility.
+   - Three-Phase Network Checks.
+   - Scaling-Factor Determination.
 3. Test Systems and Study Cases.
 4. Results and Discussion.
    - Schedule Feasibility.
    - Limiting Network Constraints.
+   - Computational Time.
+   - Operational Use and Extensions.
 5. Conclusion.
 6. References.
 
@@ -96,7 +99,7 @@ Scientific evidence is frozen to the validated INC/V1G scope under:
 
 Historical V2.0/V2.4 paper-generation assets are retained for provenance but are not authoritative for the camera-ready manuscript.
 
-## Fidelity gates for the next camera-ready build
+## Fidelity gates for camera-ready builds
 
 The final camera-ready artifact must pass all of the following:
 
@@ -119,3 +122,7 @@ The final camera-ready artifact must pass all of the following:
 ## Acceptance-letter provenance
 
 See `acceptance_status_9499.md` for the acceptance-letter hash, deadlines, registration requirements, copyright instructions, and official links.
+
+## Completed delivery
+
+Camera-ready v1.22 and its retained verification report are in the [2026-11-03 archive](../archive/2026-11-03-paper9499/README.md). The archive also includes the local LaTeX template ZIP used for the final Letter build.

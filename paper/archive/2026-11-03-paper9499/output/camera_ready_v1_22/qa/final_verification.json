@@ -1,0 +1,202 @@
+{
+  "status": "PASS",
+  "version": "v1.22",
+  "date": "2026-10-15",
+  "changes": [
+    "Removed repository sentence and URL footnote",
+    "Moved the reference column break before reference 7 to balance the last page"
+  ],
+  "pdf": {
+    "pages": 5,
+    "page_sizes_pt": [
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ]
+    ],
+    "all_letter": true,
+    "all_fonts_embedded": true,
+    "type3_fonts": [],
+    "fonts": [
+      {
+        "font": "/IHAIZV+NimbusRomNo9L-Regu",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/BZIVMZ+NimbusRomNo9L-ReguItal",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/IXFAWU+NimbusRomNo9L-MediItal",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/TQTHRL+NimbusRomNo9L-Medi",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/YEUUOC+CMMI10",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/AKHCZK+CMR10",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/VDVGTR+CMMI7",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/CAFSZL+CMR7",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/DDIEWW+CMSY10",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/FKPJSN+CMSY7",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/FHXFSG+TimesNewRomanPSMT",
+        "subtype": "/Type0",
+        "embedded": true
+      },
+      {
+        "font": "/FHXFSG+TimesNewRomanPS-BoldMT",
+        "subtype": "/Type0",
+        "embedded": true
+      },
+      {
+        "font": "/FEUMDM+TimesNewRomanPS-ItalicMT",
+        "subtype": "/Type0",
+        "embedded": true
+      },
+      {
+        "font": "/PVTTLK+CMMI6",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/FHXFSG+TimesNewRomanPSMT",
+        "subtype": "/Type0",
+        "embedded": true
+      },
+      {
+        "font": "/LWGUOW+Tinos",
+        "subtype": "/Type0",
+        "embedded": true
+      },
+      {
+        "font": "/LWGUOW+Tinos",
+        "subtype": "/Type0",
+        "embedded": true
+      },
+      {
+        "font": "/JAGKKY+CMMI8",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/NOMARO+CMR8",
+        "subtype": "/Type1",
+        "embedded": true
+      },
+      {
+        "font": "/LWGUOW+Tinos-Italic",
+        "subtype": "/Type0",
+        "embedded": true
+      },
+      {
+        "font": "/LWGUOW+Tinos",
+        "subtype": "/Type0",
+        "embedded": true
+      },
+      {
+        "font": "/LWGUOW+Tinos",
+        "subtype": "/Type0",
+        "embedded": true
+      }
+    ],
+    "characters_outside_page": [],
+    "text_sha256": "c591e87fd14506a744b76ca8de4c1fda3f8aaa677bc7d34b1f43231dd5072f0e",
+    "sha256": "3de6ef3433057d2407b8be3158029d7d9631aa2647ec82807238c96e9521afdc"
+  },
+  "independent_source_zip_rebuild": "PASS; identical text and page geometry",
+  "all_other_manuscript_text_unchanged": true,
+  "all_figure_assets_and_data_unchanged": true,
+  "all_references_and_citations_unchanged": true,
+  "template_class_unchanged": true,
+  "default_ieee_conference_layout": true,
+  "cross_references_resolved": true,
+  "counts": {
+    "figure": 5,
+    "table": 3,
+    "equation": 5,
+    "references": 14
+  },
+  "last_page_column_bottoms_pt": [
+    333.217664304,
+    329.63115430399995
+  ],
+  "source_zip_sha256": "d5b179dc0d2b8fe571cf9812e99181a915c88865a80a249f03264feaeca02963",
+  "package_entries": [
+    "manuscript_v1_22.tex",
+    "references.tex",
+    "IEEEtran.cls",
+    "figures/fig1_network_feasibility_workflow.pdf",
+    "figures/fig1_network_feasibility_workflow.svg",
+    "figures/fig2a_ieee13_topology.png",
+    "figures/fig2b_lv906_topology.pdf",
+    "figures/fig2b_lv906_topology.svg",
+    "figures/fig3_ieee13_scheduled_vs_feasible_offer.pdf",
+    "figures/fig3_lv906_scheduled_vs_feasible_offer.pdf",
+    "figures/fig4_feasible_scaling_distribution.pdf",
+    "figures/fig5_limiting_network_constraints.pdf",
+    "data/fig3_scheduled_offer_data.csv",
+    "data/fig4_feasible_scaling_data.csv",
+    "data/fig5_boundary_data.csv",
+    "data/boundary_comparison.csv",
+    "data/case_table.csv",
+    "data/feeder_runtime_summary.csv",
+    "qa/rebuild_lv906_topology.py",
+    "qa/fig2b_source_data/Buscoords.txt",
+    "qa/fig2b_source_data/Lines.txt",
+    "qa/fig2b_source_data/Loads.txt",
+    "qa/fig2b_source_data/Transformers.txt",
+    "qa/fig2b_source_data/load_phase_map.csv",
+    "README.txt",
+    "SHA256SUMS.txt"
+  ],
+  "compile_warnings": [
+    "Underfull \\hbox (badness 10000) in paragraph at lines 26--27"
+  ],
+  "visual_review": "All 5 pages inspected; no clipping, overlaps, missing glyphs, equation overflow or unresolved references. Last-page columns balanced. Bibliography URL line spacing checked."
+}
